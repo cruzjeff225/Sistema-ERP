@@ -8,15 +8,14 @@ import {
   Req,
   Res,
   UnauthorizedException,
-  UseGuards,
 } from "@nestjs/common";
+import { Public } from '../decorators/public.decorator';
 import { ConfigService } from "@nestjs/config";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { Throttle } from "@nestjs/throttler";
 import type { Request, Response } from "express";
 import { AuthService } from "../../application/services/auth.service";
 import { LoginDto } from "../../application/dto/login.dto";
-import { JwtAuthGuard } from "../guards/jwt-auth.guard";
 import {
   CurrentUser,
   AuthenticatedUser,
@@ -51,6 +50,7 @@ export class AuthController {
     res.clearCookie(REFRESH_COOKIE_NAME, { path: REFRESH_COOKIE_PATH });
   }
 
+  @Public()
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   @HttpCode(HttpStatus.OK)
   @Post("login")
@@ -80,6 +80,7 @@ export class AuthController {
     };
   }
 
+  @Public()
   @Throttle({ default: { limit: 10, ttl: 60000 } })
   @HttpCode(HttpStatus.OK)
   @Post("refresh")
@@ -128,8 +129,7 @@ export class AuthController {
   }
 
   @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
-  @Get("me")
+  @Get('me')
   @ApiOperation({ summary: "Obtener el usuario autenticado" })
   async me(@CurrentUser() user: AuthenticatedUser) {
     const freshUser = await this.authService.getMe(user.sub);
