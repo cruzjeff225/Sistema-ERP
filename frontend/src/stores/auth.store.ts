@@ -7,6 +7,7 @@ export interface AuthUser {
   email: string;
   roles: string[];
   permissions: string[];
+  employee?: { id: number; code: string; fullName: string };
 }
 
 interface AuthState {

@@ -22,4 +22,18 @@ export class UpdateUserDto {
   @IsOptional()
   @IsEmail({}, { message: "El correo no es válido" })
   email?: string;
+
+  @ApiProperty({ example: "EMP-001", required: false })
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  @MaxLength(40)
+  employeeCode?: string;
+
+  @ApiProperty({ example: "Juan Perez", required: false })
+  @IsOptional()
+  @IsString()
+  @MinLength(3)
+  @MaxLength(150)
+  employeeName?: string;
 }

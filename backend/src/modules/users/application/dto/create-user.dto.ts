@@ -1,7 +1,10 @@
 import { ApiProperty } from "@nestjs/swagger";
 import {
+  ArrayNotEmpty,
+  ArrayUnique,
+  IsArray,
   IsEmail,
-  IsOptional,
+  IsInt,
   IsString,
   MaxLength,
   MinLength,
@@ -28,8 +31,23 @@ export class CreateUserDto {
   @MaxLength(100)
   password: string;
 
-  // Lista opcional de roles a asignar al crear el usuario
-  @ApiProperty({ example: [1], required: false, type: [Number] })
-  @IsOptional()
-  roleIds?: number[];
+  @ApiProperty({ example: "EMP-001" })
+  @IsString()
+  @MinLength(2)
+  @MaxLength(40)
+  employeeCode: string;
+
+  @ApiProperty({ example: "Juan Perez" })
+  @IsString()
+  @MinLength(3)
+  @MaxLength(150)
+  employeeName: string;
+
+  // Todo usuario debe iniciar con al menos un rol.
+  @ApiProperty({ example: [1], type: [Number] })
+  @IsArray()
+  @ArrayNotEmpty()
+  @ArrayUnique()
+  @IsInt({ each: true })
+  roleIds: number[];
 }

@@ -7,20 +7,39 @@ datasource db {
 }
 
 model User {
-  id           Int       @id @default(autoincrement())
-  username     String    @unique
-  email        String    @unique
-  passwordHash String    @map("password_hash")
-  isActive     Boolean   @default(true) @map("is_active")
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
-  deletedAt    DateTime? @map("deleted_at")
+  id                  Int       @id @default(autoincrement())
+  username            String    @unique
+  email               String    @unique
+  passwordHash        String    @map("password_hash")
+  isActive            Boolean   @default(true) @map("is_active")
+  failedLoginAttempts Int       @default(0) @map("failed_login_attempts")
+  lockedAt            DateTime? @map("locked_at")
+  employeeId          Int       @unique @map("id_employee")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+  deletedAt           DateTime? @map("deleted_at")
 
-  userRoles UserRole[]
-  logs      Log[]
+  employee      Employee       @relation(fields: [employeeId], references: [id])
+  userRoles     UserRole[]
+  logs          Log[]
   refreshTokens RefreshToken[]
 
   @@map("users")
+}
+
+model Employee {
+  id        Int       @id @default(autoincrement()) @map("id_employee")
+  code      String    @unique
+  fullName  String    @map("full_name")
+  email     String?   @unique
+  isActive  Boolean   @default(true) @map("is_active")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  user User?
+
+  @@map("employees")
 }
 
 model Role {
@@ -114,6 +133,7 @@ model Log {
 
   @@index([userId])
   @@index([controller, recordId])
+  @@index([createdAt])
   @@map("logs")
 }
 
@@ -129,4 +149,452 @@ model RefreshToken {
 
   @@index([userId])
   @@map("refresh_tokens")
+}
+
+model Department {
+  id        Int      @id @default(autoincrement()) @map("id_department")
+  name      String   @unique
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  companies      Company[]
+  branches       Branch[]
+  municipalities Municipality[]
+
+  @@map("departments")
+}
+
+model Municipality {
+  id           Int      @id @default(autoincrement()) @map("id_municipality")
+  departmentId Int      @map("id_department")
+  name         String
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  department Department @relation(fields: [departmentId], references: [id])
+  companies  Company[]
+  branches   Branch[]
+  districts  District[]
+
+  @@unique([departmentId, name])
+  @@index([departmentId])
+  @@map("municipalities")
+}
+
+model District {
+  id             Int      @id @default(autoincrement()) @map("id_district")
+  municipalityId Int      @map("id_municipality")
+  name           String
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  municipality Municipality @relation(fields: [municipalityId], references: [id])
+  companies    Company[]
+  branches     Branch[]
+
+  @@unique([municipalityId, name])
+  @@index([municipalityId])
+  @@map("districts")
+}
+
+model Company {
+  id              Int       @id @default(autoincrement()) @map("id_company")
+  name            String
+  commercialName  String    @map("commercial_name")
+  nit             String    @unique
+  nrc             String    @unique
+  commercialLine1 String?   @map("commercial_line_1")
+  commercialLine2 String?   @map("commercial_line_2")
+  commercialLine3 String?   @map("commercial_line_3")
+  address         String
+  departmentId    Int       @map("id_department")
+  municipalityId  Int       @map("id_municipality")
+  districtId      Int       @map("id_district")
+  phone           String?
+  email           String?
+  webSite         String?   @map("web_site")
+  logo            String?
+  isActive        Boolean   @default(true) @map("is_active")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  deletedAt       DateTime? @map("deleted_at")
+
+  department   Department   @relation(fields: [departmentId], references: [id])
+  municipality Municipality @relation(fields: [municipalityId], references: [id])
+  district     District     @relation(fields: [districtId], references: [id])
+  branches     Branch[]
+
+  @@index([departmentId])
+  @@index([municipalityId])
+  @@index([districtId])
+  @@map("companies")
+}
+
+model Branch {
+  id             Int       @id @default(autoincrement()) @map("id_branch")
+  companyId      Int       @map("id_company")
+  name           String
+  address        String
+  departmentId   Int       @map("id_department")
+  municipalityId Int       @map("id_municipality")
+  districtId     Int       @map("id_district")
+  phone          String?
+  email          String?
+  isActive       Boolean   @default(true) @map("is_active")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  deletedAt      DateTime? @map("deleted_at")
+
+  company      Company      @relation(fields: [companyId], references: [id])
+  department   Department   @relation(fields: [departmentId], references: [id])
+  municipality Municipality @relation(fields: [municipalityId], references: [id])
+  district     District     @relation(fields: [districtId], references: [id])
+  warehouses   Warehouse[]
+  purchases    Purchase[]
+  sales        Sale[]
+  quotations   Quotation[]
+
+  @@unique([companyId, name])
+  @@index([companyId])
+  @@index([departmentId])
+  @@index([municipalityId])
+  @@index([districtId])
+  @@map("branches")
+}
+
+model WarehouseCategory {
+  id          Int       @id @default(autoincrement()) @map("id_warehouse_category")
+  name        String    @unique
+  description String?
+  isActive    Boolean   @default(true) @map("is_active")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  warehouses Warehouse[]
+
+  @@map("warehouse_category")
+}
+
+model Warehouse {
+  id          Int       @id @default(autoincrement()) @map("id_warehouse")
+  branchId    Int       @map("id_branch")
+  categoryId  Int       @map("id_warehouse_category")
+  name        String
+  description String?
+  isActive    Boolean   @default(true) @map("is_active")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  branch    Branch            @relation(fields: [branchId], references: [id])
+  category  WarehouseCategory @relation(fields: [categoryId], references: [id])
+  locations Location[]
+
+  @@unique([branchId, name])
+  @@index([branchId])
+  @@index([categoryId])
+  @@map("warehouses")
+}
+
+model Location {
+  id          Int       @id @default(autoincrement()) @map("id_location")
+  warehouseId Int       @map("id_warehouse")
+  code        String
+  aisle       String
+  rack        String
+  level       String
+  position    String
+  capacity    Int
+  notes       String?
+  isActive    Boolean   @default(true) @map("is_active")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  warehouse Warehouse        @relation(fields: [warehouseId], references: [id])
+  stocks    InventoryStock[]
+
+  @@unique([warehouseId, code])
+  @@unique([warehouseId, aisle, rack, level, position])
+  @@index([warehouseId])
+  @@map("locations")
+}
+
+model Customer {
+  id        Int       @id @default(autoincrement()) @map("id_customer")
+  name      String
+  document  String?   @unique
+  phone     String?
+  email     String?
+  address   String?
+  isActive  Boolean   @default(true) @map("is_active")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  quotations Quotation[]
+  sales      Sale[]
+
+  @@map("customers")
+}
+
+model Country {
+  id        Int      @id @default(autoincrement()) @map("id_country")
+  name      String   @unique
+  isoCode   String   @unique @map("iso_code")
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  suppliers Supplier[]
+
+  @@map("countries")
+}
+
+model Supplier {
+  id        Int       @id @default(autoincrement()) @map("id_supplier")
+  code      String    @unique
+  name      String
+  countryId Int       @map("id_country")
+  address   String?
+  phone     String?
+  email     String?
+  website   String?
+  isActive  Boolean   @default(true) @map("is_active")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  country   Country           @relation(fields: [countryId], references: [id])
+  contacts  SupplierContact[]
+  purchases Purchase[]
+
+  @@index([countryId])
+  @@index([name])
+  @@map("suppliers")
+}
+
+model SupplierContact {
+  id         Int       @id @default(autoincrement()) @map("id_supplier_contact")
+  supplierId Int       @map("id_supplier")
+  fullName   String    @map("full_name")
+  phone      String?
+  email      String?
+  isActive   Boolean   @default(true) @map("is_active")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  deletedAt  DateTime? @map("deleted_at")
+
+  supplier Supplier @relation(fields: [supplierId], references: [id])
+
+  @@index([supplierId])
+  @@index([fullName])
+  @@map("suppliers_contacts")
+}
+
+model Product {
+  id          Int       @id @default(autoincrement()) @map("id_product")
+  sku         String    @unique
+  name        String
+  description String?
+  unitCost    Decimal   @default(0) @map("unit_cost") @db.Decimal(12, 2)
+  salePrice   Decimal   @default(0) @map("sale_price") @db.Decimal(12, 2)
+  isActive    Boolean   @default(true) @map("is_active")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  stocks         InventoryStock[]
+  purchaseItems  PurchaseItem[]
+  quotationItems QuotationItem[]
+  saleItems      SaleItem[]
+  transferItems  TransferItem[]
+
+  @@map("products")
+}
+
+model InventoryStock {
+  id         Int      @id @default(autoincrement()) @map("id_inventory_stock")
+  productId  Int      @map("id_product")
+  locationId Int      @map("id_location")
+  quantity   Int      @default(0)
+  minStock   Int      @default(0) @map("min_stock")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  product  Product  @relation(fields: [productId], references: [id])
+  location Location @relation(fields: [locationId], references: [id])
+
+  @@unique([productId, locationId])
+  @@index([locationId])
+  @@map("inventory_stocks")
+}
+
+model Purchase {
+  id             Int      @id @default(autoincrement()) @map("id_purchase")
+  supplierId     Int      @map("id_supplier")
+  branchId       Int      @map("id_branch")
+  documentNumber String   @unique @map("document_number")
+  status         String   @default("COMPLETED")
+  total          Decimal  @default(0) @db.Decimal(12, 2)
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  supplier Supplier       @relation(fields: [supplierId], references: [id])
+  branch   Branch         @relation(fields: [branchId], references: [id])
+  items    PurchaseItem[]
+
+  @@index([supplierId])
+  @@index([branchId])
+  @@map("purchases")
+}
+
+model PurchaseItem {
+  id         Int     @id @default(autoincrement()) @map("id_purchase_item")
+  purchaseId Int     @map("id_purchase")
+  productId  Int     @map("id_product")
+  locationId Int     @map("id_location")
+  quantity   Int
+  unitCost   Decimal @map("unit_cost") @db.Decimal(12, 2)
+  lineTotal  Decimal @map("line_total") @db.Decimal(12, 2)
+
+  purchase Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  product  Product  @relation(fields: [productId], references: [id])
+
+  @@index([purchaseId])
+  @@index([productId])
+  @@index([locationId])
+  @@map("purchase_items")
+}
+
+model Quotation {
+  id             Int      @id @default(autoincrement()) @map("id_quotation")
+  customerId     Int      @map("id_customer")
+  branchId       Int      @map("id_branch")
+  documentNumber String   @unique @map("document_number")
+  status         String   @default("OPEN")
+  total          Decimal  @default(0) @db.Decimal(12, 2)
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  customer Customer        @relation(fields: [customerId], references: [id])
+  branch   Branch          @relation(fields: [branchId], references: [id])
+  items    QuotationItem[]
+
+  @@index([customerId])
+  @@index([branchId])
+  @@map("quotations")
+}
+
+model QuotationItem {
+  id          Int     @id @default(autoincrement()) @map("id_quotation_item")
+  quotationId Int     @map("id_quotation")
+  productId   Int     @map("id_product")
+  quantity    Int
+  unitPrice   Decimal @map("unit_price") @db.Decimal(12, 2)
+  lineTotal   Decimal @map("line_total") @db.Decimal(12, 2)
+
+  quotation Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  product   Product   @relation(fields: [productId], references: [id])
+
+  @@index([quotationId])
+  @@index([productId])
+  @@map("quotation_items")
+}
+
+model Sale {
+  id             Int      @id @default(autoincrement()) @map("id_sale")
+  customerId     Int      @map("id_customer")
+  branchId       Int      @map("id_branch")
+  documentNumber String   @unique @map("document_number")
+  status         String   @default("COMPLETED")
+  total          Decimal  @default(0) @db.Decimal(12, 2)
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  customer Customer   @relation(fields: [customerId], references: [id])
+  branch   Branch     @relation(fields: [branchId], references: [id])
+  items    SaleItem[]
+
+  @@index([customerId])
+  @@index([branchId])
+  @@map("sales")
+}
+
+model SaleItem {
+  id         Int     @id @default(autoincrement()) @map("id_sale_item")
+  saleId     Int     @map("id_sale")
+  productId  Int     @map("id_product")
+  locationId Int     @map("id_location")
+  quantity   Int
+  unitPrice  Decimal @map("unit_price") @db.Decimal(12, 2)
+  lineTotal  Decimal @map("line_total") @db.Decimal(12, 2)
+
+  sale    Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@index([saleId])
+  @@index([productId])
+  @@index([locationId])
+  @@map("sale_items")
+}
+
+model Transfer {
+  id              Int      @id @default(autoincrement()) @map("id_transfer")
+  documentNumber  String   @unique @map("document_number")
+  fromWarehouseId Int      @map("id_from_warehouse")
+  toWarehouseId   Int      @map("id_to_warehouse")
+  status          String   @default("COMPLETED")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  items TransferItem[]
+
+  @@index([fromWarehouseId])
+  @@index([toWarehouseId])
+  @@map("transfers")
+}
+
+model TransferItem {
+  id             Int @id @default(autoincrement()) @map("id_transfer_item")
+  transferId     Int @map("id_transfer")
+  productId      Int @map("id_product")
+  fromLocationId Int @map("id_from_location")
+  toLocationId   Int @map("id_to_location")
+  quantity       Int
+
+  transfer Transfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  product  Product  @relation(fields: [productId], references: [id])
+
+  @@index([transferId])
+  @@index([productId])
+  @@index([fromLocationId])
+  @@index([toLocationId])
+  @@map("transfer_items")
+}
+
+model Vehicle {
+  id        Int       @id @default(autoincrement()) @map("id_vehicle")
+  plate     String    @unique
+  brand     String?
+  model     String?
+  year      Int?
+  isActive  Boolean   @default(true) @map("is_active")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@map("vehicles")
+}
+
+model Driver {
+  id        Int       @id @default(autoincrement()) @map("id_driver")
+  name      String
+  license   String    @unique
+  phone     String?
+  isActive  Boolean   @default(true) @map("is_active")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@map("drivers")
 }

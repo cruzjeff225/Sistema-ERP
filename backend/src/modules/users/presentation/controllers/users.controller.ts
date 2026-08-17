@@ -20,6 +20,7 @@ import { AssignRolesDto } from "../../application/dto/assign-roles.dto";
 import { UpdateStatusDto } from "../../application/dto/update-status.dto";
 import { ChangePasswordDto } from "../../application/dto/change-password.dto";
 import { QueryUsersDto } from "../../application/dto/query-users.dto";
+import { AuthenticatedUser, CurrentUser } from "../../../auth/presentation/decorators/current-user.decorator";
 
 // Agrupa los endpoints relacionados con la gestión de usuarios
 @ApiTags("users")
@@ -60,8 +61,8 @@ export class UsersController {
   @RequirePermissions(USER_PERMISSIONS.CREATE)
   @Post()
   @ApiOperation({ summary: "Crear usuario" })
-  async create(@Body() dto: CreateUserDto) {
-    const user = await this.usersService.create(dto);
+  async create(@Body() dto: CreateUserDto, @CurrentUser() actor: AuthenticatedUser) {
+    const user = await this.usersService.create(dto, actor.sub);
 
     return {
       success: true,
@@ -77,8 +78,9 @@ export class UsersController {
   async update(
     @Param("id", ParseIntPipe) id: number,
     @Body() dto: UpdateUserDto,
+    @CurrentUser() actor: AuthenticatedUser,
   ) {
-    const user = await this.usersService.update(id, dto);
+    const user = await this.usersService.update(id, dto, actor.sub);
 
     return {
       success: true,
@@ -91,8 +93,8 @@ export class UsersController {
   @RequirePermissions(USER_PERMISSIONS.DELETE)
   @Delete(":id")
   @ApiOperation({ summary: "Eliminar usuario (soft delete)" })
-  async remove(@Param("id", ParseIntPipe) id: number) {
-    await this.usersService.remove(id);
+  async remove(@Param("id", ParseIntPipe) id: number, @CurrentUser() actor: AuthenticatedUser) {
+    await this.usersService.remove(id, actor.sub);
 
     return {
       success: true,
@@ -108,8 +110,9 @@ export class UsersController {
   async assignRoles(
     @Param("id", ParseIntPipe) id: number,
     @Body() dto: AssignRolesDto,
+    @CurrentUser() actor: AuthenticatedUser,
   ) {
-    const user = await this.usersService.assignRoles(id, dto.roleIds);
+    const user = await this.usersService.assignRoles(id, dto.roleIds, actor.sub);
 
     return {
       success: true,
@@ -125,8 +128,9 @@ export class UsersController {
   async updateStatus(
     @Param("id", ParseIntPipe) id: number,
     @Body() dto: UpdateStatusDto,
+    @CurrentUser() actor: AuthenticatedUser,
   ) {
-    const user = await this.usersService.updateStatus(id, dto.isActive);
+    const user = await this.usersService.updateStatus(id, dto.isActive, actor.sub);
 
     return {
       success: true,
@@ -142,13 +146,22 @@ export class UsersController {
   async changePassword(
     @Param("id", ParseIntPipe) id: number,
     @Body() dto: ChangePasswordDto,
+    @CurrentUser() actor: AuthenticatedUser,
   ) {
-    await this.usersService.changePassword(id, dto.newPassword);
+    await this.usersService.changePassword(id, dto.newPassword, actor.sub);
 
     return {
       success: true,
       message: "Contraseña actualizada correctamente",
       data: null,
     };
+  }
+
+  @RequirePermissions(USER_PERMISSIONS.UPDATE)
+  @Patch(":id/unlock")
+  @ApiOperation({ summary: "Desbloquear usuario por intentos fallidos" })
+  async unlock(@Param("id", ParseIntPipe) id: number, @CurrentUser() actor: AuthenticatedUser) {
+    const user = await this.usersService.unlock(id, actor.sub);
+    return { success: true, message: "Usuario desbloqueado correctamente", data: user };
   }
 }
