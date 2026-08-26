@@ -17,7 +17,7 @@ import { UsersService } from "../../application/services/users.service";
 import { CreateUserDto } from "../../application/dto/create-user.dto";
 import { UpdateUserDto } from "../../application/dto/update-user.dto";
 import { AssignRolesDto } from "../../application/dto/assign-roles.dto";
-import { UpdateStatusDto } from "../../application/dto/update-status.dto";
+import { UpdateUserStatusDto } from "../../application/dto/update-status.dto";
 import { ChangePasswordDto } from "../../application/dto/change-password.dto";
 import { QueryUsersDto } from "../../application/dto/query-users.dto";
 import { AuthenticatedUser, CurrentUser } from "../../../auth/presentation/decorators/current-user.decorator";
@@ -127,7 +127,7 @@ export class UsersController {
   @ApiOperation({ summary: "Activar o desactivar usuario" })
   async updateStatus(
     @Param("id", ParseIntPipe) id: number,
-    @Body() dto: UpdateStatusDto,
+    @Body() dto: UpdateUserStatusDto,
     @CurrentUser() actor: AuthenticatedUser,
   ) {
     const user = await this.usersService.updateStatus(id, dto.isActive, actor.sub);

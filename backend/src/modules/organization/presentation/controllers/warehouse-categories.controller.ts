@@ -1,10 +1,10 @@
 import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { WAREHOUSE_CATEGORY_PERMISSIONS } from "../../../../common/constants/organization-permissions.constant";
-import { RequireAnyPermission, RequirePermissions } from "../../../../common/decorators/permissions.decorator";
+import { RequirePermissions, RequireStatusPermissions } from "../../../../common/decorators/permissions.decorator";
 import { AuthenticatedUser, CurrentUser } from "../../../auth/presentation/decorators/current-user.decorator";
 import { CreateWarehouseCategoryDto } from "../../application/dto/create-warehouse-category.dto";
-import { UpdateStatusDto } from "../../application/dto/update-status.dto";
+import { UpdateOrganizationStatusDto } from "../../application/dto/update-status.dto";
 import { UpdateWarehouseCategoryDto } from "../../application/dto/update-warehouse-category.dto";
 import { OrganizationService } from "../../application/services/organization.service";
 
@@ -38,10 +38,10 @@ export class WarehouseCategoriesController {
     return { success: true, message: "Categoría actualizada correctamente", data };
   }
 
-  @RequireAnyPermission(WAREHOUSE_CATEGORY_PERMISSIONS.UPDATE, WAREHOUSE_CATEGORY_PERMISSIONS.DEACTIVATE)
+  @RequireStatusPermissions(WAREHOUSE_CATEGORY_PERMISSIONS.UPDATE, WAREHOUSE_CATEGORY_PERMISSIONS.DEACTIVATE)
   @Patch(":id/status")
   @ApiOperation({ summary: "Activar o desactivar categoría de almacén" })
-  async updateStatus(@Param("id", ParseIntPipe) id: number, @Body() dto: UpdateStatusDto, @CurrentUser() user: AuthenticatedUser) {
+  async updateStatus(@Param("id", ParseIntPipe) id: number, @Body() dto: UpdateOrganizationStatusDto, @CurrentUser() user: AuthenticatedUser) {
     const data = await this.organizationService.updateWarehouseCategoryStatus(id, dto.isActive, user.sub);
     return { success: true, message: "Estado de categoría actualizado correctamente", data };
   }

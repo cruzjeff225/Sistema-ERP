@@ -15,6 +15,18 @@ export class CreateSupplierDto {
   countryId: number;
 
   @IsOptional()
+  @IsInt()
+  departmentId?: number;
+
+  @IsOptional()
+  @IsInt()
+  municipalityId?: number;
+
+  @IsOptional()
+  @IsInt()
+  districtId?: number;
+
+  @IsOptional()
   @IsString()
   @MaxLength(300)
   address?: string;

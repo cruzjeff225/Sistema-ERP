@@ -15,7 +15,7 @@ import { PERMISSION_PERMISSIONS } from "../../../../common/constants/permission-
 import { PermissionsService } from "../../application/services/permissions.service";
 import { CreatePermissionDto } from "../../application/dto/create-permission.dto";
 import { UpdatePermissionDto } from "../../application/dto/update-permission.dto";
-import { UpdateStatusDto } from "../../application/dto/update-status.dto";
+import { UpdatePermissionStatusDto } from "../../application/dto/update-status.dto";
 import { AuthenticatedUser, CurrentUser } from "../../../auth/presentation/decorators/current-user.decorator";
 
 // Agrupa los endpoints relacionados con la gestión de permisos
@@ -96,7 +96,7 @@ export class PermissionsController {
   @ApiOperation({ summary: "Activar o desactivar permiso" })
   async updateStatus(
     @Param("id", ParseIntPipe) id: number,
-    @Body() dto: UpdateStatusDto,
+    @Body() dto: UpdatePermissionStatusDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
     const permission = await this.permissionsService.updateStatus(

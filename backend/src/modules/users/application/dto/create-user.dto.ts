@@ -5,6 +5,7 @@ import {
   IsArray,
   IsEmail,
   IsInt,
+  IsOptional,
   IsString,
   MaxLength,
   MinLength,
@@ -43,6 +44,25 @@ export class CreateUserDto {
   @MaxLength(150)
   employeeName: string;
 
+  @ApiProperty({ example: 1 })
+  @IsInt()
+  countryId: number;
+
+  @ApiProperty({ example: 1, required: false })
+  @IsOptional()
+  @IsInt()
+  departmentId?: number;
+
+  @ApiProperty({ example: 1, required: false })
+  @IsOptional()
+  @IsInt()
+  municipalityId?: number;
+
+  @ApiProperty({ example: 1, required: false })
+  @IsOptional()
+  @IsInt()
+  districtId?: number;
+
   // Todo usuario debe iniciar con al menos un rol.
   @ApiProperty({ example: [1], type: [Number] })
   @IsArray()
@@ -50,4 +70,11 @@ export class CreateUserDto {
   @ArrayUnique()
   @IsInt({ each: true })
   roleIds: number[];
+
+  @ApiProperty({ example: [1], type: [Number] })
+  @IsArray()
+  @ArrayNotEmpty()
+  @ArrayUnique()
+  @IsInt({ each: true })
+  companyIds: number[];
 }

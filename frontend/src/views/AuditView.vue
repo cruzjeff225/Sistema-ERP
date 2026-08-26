@@ -18,6 +18,8 @@ type AuditRow = {
   user?: { username: string; email: string } | null;
 };
 
+type AuditUser = { id: number; username: string; email: string };
+
 const { can } = usePermissions();
 const rows = ref<AuditRow[]>([]);
 const loading = ref(false);
@@ -25,7 +27,8 @@ const errorMessage = ref("");
 const selected = ref<AuditRow | null>(null);
 const showFilters = ref(false);
 const meta = ref({ page: 1, totalPages: 1, total: 0 });
-const filters = reactive({ controller: "", action: "", dateFrom: "", dateTo: "" });
+const auditUsers = ref<AuditUser[]>([]);
+const filters = reactive({ userId: "", controller: "", action: "", dateFrom: "", dateTo: "" });
 
 function params(page = meta.value.page) {
   return Object.fromEntries(Object.entries({ ...filters, page, limit: 25 }).filter(([, value]) => value !== ""));
@@ -42,6 +45,15 @@ async function load(page = 1) {
     errorMessage.value = error.response?.data?.message ?? "No se pudo cargar la bitacora";
   } finally {
     loading.value = false;
+  }
+}
+
+async function loadUsers() {
+  try {
+    const response = await http.get("/logs/users");
+    auditUsers.value = response.data.data;
+  } catch (error: any) {
+    errorMessage.value = error.response?.data?.message ?? "No se pudieron cargar los usuarios de bitacora";
   }
 }
 
@@ -67,7 +79,10 @@ function pretty(value: unknown) {
   return JSON.stringify(value, null, 2) ?? "Sin datos";
 }
 
-onMounted(() => load());
+onMounted(async () => {
+  await loadUsers();
+  await load();
+});
 </script>
 
 <template>
@@ -85,7 +100,8 @@ onMounted(() => load());
       </div>
     </div>
 
-    <div class="mb-4 gap-3 border-y border-border bg-surface py-4 md:grid md:grid-cols-5" :class="showFilters ? 'grid' : 'hidden'">
+    <div class="mb-4 gap-3 border-y border-border bg-surface py-4 md:grid md:grid-cols-3 xl:grid-cols-6" :class="showFilters ? 'grid' : 'hidden'">
+      <label class="text-sm font-medium text-fg">Usuario<select v-model="filters.userId" class="mt-1.5 h-10 w-full rounded-lg border border-border bg-surface px-3"><option value="">Todos</option><option v-for="user in auditUsers" :key="user.id" :value="String(user.id)">{{ user.username }} - {{ user.email }}</option></select></label>
       <label class="text-sm font-medium text-fg">Modulo<input v-model="filters.controller" class="mt-1.5 h-10 w-full rounded-lg border border-border bg-surface px-3" placeholder="users, companies..." /></label>
       <label class="text-sm font-medium text-fg">Accion<select v-model="filters.action" class="mt-1.5 h-10 w-full rounded-lg border border-border bg-surface px-3"><option value="">Todas</option><option v-for="action in ['CREATE','UPDATE','DELETE','ACTIVATE','DEACTIVATE','LOGIN','LOGIN_FAILED','CHANGE_PASSWORD','ASSIGN_ROLES','ASSIGN_PERMISSIONS']" :key="action">{{ action }}</option></select></label>
       <label class="text-sm font-medium text-fg">Desde<input v-model="filters.dateFrom" type="date" class="mt-1.5 h-10 w-full rounded-lg border border-border bg-surface px-3" /></label>

@@ -1,6 +1,9 @@
 import { ApiProperty } from "@nestjs/swagger";
 import {
+  ArrayUnique,
+  IsArray,
   IsEmail,
+  IsInt,
   IsOptional,
   IsString,
   MaxLength,
@@ -36,4 +39,31 @@ export class UpdateUserDto {
   @MinLength(3)
   @MaxLength(150)
   employeeName?: string;
+
+  @ApiProperty({ example: 1, required: false })
+  @IsOptional()
+  @IsInt()
+  countryId?: number;
+
+  @ApiProperty({ example: 1, required: false })
+  @IsOptional()
+  @IsInt()
+  departmentId?: number;
+
+  @ApiProperty({ example: 1, required: false })
+  @IsOptional()
+  @IsInt()
+  municipalityId?: number;
+
+  @ApiProperty({ example: 1, required: false })
+  @IsOptional()
+  @IsInt()
+  districtId?: number;
+
+  @ApiProperty({ example: [1], type: [Number], required: false })
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @IsInt({ each: true })
+  companyIds?: number[];
 }

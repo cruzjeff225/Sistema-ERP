@@ -20,6 +20,14 @@ export class AuditController {
     return { success: true, message: "Bitacora obtenida correctamente", data: result.items, meta: result.meta };
   }
 
+  @RequirePermissions(AUDIT_PERMISSIONS.VIEW)
+  @Get("users")
+  @ApiOperation({ summary: "Consultar usuarios con actividad en la bitacora" })
+  async users() {
+    const data = await this.auditService.users();
+    return { success: true, message: "Usuarios de bitacora obtenidos correctamente", data };
+  }
+
   @RequirePermissions(AUDIT_PERMISSIONS.EXPORT)
   @Get("export")
   @ApiOperation({ summary: "Exportar la bitacora en CSV" })

@@ -1,4 +1,4 @@
-import { IsEmail, IsInt, IsNotEmpty, IsOptional, IsString } from "class-validator";
+import { IsEmail, IsInt, IsNotEmpty, IsOptional, IsString, Matches } from "class-validator";
 
 export class CreateBranchDto {
   @IsInt()
@@ -23,6 +23,7 @@ export class CreateBranchDto {
 
   @IsOptional()
   @IsString()
+  @Matches(/^[0-9+() .-]{7,25}$/, { message: "El telefono no tiene un formato valido" })
   phone?: string;
 
   @IsOptional()

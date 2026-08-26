@@ -1,8 +1,12 @@
 import { createRouter, createWebHistory } from "vue-router";
 import { useAuthStore } from "../stores/auth.store";
+import { useFeedbackStore } from "../stores/feedback.store";
 
 const router = createRouter({
   history: createWebHistory(),
+  scrollBehavior() {
+    return { top: 0 };
+  },
   routes: [
     {
       path: "/",
@@ -50,6 +54,18 @@ const router = createRouter({
       meta: { permission: "suppliers.view" },
     },
     {
+      path: "/products",
+      name: "products",
+      component: () => import("../views/ProductsView.vue"),
+      meta: { permission: "products.view" },
+    },
+    {
+      path: "/customers",
+      name: "customers",
+      component: () => import("../views/CustomersView.vue"),
+      meta: { permission: "customers.view" },
+    },
+    {
       path: "/audit",
       name: "audit",
       component: () => import("../views/AuditView.vue"),
@@ -57,6 +73,11 @@ const router = createRouter({
     },
     { path: "/:pathMatch(.*)*", redirect: "/dashboard" },
   ],
+});
+
+router.onError((error) => {
+  console.error("No se pudo cargar la ruta", error);
+  useFeedbackStore().error("No se pudo abrir esta pantalla. Inténtalo nuevamente.");
 });
 
 router.beforeEach((to) => {

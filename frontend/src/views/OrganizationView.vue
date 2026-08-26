@@ -22,6 +22,7 @@ import AppButton from "../components/base/AppButton.vue";
 import AppInput from "../components/base/AppInput.vue";
 import { http } from "../services/http.service";
 import { usePermissions } from "../composables/usePermissions";
+import { activeCompanyId } from "../services/company-context";
 
 type Level = "companies" | "branches" | "warehouses" | "locations" | "categories";
 type AnyRecord = Record<string, any>;
@@ -76,6 +77,7 @@ const warehouseForm = reactive({ branchId: "", categoryId: "", name: "", descrip
 const locationForm = reactive({ warehouseId: "", code: "", aisle: "", rack: "", level: "", position: "", capacity: "1", notes: "" });
 
 const activeConfig = computed(() => levels.find((item) => item.id === activeLevel.value)!);
+const activeCompany = computed(() => companies.value.find((item) => item.id === activeCompanyId.value) ?? null);
 const selectedCompany = computed(() => companies.value.find((item) => item.id === selectedCompanyId.value) ?? null);
 const selectedBranch = computed(() => branches.value.find((item) => item.id === selectedBranchId.value) ?? null);
 const selectedWarehouse = computed(() => warehouses.value.find((item) => item.id === selectedWarehouseId.value) ?? null);
@@ -84,7 +86,7 @@ const visibleWarehouses = computed(() => selectedBranchId.value ? warehouses.val
 const visibleLocations = computed(() => selectedWarehouseId.value ? locations.value.filter((item) => item.warehouseId === selectedWarehouseId.value) : locations.value);
 
 const activeRows = computed(() => {
-  if (activeLevel.value === "companies") return companies.value;
+  if (activeLevel.value === "companies") return activeCompany.value ? [activeCompany.value] : [];
   if (activeLevel.value === "branches") return visibleBranches.value;
   if (activeLevel.value === "warehouses") return visibleWarehouses.value;
   if (activeLevel.value === "locations") return visibleLocations.value;
@@ -116,7 +118,7 @@ function apiMessage(error: any, fallback: string) {
 }
 
 function levelCount(level: Level) {
-  return level === "companies" ? companies.value.length
+  return level === "companies" ? (activeCompany.value ? 1 : 0)
     : level === "branches" ? branches.value.length
       : level === "warehouses" ? warehouses.value.length
         : level === "locations" ? locations.value.length
@@ -213,7 +215,7 @@ function resetForm(level = activeLevel.value) {
     Object.assign(companyForm, { name: "", commercialName: "", nit: "", nrc: "", commercialLine1: "", address: "", phone: "", email: "", webSite: "", logo: "" });
     applyDefaultGeography(companyForm);
   } else if (level === "branches") {
-    Object.assign(branchForm, { companyId: selectedCompanyId.value ? String(selectedCompanyId.value) : companies.value[0] ? String(companies.value[0].id) : "", name: "", address: "", phone: "", email: "" });
+    Object.assign(branchForm, { companyId: activeCompany.value ? String(activeCompany.value.id) : "", name: "", address: "", phone: "", email: "" });
     applyDefaultGeography(branchForm);
   } else if (level === "warehouses") {
     Object.assign(warehouseForm, { branchId: selectedBranchId.value ? String(selectedBranchId.value) : branches.value[0] ? String(branches.value[0].id) : "", categoryId: categories.value[0] ? String(categories.value[0].id) : "", name: "", description: "" });
@@ -273,7 +275,7 @@ async function loadAll() {
     categories.value = categoryRes.data.data;
     warehouses.value = warehouseRes.data.data;
     locations.value = locationRes.data.data;
-    if (!selectedCompanyId.value && companies.value[0]) selectedCompanyId.value = companies.value[0].id;
+    if (!selectedCompanyId.value && activeCompany.value) selectedCompanyId.value = activeCompany.value.id;
     if (!selectedBranchId.value && visibleBranches.value[0]) selectedBranchId.value = visibleBranches.value[0].id;
     if (!selectedWarehouseId.value && visibleWarehouses.value[0]) selectedWarehouseId.value = visibleWarehouses.value[0].id;
   } catch (error: any) {
@@ -286,7 +288,7 @@ async function loadAll() {
 async function saveActive() {
   const level = activeLevel.value;
   if (level === "companies") return saveEntity("/companies", { ...cleanObject(companyForm), departmentId: Number(companyForm.departmentId), municipalityId: Number(companyForm.municipalityId), districtId: Number(companyForm.districtId) });
-  if (level === "branches") return saveEntity("/branches", { ...cleanObject(branchForm), companyId: Number(branchForm.companyId), departmentId: Number(branchForm.departmentId), municipalityId: Number(branchForm.municipalityId), districtId: Number(branchForm.districtId) });
+  if (level === "branches") return saveEntity("/branches", { ...cleanObject(branchForm), companyId: Number(activeCompany.value?.id ?? branchForm.companyId), departmentId: Number(branchForm.departmentId), municipalityId: Number(branchForm.municipalityId), districtId: Number(branchForm.districtId) });
   if (level === "warehouses") return saveEntity("/warehouses", { ...cleanObject(warehouseForm), branchId: Number(warehouseForm.branchId), categoryId: Number(warehouseForm.categoryId) });
   if (level === "locations") return saveEntity("/locations", { ...cleanObject(locationForm), warehouseId: Number(locationForm.warehouseId), capacity: Number(locationForm.capacity) });
   return saveEntity("/warehouse-categories", cleanObject(categoryForm));
@@ -336,8 +338,8 @@ onMounted(async () => {
 
 <template>
   <AdminLayout title="Organizacion">
-    <div class="mb-6 flex flex-wrap items-end justify-between gap-4">
-      <div><h1 class="page-title">Organizacion</h1><p class="page-subtitle">Administra la estructura Empresa → Sucursal → Almacen → Espacio.</p></div>
+    <div class="mb-7 flex flex-wrap items-end justify-between gap-4">
+      <div><p class="section-eyebrow">Estructura operativa</p><h1 class="page-title mt-1">Organización</h1><p class="page-subtitle">{{ activeCompany ? `Gestionando ${activeCompany.commercialName}: Empresa, sucursal, almacén y espacio.` : "Administra la estructura Empresa, Sucursal, Almacén y Espacio." }}</p></div>
       <div class="flex gap-2">
         <AppButton variant="outline" :disabled="loading" title="Actualizar" @click="loadAll"><RefreshCw class="h-4 w-4" :class="loading && 'animate-spin'" /><span class="hidden sm:inline">Actualizar</span></AppButton>
         <AppButton v-if="can(`${activeConfig.permission}.create`)" @click="openCreate"><Plus class="h-4 w-4" />Nueva {{ activeConfig.singular }}</AppButton>
@@ -352,15 +354,16 @@ onMounted(async () => {
       </div>
     </div>
 
-    <div v-if="contextItems.length" class="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-border bg-surface px-4 py-3 text-sm">
+    <div class="surface-panel mb-4 flex flex-wrap items-center gap-2 px-4 py-3 text-sm">
       <FolderTree class="h-4 w-4 text-accent" />
-      <template v-for="(item, index) in contextItems" :key="item.label"><span class="text-muted-fg">{{ item.label }}</span><span class="font-medium text-fg">{{ item.value }}</span><ChevronRight v-if="index < contextItems.length - 1" class="h-4 w-4 text-muted-fg" /></template>
+      <span class="text-muted-fg">Empresa activa</span><span class="font-medium text-fg">{{ activeCompany?.commercialName ?? "Sin empresa seleccionada" }}</span>
+      <template v-for="(item, index) in contextItems" :key="item.label"><ChevronRight class="h-4 w-4 text-muted-fg" /><span class="text-muted-fg">{{ item.label }}</span><span class="font-medium text-fg">{{ item.value }}</span><ChevronRight v-if="index < contextItems.length - 1" class="h-4 w-4 text-muted-fg" /></template>
     </div>
 
     <p v-if="errorMessage" class="mb-4 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">{{ errorMessage }}</p>
     <p v-if="successMessage" class="mb-4 rounded-lg border border-success/30 bg-success/10 px-3 py-2 text-sm text-success">{{ successMessage }}</p>
 
-    <section class="overflow-hidden rounded-lg border border-border bg-surface shadow-subtle">
+    <section class="surface-panel overflow-hidden">
       <div class="flex flex-col gap-3 border-b border-border p-3 sm:flex-row sm:items-center sm:justify-between">
         <div class="relative w-full sm:max-w-sm"><Search class="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-fg" /><input v-model="search" class="h-9 w-full rounded-lg border border-border bg-surface pl-9 pr-3 text-sm outline-none focus:border-accent focus:ring-4 focus:ring-accent/15" :placeholder="`Buscar ${activeConfig.label.toLowerCase()}`" /></div>
         <p class="text-sm text-muted-fg">{{ filteredRows.length }} {{ filteredRows.length === 1 ? "registro" : "registros" }}</p>
@@ -400,7 +403,7 @@ onMounted(async () => {
               <label class="text-sm font-medium text-fg">Distrito<select v-model="companyForm.districtId" class="field-control" required><option v-for="district in companyDistricts" :key="district.id" :value="String(district.id)">{{ district.name }}</option></select></label>
             </div>
             <div v-else-if="activeLevel === 'branches'" class="grid gap-4 sm:grid-cols-2">
-              <label class="text-sm font-medium text-fg">Empresa<select v-model="branchForm.companyId" class="field-control" required><option v-for="company in companies" :key="company.id" :value="String(company.id)">{{ company.commercialName }}</option></select></label><AppInput v-model="branchForm.name" label="Sucursal" required /><AppInput v-model="branchForm.phone" label="Telefono" /><AppInput v-model="branchForm.email" label="Correo" type="email" /><AppInput v-model="branchForm.address" class="sm:col-span-2" label="Direccion" required />
+              <div class="rounded-lg border border-border bg-surface-secondary px-3 py-2.5"><p class="text-xs font-medium text-muted-fg">Empresa</p><p class="mt-1 text-sm font-semibold text-fg">{{ activeCompany?.commercialName ?? "Empresa activa" }}</p></div><AppInput v-model="branchForm.name" label="Sucursal" required /><AppInput v-model="branchForm.phone" label="Telefono" /><AppInput v-model="branchForm.email" label="Correo" type="email" /><AppInput v-model="branchForm.address" class="sm:col-span-2" label="Direccion" required />
               <label class="text-sm font-medium text-fg">Departamento<select v-model="branchForm.departmentId" class="field-control" required @change="onDepartmentChange(branchForm)"><option v-for="department in catalogs.departments" :key="department.id" :value="String(department.id)">{{ department.name }}</option></select></label><label class="text-sm font-medium text-fg">Municipio<select v-model="branchForm.municipalityId" class="field-control" required @change="onMunicipalityChange(branchForm)"><option v-for="municipality in branchMunicipalities" :key="municipality.id" :value="String(municipality.id)">{{ municipality.name }}</option></select></label><label class="text-sm font-medium text-fg">Distrito<select v-model="branchForm.districtId" class="field-control" required><option v-for="district in branchDistricts" :key="district.id" :value="String(district.id)">{{ district.name }}</option></select></label>
             </div>
             <div v-else-if="activeLevel === 'warehouses'" class="grid gap-4 sm:grid-cols-2"><label class="text-sm font-medium text-fg">Sucursal<select v-model="warehouseForm.branchId" class="field-control" required><option v-for="branch in branches" :key="branch.id" :value="String(branch.id)">{{ branch.company?.commercialName }} / {{ branch.name }}</option></select></label><label class="text-sm font-medium text-fg">Categoria<select v-model="warehouseForm.categoryId" class="field-control" required><option v-for="category in categories" :key="category.id" :value="String(category.id)">{{ category.name }}</option></select></label><AppInput v-model="warehouseForm.name" label="Almacen" required /><AppInput v-model="warehouseForm.description" label="Descripcion" /></div>

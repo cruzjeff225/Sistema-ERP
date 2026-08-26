@@ -16,6 +16,7 @@ import AdminLayout from "../layouts/AdminLayout.vue";
 import AppButton from "../components/base/AppButton.vue";
 import { http } from "../services/http.service";
 import { usePermissions } from "../composables/usePermissions";
+import { activeCompanyId } from "../services/company-context";
 
 type Activity = {
   id: number;
@@ -43,6 +44,7 @@ const counts = ref({
 const recentActivity = ref<Activity[]>([]);
 
 const displayName = computed(() => currentUser.value?.employee?.fullName || currentUser.value?.username || "Administrador");
+const activeCompany = computed(() => currentUser.value?.companies?.find((company) => company.id === activeCompanyId.value) ?? null);
 
 const metrics = computed(() => [
   { label: "Usuarios activos", value: counts.value.users, detail: `${counts.value.roles} ${counts.value.roles === 1 ? "rol configurado" : "roles configurados"}`, icon: Users, to: "/users", tone: "bg-accent-soft text-accent" },
@@ -122,11 +124,11 @@ onMounted(loadDashboard);
 
 <template>
   <AdminLayout title="Dashboard">
-    <div class="mb-6 flex flex-wrap items-end justify-between gap-4">
+    <div class="mb-7 flex flex-wrap items-end justify-between gap-4">
       <div>
-        <p class="text-sm font-medium text-accent">Resumen operativo</p>
+        <p class="section-eyebrow">Vista operativa</p>
         <h1 class="page-title mt-1">Hola, {{ displayName }}</h1>
-        <p class="page-subtitle">Todo lo importante del ERP, en una vista rapida.</p>
+        <p class="page-subtitle">{{ activeCompany ? `Resumen de ${activeCompany.commercialName}.` : "Todo lo importante del ERP, en una vista rápida." }}</p>
       </div>
       <AppButton variant="outline" :disabled="loading" @click="loadDashboard">
         <RefreshCw class="h-4 w-4" :class="loading && 'animate-spin'" />
@@ -143,7 +145,7 @@ onMounted(loadDashboard);
         v-for="metric in metrics"
         :key="metric.label"
         :to="metric.to"
-        class="group rounded-lg border border-border/80 bg-surface p-4 shadow-subtle transition hover:border-accent/40"
+        class="group surface-panel p-4 transition hover:-translate-y-0.5 hover:border-accent/35 hover:shadow-md"
       >
         <div class="flex items-start justify-between gap-4">
           <div class="min-w-0">
@@ -158,11 +160,11 @@ onMounted(loadDashboard);
       </RouterLink>
     </div>
 
-    <section class="mt-5 overflow-hidden rounded-lg border border-border bg-surface">
+    <section class="surface-panel mt-5 overflow-hidden">
       <div class="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3 sm:px-5">
         <div>
-          <h2 class="font-semibold text-fg">Estructura organizacional</h2>
-          <p class="text-sm text-muted-fg">Relacion fisica de la operacion</p>
+          <h2 class="font-semibold text-fg">Estructura operativa</h2>
+          <p class="text-sm text-muted-fg">Empresa, sucursales y espacios disponibles</p>
         </div>
         <RouterLink to="/organization" class="inline-flex items-center gap-1 text-sm font-medium text-accent hover:underline">
           Gestionar <ArrowRight class="h-4 w-4" />
@@ -184,7 +186,7 @@ onMounted(loadDashboard);
     </section>
 
     <div class="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(280px,0.55fr)]">
-      <section class="overflow-hidden rounded-lg border border-border bg-surface">
+      <section class="surface-panel overflow-hidden">
         <div class="flex items-center justify-between border-b border-border px-4 py-3 sm:px-5">
           <div>
             <h2 class="font-semibold text-fg">Actividad reciente</h2>
@@ -206,7 +208,7 @@ onMounted(loadDashboard);
         </div>
       </section>
 
-      <section class="rounded-lg border border-border bg-surface p-4 sm:p-5">
+      <section class="surface-panel p-4 sm:p-5">
         <h2 class="font-semibold text-fg">Accesos directos</h2>
         <p class="mb-3 text-sm text-muted-fg">Tareas frecuentes</p>
         <div class="divide-y divide-border">

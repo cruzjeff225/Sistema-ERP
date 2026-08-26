@@ -1,7 +1,7 @@
 <script setup lang="ts">
 withDefaults(
     defineProps<{
-        variant?: 'success' | 'danger' | 'warning' | 'neutral';
+        variant?: 'success' | 'danger' | 'warning' | 'info' | 'neutral';
     }>(),
     { variant: 'neutral' },
 );
@@ -12,6 +12,7 @@ withDefaults(
         variant === 'success' && 'border-success/20 bg-success/10 text-success',
         variant === 'danger' && 'border-danger/20 bg-danger/10 text-danger',
         variant === 'warning' && 'border-warning/20 bg-warning/10 text-warning',
+        variant === 'info' && 'border-accent/20 bg-accent/10 text-accent',
         variant === 'neutral' && 'border-border bg-surface-secondary text-muted-fg',
     ]">
         <slot />

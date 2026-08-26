@@ -84,9 +84,43 @@ export class OrganizationService {
     };
   }
 
-  async companies() {
+  countries() {
+    return this.prisma.country.findMany({
+      where: { isActive: true },
+      select: { id: true, name: true, isoCode: true },
+      orderBy: { name: "asc" },
+    });
+  }
+
+  async resolveNationalAddress(
+    countryId: number,
+    departmentId?: number | null,
+    municipalityId?: number | null,
+    districtId?: number | null,
+  ) {
+    const country = await this.prisma.country.findFirst({
+      where: { id: countryId, isActive: true },
+      select: { id: true, isoCode: true },
+    });
+    if (!country) throw new BadRequestException("El pais indicado no existe o esta inactivo");
+
+    if (country.isoCode !== "SV") {
+      return { countryId: country.id, departmentId: null, municipalityId: null, districtId: null };
+    }
+    if (!departmentId || !municipalityId || !districtId) {
+      throw new BadRequestException("Para una direccion nacional debe seleccionar departamento, municipio y distrito");
+    }
+
+    await this.assertValidGeography(departmentId, municipalityId, districtId);
+    return { countryId: country.id, departmentId, municipalityId, districtId };
+  }
+
+  async companies(user?: { sub: number; roles: string[] }) {
     return this.prisma.company.findMany({
-      where: { deletedAt: null },
+      where: {
+        deletedAt: null,
+        ...(user && !user.roles.includes("superadmin") ? { userCompanies: { some: { userId: user.sub } } } : {}),
+      },
       include: companyInclude,
       orderBy: { createdAt: "desc" },
     });
@@ -110,6 +144,7 @@ export class OrganizationService {
         data: this.companyData(dto) as Prisma.CompanyUncheckedCreateInput,
         include: companyInclude,
       });
+      if (userId) await tx.userCompany.create({ data: { userId, companyId: company.id } });
       await this.auditService.record(tx, {
         controller: "companies",
         action: "CREATE",
@@ -174,23 +209,28 @@ export class OrganizationService {
     });
   }
 
-  async branch(id: number) {
+  async branch(id: number, companyId?: number) {
     const branch = await this.prisma.branch.findFirst({
-      where: { id, deletedAt: null },
+      where: { id, deletedAt: null, ...(companyId ? { companyId } : {}) },
       include: branchInclude,
     });
     if (!branch) throw new NotFoundException("Sucursal no encontrada");
     return branch;
   }
 
-  async createBranch(dto: CreateBranchDto, userId?: number) {
-    await this.assertCompanyActive(dto.companyId);
-    await this.assertValidGeography(dto.departmentId, dto.municipalityId, dto.districtId);
-    await this.assertBranchUnique(dto.companyId, dto.name);
+  async createBranch(dto: CreateBranchDto, userId?: number, scopedCompanyId?: number) {
+    if (scopedCompanyId && dto.companyId !== scopedCompanyId) {
+      throw new BadRequestException("La sucursal debe pertenecer a la empresa seleccionada");
+    }
+    const companyId = scopedCompanyId ?? dto.companyId;
+    const branchDto = { ...dto, companyId };
+    await this.assertCompanyActive(companyId);
+    await this.assertValidGeography(branchDto.departmentId, branchDto.municipalityId, branchDto.districtId);
+    await this.assertBranchUnique(companyId, branchDto.name);
 
     return this.prisma.$transaction(async (tx) => {
       const branch = await tx.branch.create({
-        data: this.branchData(dto) as Prisma.BranchUncheckedCreateInput,
+        data: this.branchData(branchDto) as Prisma.BranchUncheckedCreateInput,
         include: branchInclude,
       });
       await this.auditService.record(tx, {
@@ -204,9 +244,12 @@ export class OrganizationService {
     });
   }
 
-  async updateBranch(id: number, dto: UpdateBranchDto, userId?: number) {
-    const current = await this.branch(id);
-    const companyId = dto.companyId ?? current.companyId;
+  async updateBranch(id: number, dto: UpdateBranchDto, userId?: number, scopedCompanyId?: number) {
+    const current = await this.branch(id, scopedCompanyId);
+    if (dto.companyId && dto.companyId !== current.companyId) {
+      throw new BadRequestException("No se puede mover una sucursal entre empresas");
+    }
+    const companyId = current.companyId;
     const departmentId = dto.departmentId ?? current.departmentId;
     const municipalityId = dto.municipalityId ?? current.municipalityId;
     const districtId = dto.districtId ?? current.districtId;
@@ -220,7 +263,7 @@ export class OrganizationService {
     return this.prisma.$transaction(async (tx) => {
       const updated = await tx.branch.update({
         where: { id },
-        data: this.branchData(dto) as Prisma.BranchUncheckedUpdateInput,
+        data: this.branchData({ ...dto, companyId }) as Prisma.BranchUncheckedUpdateInput,
         include: branchInclude,
       });
       await this.auditService.record(tx, {
@@ -235,8 +278,8 @@ export class OrganizationService {
     });
   }
 
-  async updateBranchStatus(id: number, isActive: boolean, userId?: number) {
-    const current = await this.branch(id);
+  async updateBranchStatus(id: number, isActive: boolean, userId?: number, scopedCompanyId?: number) {
+    const current = await this.branch(id, scopedCompanyId);
     return this.prisma.$transaction(async (tx) => {
       const updated = await tx.branch.update({ where: { id }, data: { isActive }, include: branchInclude });
       await this.auditService.record(tx, {
@@ -326,25 +369,29 @@ export class OrganizationService {
     });
   }
 
-  async warehouses(branchId?: number) {
+  async warehouses(branchId?: number, companyId?: number) {
     return this.prisma.warehouse.findMany({
-      where: { deletedAt: null, ...(branchId ? { branchId } : {}) },
+      where: {
+        deletedAt: null,
+        ...(branchId ? { branchId } : {}),
+        ...(companyId ? { branch: { companyId, deletedAt: null } } : {}),
+      },
       include: warehouseInclude,
       orderBy: { createdAt: "desc" },
     });
   }
 
-  async warehouse(id: number) {
+  async warehouse(id: number, companyId?: number) {
     const warehouse = await this.prisma.warehouse.findFirst({
-      where: { id, deletedAt: null },
+      where: { id, deletedAt: null, ...(companyId ? { branch: { companyId, deletedAt: null } } : {}) },
       include: warehouseInclude,
     });
     if (!warehouse) throw new NotFoundException("Almacén no encontrado");
     return warehouse;
   }
 
-  async createWarehouse(dto: CreateWarehouseDto, userId?: number) {
-    await this.assertBranchActive(dto.branchId);
+  async createWarehouse(dto: CreateWarehouseDto, userId?: number, scopedCompanyId?: number) {
+    await this.assertBranchActive(dto.branchId, scopedCompanyId);
     await this.assertWarehouseCategoryActive(dto.categoryId);
     await this.assertWarehouseUnique(dto.branchId, dto.name);
     return this.prisma.$transaction(async (tx) => {
@@ -363,11 +410,11 @@ export class OrganizationService {
     });
   }
 
-  async updateWarehouse(id: number, dto: UpdateWarehouseDto, userId?: number) {
-    const current = await this.warehouse(id);
+  async updateWarehouse(id: number, dto: UpdateWarehouseDto, userId?: number, scopedCompanyId?: number) {
+    const current = await this.warehouse(id, scopedCompanyId);
     const branchId = dto.branchId ?? current.branchId;
     const categoryId = dto.categoryId ?? current.categoryId;
-    await this.assertBranchActive(branchId);
+    await this.assertBranchActive(branchId, scopedCompanyId);
     await this.assertWarehouseCategoryActive(categoryId);
     if (dto.name || dto.branchId) await this.assertWarehouseUnique(branchId, dto.name ?? current.name, id);
 
@@ -389,8 +436,8 @@ export class OrganizationService {
     });
   }
 
-  async updateWarehouseStatus(id: number, isActive: boolean, userId?: number) {
-    const current = await this.warehouse(id);
+  async updateWarehouseStatus(id: number, isActive: boolean, userId?: number, scopedCompanyId?: number) {
+    const current = await this.warehouse(id, scopedCompanyId);
     if (!isActive) {
       const stock = await this.prisma.inventoryStock.count({
         where: { quantity: { gt: 0 }, location: { warehouseId: id } },
@@ -411,25 +458,29 @@ export class OrganizationService {
     });
   }
 
-  async locations(warehouseId?: number) {
+  async locations(warehouseId?: number, companyId?: number) {
     return this.prisma.location.findMany({
-      where: { deletedAt: null, ...(warehouseId ? { warehouseId } : {}) },
+      where: {
+        deletedAt: null,
+        ...(warehouseId ? { warehouseId } : {}),
+        ...(companyId ? { warehouse: { branch: { companyId, deletedAt: null } } } : {}),
+      },
       include: locationInclude,
       orderBy: { createdAt: "desc" },
     });
   }
 
-  async location(id: number) {
+  async location(id: number, companyId?: number) {
     const location = await this.prisma.location.findFirst({
-      where: { id, deletedAt: null },
+      where: { id, deletedAt: null, ...(companyId ? { warehouse: { branch: { companyId, deletedAt: null } } } : {}) },
       include: locationInclude,
     });
     if (!location) throw new NotFoundException("Espacio no encontrado");
     return location;
   }
 
-  async createLocation(dto: CreateLocationDto, userId?: number) {
-    await this.assertWarehouseActive(dto.warehouseId);
+  async createLocation(dto: CreateLocationDto, userId?: number, scopedCompanyId?: number) {
+    await this.assertWarehouseActive(dto.warehouseId, scopedCompanyId);
     await this.assertLocationUnique(dto.warehouseId, dto.code, dto);
     return this.prisma.$transaction(async (tx) => {
       const location = await tx.location.create({
@@ -447,10 +498,10 @@ export class OrganizationService {
     });
   }
 
-  async updateLocation(id: number, dto: UpdateLocationDto, userId?: number) {
-    const current = await this.location(id);
+  async updateLocation(id: number, dto: UpdateLocationDto, userId?: number, scopedCompanyId?: number) {
+    const current = await this.location(id, scopedCompanyId);
     const warehouseId = dto.warehouseId ?? current.warehouseId;
-    await this.assertWarehouseActive(warehouseId);
+    await this.assertWarehouseActive(warehouseId, scopedCompanyId);
     await this.assertLocationUnique(
       warehouseId,
       dto.code ?? current.code,
@@ -481,8 +532,8 @@ export class OrganizationService {
     });
   }
 
-  async updateLocationStatus(id: number, isActive: boolean, userId?: number) {
-    const current = await this.location(id);
+  async updateLocationStatus(id: number, isActive: boolean, userId?: number, scopedCompanyId?: number) {
+    const current = await this.location(id, scopedCompanyId);
     if (!isActive) {
       const stock = await this.prisma.inventoryStock.count({ where: { locationId: id, quantity: { gt: 0 } } });
       if (stock > 0) throw new ConflictException("No se puede desactivar una ubicacion con existencias");
@@ -556,7 +607,7 @@ export class OrganizationService {
     };
   }
 
-  private async assertValidGeography(departmentId: number, municipalityId: number, districtId: number) {
+  async assertValidGeography(departmentId: number, municipalityId: number, districtId: number) {
     const district = await this.prisma.district.findFirst({
       where: {
         id: districtId,
@@ -594,9 +645,15 @@ export class OrganizationService {
     if (!company) throw new BadRequestException("La empresa no existe o está inactiva");
   }
 
-  private async assertBranchActive(branchId: number) {
+  private async assertBranchActive(branchId: number, companyId?: number) {
     const branch = await this.prisma.branch.findFirst({
-      where: { id: branchId, deletedAt: null, isActive: true, company: { isActive: true, deletedAt: null } },
+      where: {
+        id: branchId,
+        deletedAt: null,
+        isActive: true,
+        ...(companyId ? { companyId } : {}),
+        company: { isActive: true, deletedAt: null },
+      },
     });
     if (!branch) throw new BadRequestException("La sucursal no existe o está inactiva");
   }
@@ -617,13 +674,18 @@ export class OrganizationService {
     if (!category) throw new BadRequestException("La categoría no existe o está inactiva");
   }
 
-  private async assertWarehouseActive(id: number) {
+  private async assertWarehouseActive(id: number, companyId?: number) {
     const warehouse = await this.prisma.warehouse.findFirst({
       where: {
         id,
         deletedAt: null,
         isActive: true,
-        branch: { isActive: true, deletedAt: null, company: { isActive: true, deletedAt: null } },
+        branch: {
+          isActive: true,
+          deletedAt: null,
+          ...(companyId ? { companyId } : {}),
+          company: { isActive: true, deletedAt: null },
+        },
       },
     });
     if (!warehouse) throw new BadRequestException("El almacén no existe o está inactivo");

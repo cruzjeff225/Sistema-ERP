@@ -8,6 +8,7 @@ import { Reflector } from "@nestjs/core";
 import {
   PERMISSIONS_KEY,
   PERMISSIONS_MODE_KEY,
+  STATUS_PERMISSIONS_KEY,
 } from "../decorators/permissions.decorator";
 import { PermissionMode } from "../enums/permission-mode.enum";
 import { AuthenticatedUser } from "../../modules/auth/presentation/decorators/current-user.decorator";
@@ -26,8 +27,13 @@ export class PermissionsGuard implements CanActivate {
       [context.getHandler(), context.getClass()],
     );
 
+    const statusPermissions = this.reflector.getAllAndOverride<{
+      activate: string;
+      deactivate: string;
+    }>(STATUS_PERMISSIONS_KEY, [context.getHandler(), context.getClass()]);
+
     // Permite el acceso si la ruta no requiere permisos.
-    if (!requiredPermissions || requiredPermissions.length === 0) {
+    if ((!requiredPermissions || requiredPermissions.length === 0) && !statusPermissions) {
       return true;
     }
 
@@ -53,6 +59,20 @@ export class PermissionsGuard implements CanActivate {
 
     // Convierte los permisos del usuario en un Set para búsquedas rápidas.
     const userPermissions = new Set(user.permissions);
+
+    if (statusPermissions) {
+      const isDeactivation = request.body?.isActive === false || request.body?.isActive === "false";
+      const requestedPermission = isDeactivation ? statusPermissions.deactivate : statusPermissions.activate;
+      if (!userPermissions.has(requestedPermission)) {
+        throw new ForbiddenException(
+          "No tienes permisos suficientes para cambiar este estado",
+        );
+      }
+    }
+
+    if (!requiredPermissions || requiredPermissions.length === 0) {
+      return true;
+    }
 
     // Valida los permisos según el modo configurado.
     const hasAccess =

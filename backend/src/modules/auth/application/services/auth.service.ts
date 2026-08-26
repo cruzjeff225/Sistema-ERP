@@ -6,6 +6,7 @@ import * as crypto from "crypto";
 import { PrismaService } from "../../../../infrastructure/database/prisma/prisma.service";
 import { parseDurationToMs } from "../../../../common/utils/parse-duration.util";
 import { AuditService } from "../../../audit/application/services/audit.service";
+import { CompanyScopeService } from "../../../../common/services/company-scope.service";
 
 export interface TokenPair {
   accessToken: string;
@@ -20,6 +21,7 @@ export interface SafeUser {
   roles: string[];
   permissions: string[];
   employee: { id: number; code: string; fullName: string };
+  companies: Array<{ id: number; name: string; commercialName: string }>;
 }
 
 @Injectable()
@@ -29,6 +31,7 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly auditService: AuditService,
+    private readonly companyScope: CompanyScopeService,
   ) {}
 
   private hashToken(token: string): string {
@@ -68,6 +71,8 @@ export class AuthService {
       }
     }
 
+    const companies = await this.companyScope.accessibleCompanies({ sub: user.id, roles });
+
     const safeUser: SafeUser = {
       id: user.id,
       username: user.username,
@@ -75,6 +80,7 @@ export class AuthService {
       roles,
       permissions: Array.from(permissionsSet),
       employee: user.employee,
+      companies,
     };
 
     return safeUser;

@@ -7,6 +7,8 @@ export const PERMISSIONS_KEY = 'permissions';
 // Clave para almacenar el modo de validación de permisos.
 export const PERMISSIONS_MODE_KEY = 'permissionsMode';
 
+export const STATUS_PERMISSIONS_KEY = 'statusPermissions';
+
 // Requiere que el usuario posea todos los permisos indicados.
 export const RequirePermissions = (...permissions: string[]) => {
   return (target: any, key?: any, descriptor?: any) => {
@@ -33,3 +35,7 @@ export const RequireAllPermissions = (...permissions: string[]) => {
     return descriptor;
   };
 };
+
+// Exige permisos distintos para activar y desactivar según el estado solicitado.
+export const RequireStatusPermissions = (activate: string, deactivate: string) =>
+  SetMetadata(STATUS_PERMISSIONS_KEY, { activate, deactivate });

@@ -4,6 +4,7 @@ import {
   ExceptionFilter,
   HttpException,
   HttpStatus,
+  Logger,
 } from "@nestjs/common";
 import { Request, Response } from "express";
 import {
@@ -13,6 +14,8 @@ import {
 
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
+  private readonly logger = new Logger(HttpExceptionFilter.name);
+
   catch(exception: unknown, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
@@ -33,7 +36,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
         const rawMessage = responseObj.message;
 
         if (Array.isArray(rawMessage)) {
-          message = "Validation failed";
+          message = "Los datos enviados no son válidos";
           errors = rawMessage.map((msg) => {
             const parts = String(msg).split(" ");
             return {
@@ -45,8 +48,9 @@ export class HttpExceptionFilter implements ExceptionFilter {
           message = rawMessage;
         }
       }
-    } else if (exception instanceof Error) {
-      message = exception.message;
+    } else {
+      const details = exception instanceof Error ? exception.stack ?? exception.message : String(exception);
+      this.logger.error(`Error no controlado en ${request.method} ${request.url}`, details);
     }
 
     const body: ApiErrorResponse = {

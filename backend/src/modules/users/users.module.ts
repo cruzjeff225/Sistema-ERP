@@ -1,11 +1,12 @@
 import { Module } from "@nestjs/common";
 import { AuditModule } from "../audit/audit.module";
+import { OrganizationModule } from "../organization/organization.module";
 import { UsersService } from "./application/services/users.service";
 import { UsersController } from "./presentation/controllers/users.controller";
 
 // Módulo encargado de la gestión de usuarios
 @Module({
-  imports: [AuditModule],
+  imports: [AuditModule, OrganizationModule],
   controllers: [UsersController],
   providers: [UsersService],
   exports: [UsersService],

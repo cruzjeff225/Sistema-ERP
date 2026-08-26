@@ -64,6 +64,17 @@ export class AuditService {
     return log;
   }
 
+  async users() {
+    const rows = await this.prisma.log.findMany({
+      where: { userId: { not: null } },
+      distinct: ["userId"],
+      orderBy: { createdAt: "desc" },
+      select: { user: { select: { id: true, username: true, email: true } } },
+    });
+
+    return rows.flatMap((row) => (row.user ? [row.user] : []));
+  }
+
   async exportCsv(query: QueryLogsDto) {
     const items = await this.prisma.log.findMany({
       where: this.where(query),

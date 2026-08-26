@@ -30,7 +30,7 @@ watch(
         <div class="flex min-w-0 flex-1 flex-col overflow-hidden">
             <AppTopbar :title="title" @toggle-sidebar="sidebarOpen = !sidebarOpen" />
             <main class="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-                <div class="mx-auto w-full max-w-[1440px] px-4 py-5 sm:px-6 lg:px-8 lg:py-7">
+                <div class="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 lg:px-8 lg:py-7">
                     <slot />
                 </div>
             </main>

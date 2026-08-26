@@ -9,6 +9,8 @@ import { Prisma } from "@prisma/client";
 import * as argon2 from "argon2";
 import { PrismaService } from "../../../../infrastructure/database/prisma/prisma.service";
 import { AuditService } from "../../../audit/application/services/audit.service";
+import { CompanyScopeService } from "../../../../common/services/company-scope.service";
+import { OrganizationService } from "../../../organization/application/services/organization.service";
 import { CreateUserDto } from "../dto/create-user.dto";
 import { QueryUsersDto } from "../dto/query-users.dto";
 import { UpdateUserDto } from "../dto/update-user.dto";
@@ -20,6 +22,8 @@ export class UsersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
+    private readonly organizationService: OrganizationService,
+    private readonly companyScope: CompanyScopeService,
   ) {}
 
   private readonly safeSelect = {
@@ -31,8 +35,25 @@ export class UsersService {
     lockedAt: true,
     createdAt: true,
     updatedAt: true,
-    employee: { select: { id: true, code: true, fullName: true, email: true, isActive: true } },
+    employee: {
+      select: {
+        id: true,
+        code: true,
+        fullName: true,
+        email: true,
+        isActive: true,
+        countryId: true,
+        departmentId: true,
+        municipalityId: true,
+        districtId: true,
+        country: { select: { id: true, name: true, isoCode: true } },
+        department: { select: { id: true, name: true } },
+        municipality: { select: { id: true, name: true } },
+        district: { select: { id: true, name: true } },
+      },
+    },
     userRoles: { select: { role: { select: { id: true, name: true } } } },
+    userCompanies: { select: { company: { select: { id: true, name: true, commercialName: true } } } },
   } satisfies Prisma.UserSelect;
 
   private formatUser(user: any) {
@@ -48,6 +69,7 @@ export class UsersService {
       updatedAt: user.updatedAt,
       employee: user.employee,
       roles: user.userRoles.map((entry: any) => entry.role),
+      companies: user.userCompanies.map((entry: any) => entry.company),
     };
   }
 
@@ -97,11 +119,18 @@ export class UsersService {
     await this.assertUserIdentityAvailable(dto.email, dto.username);
     await this.assertEmployeeIdentityAvailable(dto.employeeCode, dto.email);
     await this.assertRolesExist(dto.roleIds);
+    const companyIds = await this.companyScope.assertCompanyIds(dto.companyIds);
+    const nationalAddress = await this.organizationService.resolveNationalAddress(
+      dto.countryId,
+      dto.departmentId,
+      dto.municipalityId,
+      dto.districtId,
+    );
     const passwordHash = await argon2.hash(dto.password);
 
     return this.prisma.$transaction(async (tx) => {
       const employee = await tx.employee.create({
-        data: { code: dto.employeeCode, fullName: dto.employeeName, email: dto.email },
+        data: { code: dto.employeeCode, fullName: dto.employeeName, email: dto.email, ...nationalAddress },
       });
       const user = await tx.user.create({
         data: {
@@ -110,6 +139,7 @@ export class UsersService {
           passwordHash,
           employeeId: employee.id,
           userRoles: { create: dto.roleIds.map((roleId) => ({ roleId })) },
+          userCompanies: { create: companyIds.map((companyId) => ({ companyId })) },
         },
         select: this.safeSelect,
       });
@@ -131,15 +161,26 @@ export class UsersService {
     if (dto.employeeCode || dto.email) {
       await this.assertEmployeeIdentityAvailable(dto.employeeCode, dto.email, current.employee.id);
     }
+    const nationalAddress = await this.organizationService.resolveNationalAddress(
+      dto.countryId ?? current.employee.countryId,
+      dto.departmentId ?? current.employee.departmentId,
+      dto.municipalityId ?? current.employee.municipalityId,
+      dto.districtId ?? current.employee.districtId,
+    );
+    const companyIds = dto.companyIds === undefined ? undefined : await this.companyScope.assertCompanyIds(dto.companyIds);
 
     return this.prisma.$transaction(async (tx) => {
       await tx.employee.update({
         where: { id: current.employee.id },
-        data: { code: dto.employeeCode, fullName: dto.employeeName, email: dto.email },
+        data: { code: dto.employeeCode, fullName: dto.employeeName, email: dto.email, ...nationalAddress },
       });
       const user = await tx.user.update({
         where: { id },
-        data: { username: dto.username, email: dto.email },
+        data: {
+          username: dto.username,
+          email: dto.email,
+          ...(companyIds ? { userCompanies: { deleteMany: {}, create: companyIds.map((companyId) => ({ companyId })) } } : {}),
+        },
         select: this.safeSelect,
       });
       const formatted = this.formatUser(user);

@@ -2,6 +2,7 @@ import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import * as argon2 from "argon2";
+import { EL_SALVADOR_GEOGRAPHY } from "./el-salvador-geography";
 
 const connectionString = process.env.DATABASE_URL;
 
@@ -25,14 +26,19 @@ const MODULES = [
   "logs",
   "suppliers",
   "supplier_contacts",
+  "customers",
+  "categories",
+  "subcategories",
+  "units",
+  "products",
+  "product_images",
+  "product_suppliers",
   "dashboard",
 ] as const;
 
 type ModuleName = (typeof MODULES)[number];
 
 const REMOVED_MODULES = [
-  "customers",
-  "products",
   "inventory",
   "purchases",
   "quotations",
@@ -43,12 +49,6 @@ const REMOVED_MODULES = [
 ];
 
 const REMOVED_PERMISSION_ACTIONS = [
-  "customers.view",
-  "customers.create",
-  "customers.update",
-  "products.view",
-  "products.create",
-  "products.update",
   "inventory.view",
   "inventory.update",
   "purchases.view",
@@ -130,6 +130,42 @@ const PERMISSIONS: Array<{
   ["supplier_contacts.update", "Actualizar contactos de proveedores", "Permite modificar contactos de proveedores", "supplier_contacts"],
   ["supplier_contacts.activate", "Activar contactos de proveedores", "Permite activar contactos de proveedores", "supplier_contacts"],
   ["supplier_contacts.deactivate", "Desactivar contactos de proveedores", "Permite desactivar contactos de proveedores", "supplier_contacts"],
+  ["customers.view", "Ver clientes", "Permite consultar clientes", "customers"],
+  ["customers.create", "Crear clientes", "Permite registrar clientes", "customers"],
+  ["customers.update", "Actualizar clientes", "Permite modificar clientes", "customers"],
+  ["customers.activate", "Activar clientes", "Permite activar clientes", "customers"],
+  ["customers.deactivate", "Desactivar clientes", "Permite desactivar clientes", "customers"],
+  ["categories.view", "Ver categorias de productos", "Permite consultar categorias", "categories"],
+  ["categories.create", "Crear categorias de productos", "Permite registrar categorias", "categories"],
+  ["categories.update", "Actualizar categorias de productos", "Permite modificar categorias", "categories"],
+  ["categories.activate", "Activar categorias de productos", "Permite activar categorias", "categories"],
+  ["categories.deactivate", "Desactivar categorias de productos", "Permite desactivar categorias", "categories"],
+  ["subcategories.view", "Ver subcategorias de productos", "Permite consultar subcategorias", "subcategories"],
+  ["subcategories.create", "Crear subcategorias de productos", "Permite registrar subcategorias", "subcategories"],
+  ["subcategories.update", "Actualizar subcategorias de productos", "Permite modificar subcategorias", "subcategories"],
+  ["subcategories.activate", "Activar subcategorias de productos", "Permite activar subcategorias", "subcategories"],
+  ["subcategories.deactivate", "Desactivar subcategorias de productos", "Permite desactivar subcategorias", "subcategories"],
+  ["units.view", "Ver unidades", "Permite consultar unidades de compra y venta", "units"],
+  ["units.create", "Crear unidades", "Permite registrar unidades", "units"],
+  ["units.update", "Actualizar unidades", "Permite modificar unidades", "units"],
+  ["units.activate", "Activar unidades", "Permite activar unidades", "units"],
+  ["units.deactivate", "Desactivar unidades", "Permite desactivar unidades", "units"],
+  ["products.view", "Ver productos", "Permite consultar productos", "products"],
+  ["products.create", "Crear productos", "Permite registrar productos", "products"],
+  ["products.update", "Actualizar productos", "Permite modificar productos", "products"],
+  ["products.activate", "Activar productos", "Permite activar productos", "products"],
+  ["products.deactivate", "Desactivar productos", "Permite desactivar productos", "products"],
+  ["product_images.view", "Ver imagenes de productos", "Permite consultar imagenes", "product_images"],
+  ["product_images.create", "Crear imagenes de productos", "Permite asociar imagenes", "product_images"],
+  ["product_images.update", "Actualizar imagenes de productos", "Permite modificar imagenes", "product_images"],
+  ["product_images.delete", "Eliminar imagenes de productos", "Permite eliminar imagenes", "product_images"],
+  ["product_images.activate", "Activar imagenes de productos", "Permite activar imagenes", "product_images"],
+  ["product_images.deactivate", "Desactivar imagenes de productos", "Permite desactivar imagenes", "product_images"],
+  ["product_suppliers.view", "Ver abastecimiento de productos", "Permite consultar proveedores asociados", "product_suppliers"],
+  ["product_suppliers.create", "Asociar proveedor a producto", "Permite asociar productos y proveedores", "product_suppliers"],
+  ["product_suppliers.update", "Actualizar abastecimiento de productos", "Permite modificar asociaciones", "product_suppliers"],
+  ["product_suppliers.activate", "Activar abastecimiento de productos", "Permite activar asociaciones", "product_suppliers"],
+  ["product_suppliers.deactivate", "Desactivar abastecimiento de productos", "Permite desactivar asociaciones", "product_suppliers"],
   ["dashboard.view", "Ver dashboard", "Permite consultar indicadores del dashboard", "dashboard"],
 ].map(([action, name, description, module]) => ({
   action,
@@ -218,48 +254,24 @@ async function seedRoles(createdPermissions: Array<{ id: number }>) {
 }
 
 async function seedOrganizationCatalogs() {
-  const sanSalvador = await prisma.department.upsert({
-    where: { id: 1 },
-    update: { name: "San Salvador", isActive: true },
-    create: { id: 1, name: "San Salvador" },
-  });
-  const sanMiguel = await prisma.department.upsert({
-    where: { id: 2 },
-    update: { name: "San Miguel", isActive: true },
-    create: { id: 2, name: "San Miguel" },
-  });
-  const laUnion = await prisma.department.upsert({
-    where: { id: 3 },
-    update: { name: "La Union", isActive: true },
-    create: { id: 3, name: "La Union" },
-  });
-
-  const sanSalvadorMunicipality = await prisma.municipality.upsert({
-    where: { id: 1 },
-    update: { name: "San Salvador Centro", departmentId: sanSalvador.id, isActive: true },
-    create: { id: 1, name: "San Salvador Centro", departmentId: sanSalvador.id },
-  });
-  const sanMiguelMunicipality = await prisma.municipality.upsert({
-    where: { id: 2 },
-    update: { name: "San Miguel Centro", departmentId: sanMiguel.id, isActive: true },
-    create: { id: 2, name: "San Miguel Centro", departmentId: sanMiguel.id },
-  });
-  const laUnionMunicipality = await prisma.municipality.upsert({
-    where: { id: 3 },
-    update: { name: "La Union Norte", departmentId: laUnion.id, isActive: true },
-    create: { id: 3, name: "La Union Norte", departmentId: laUnion.id },
-  });
-
-  for (const district of [
-    [1, "San Salvador", sanSalvadorMunicipality.id],
-    [2, "San Miguel", sanMiguelMunicipality.id],
-    [3, "La Union", laUnionMunicipality.id],
-  ] as const) {
-    await prisma.district.upsert({
-      where: { id: district[0] },
-      update: { name: district[1], municipalityId: district[2], isActive: true },
-      create: { id: district[0], name: district[1], municipalityId: district[2] },
+  for (const entry of EL_SALVADOR_GEOGRAPHY) {
+    const department = await prisma.department.upsert({
+      where: { name: entry.department },
+      update: { isActive: true },
+      create: { name: entry.department },
     });
+    const municipality = await prisma.municipality.upsert({
+      where: { departmentId_name: { departmentId: department.id, name: entry.municipality } },
+      update: { isActive: true },
+      create: { departmentId: department.id, name: entry.municipality },
+    });
+    for (const name of entry.districts) {
+      await prisma.district.upsert({
+        where: { municipalityId_name: { municipalityId: municipality.id, name } },
+        update: { isActive: true },
+        create: { municipalityId: municipality.id, name },
+      });
+    }
   }
 
   for (const category of [
@@ -273,6 +285,33 @@ async function seedOrganizationCatalogs() {
       where: { name: category[0] },
       update: { description: category[1], isActive: true, deletedAt: null },
       create: { name: category[0], description: category[1] },
+    });
+  }
+}
+
+async function seedProductCatalogs() {
+  const category = await prisma.productCategory.upsert({
+    where: { name: "Sin clasificar" },
+    update: { description: "Categoría inicial para productos existentes", isActive: true, deletedAt: null },
+    create: { name: "Sin clasificar", description: "Categoría inicial para productos existentes" },
+  });
+
+  await prisma.productSubcategory.upsert({
+    where: { categoryId_name: { categoryId: category.id, name: "General" } },
+    update: { description: "Subcategoría inicial para productos existentes", isActive: true, deletedAt: null },
+    create: { categoryId: category.id, name: "General", description: "Subcategoría inicial para productos existentes" },
+  });
+
+  for (const unit of [
+    ["Unidad", "purchase"],
+    ["Unidad", "sale"],
+    ["Caja", "purchase"],
+    ["Paquete", "sale"],
+  ] as const) {
+    await prisma.productUnit.upsert({
+      where: { name_type: { name: unit[0], type: unit[1] } },
+      update: { isActive: true, deletedAt: null },
+      create: { name: unit[0], type: unit[1] },
     });
   }
 }
@@ -340,6 +379,14 @@ async function seedAdminUser(superadminRole: { id: number }) {
     create: { userId: adminUser.id, roleId: superadminRole.id },
   });
 
+  const companies = await prisma.company.findMany({ where: { deletedAt: null, isActive: true }, select: { id: true } });
+  if (companies.length) {
+    await prisma.userCompany.createMany({
+      data: companies.map((company) => ({ userId: adminUser.id, companyId: company.id })),
+      skipDuplicates: true,
+    });
+  }
+
   return adminUser;
 }
 
@@ -349,6 +396,7 @@ async function main(): Promise<void> {
   const createdPermissions = await seedModulesAndPermissions();
   const superadminRole = await seedRoles(createdPermissions);
   await seedOrganizationCatalogs();
+  await seedProductCatalogs();
   await seedCountries();
   const adminUser = await seedAdminUser(superadminRole);
 

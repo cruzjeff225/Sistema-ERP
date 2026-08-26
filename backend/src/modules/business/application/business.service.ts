@@ -79,25 +79,27 @@ export class BusinessService {
   }
 
   async createCustomer(dto: any, userId?: number) {
-    await this.assertUniqueDocument("customer", dto.document);
-    const data = await this.prisma.customer.create({ data: this.basicPartyData(dto) });
+    const companyId = await this.legacyCompanyId();
+    await this.assertUniqueDocument("customer", dto.document, companyId);
+    const data = await this.prisma.customer.create({ data: { ...this.basicPartyData(dto), companyId } });
     await this.audit("customers", "CREATE", data.id, null, data, userId);
     return data;
   }
 
   async updateCustomer(id: number, dto: any, userId?: number) {
     const current = await this.assertCustomer(id);
-    if (dto.document && dto.document !== current.document) await this.assertUniqueDocument("customer", dto.document);
+    if (dto.document && dto.document !== current.document) await this.assertUniqueDocument("customer", dto.document, current.companyId);
     const data = await this.prisma.customer.update({ where: { id }, data: this.basicPartyData(dto) });
     await this.audit("customers", "UPDATE", id, current, data, userId);
     return data;
   }
 
   async createSupplier(dto: any, userId?: number) {
+    const companyId = await this.legacyCompanyId();
     const code = dto.code ?? dto.document;
-    await this.assertSupplierCode(code);
+    await this.assertSupplierCode(code, companyId);
     const data = await this.prisma.supplier.create({
-      data: { code, name: dto.name, countryId: Number(dto.countryId ?? 1), phone: dto.phone, email: dto.email, address: dto.address, website: dto.website },
+      data: { companyId, code, name: dto.name, countryId: Number(dto.countryId ?? 1), phone: dto.phone, email: dto.email, address: dto.address, website: dto.website },
     });
     await this.audit("suppliers", "CREATE", data.id, null, data, userId);
     return data;
@@ -106,7 +108,7 @@ export class BusinessService {
   async updateSupplier(id: number, dto: any, userId?: number) {
     const current = await this.assertSupplier(id);
     const code = dto.code ?? dto.document;
-    if (code && code !== current.code) await this.assertSupplierCode(code);
+    if (code && code !== current.code) await this.assertSupplierCode(code, current.companyId);
     const data = await this.prisma.supplier.update({
       where: { id },
       data: { code, name: dto.name, countryId: dto.countryId ? Number(dto.countryId) : undefined, phone: dto.phone, email: dto.email, address: dto.address, website: dto.website },
@@ -116,15 +118,39 @@ export class BusinessService {
   }
 
   async createProduct(dto: any, userId?: number) {
-    await this.assertProductSku(dto.sku);
-    const data = await this.prisma.product.create({ data: this.productData(dto) });
+    const companyId = await this.legacyCompanyId();
+    await this.assertProductSku(dto.sku, companyId);
+    const [category, subcategory, purchaseUnit, saleUnit] = await Promise.all([
+      this.prisma.productCategory.findFirst({ where: { deletedAt: null, isActive: true }, orderBy: { id: "asc" } }),
+      this.prisma.productSubcategory.findFirst({ where: { deletedAt: null, isActive: true }, orderBy: { id: "asc" } }),
+      this.prisma.productUnit.findFirst({ where: { deletedAt: null, isActive: true, type: "purchase" }, orderBy: { id: "asc" } }),
+      this.prisma.productUnit.findFirst({ where: { deletedAt: null, isActive: true, type: "sale" }, orderBy: { id: "asc" } }),
+    ]);
+    if (!category || !subcategory || !purchaseUnit || !saleUnit) {
+      throw new BadRequestException("Debe configurar categorías y unidades antes de registrar productos");
+    }
+    const data = await this.prisma.product.create({
+      data: {
+        companyId,
+        categoryId: Number(dto.categoryId ?? category.id),
+        subcategoryId: Number(dto.subcategoryId ?? subcategory.id),
+        purchaseUnitId: Number(dto.purchaseUnitId ?? purchaseUnit.id),
+        saleUnitId: Number(dto.saleUnitId ?? saleUnit.id),
+        sku: dto.sku,
+        internalCode: dto.internalCode ?? dto.sku,
+        name: dto.name,
+        description: dto.description,
+        unitCost: Number(dto.unitCost ?? 0),
+        salePrice: Number(dto.salePrice ?? 0),
+      },
+    });
     await this.audit("products", "CREATE", data.id, null, data, userId);
     return data;
   }
 
   async updateProduct(id: number, dto: any, userId?: number) {
     const current = await this.assertProduct(id);
-    if (dto.sku && dto.sku !== current.sku) await this.assertProductSku(dto.sku);
+    if (dto.sku && dto.sku !== current.sku) await this.assertProductSku(dto.sku, current.companyId);
     const data = await this.prisma.product.update({ where: { id }, data: this.productData(dto) });
     await this.audit("products", "UPDATE", id, current, data, userId);
     return data;
@@ -321,24 +347,31 @@ export class BusinessService {
     return { name: dto.name, document: dto.document || null, phone: dto.phone, email: dto.email, address: dto.address };
   }
 
-  private productData(dto: any) {
-    return { sku: dto.sku, name: dto.name, description: dto.description, unitCost: Number(dto.unitCost ?? 0), salePrice: Number(dto.salePrice ?? 0) };
+  private productData(dto: any): Prisma.ProductUncheckedUpdateInput {
+    return {
+      sku: dto.sku,
+      internalCode: dto.internalCode,
+      name: dto.name,
+      description: dto.description,
+      unitCost: dto.unitCost === undefined ? undefined : Number(dto.unitCost),
+      salePrice: dto.salePrice === undefined ? undefined : Number(dto.salePrice),
+    };
   }
 
-  private async assertUniqueDocument(type: "customer", document?: string) {
+  private async assertUniqueDocument(type: "customer", document: string | undefined, companyId: number) {
     if (!document) return;
-    const existing = await this.prisma.customer.findUnique({ where: { document } });
+    const existing = await this.prisma.customer.findFirst({ where: { document, companyId } });
     if (existing) throw new ConflictException("El documento ya está registrado");
   }
 
-  private async assertSupplierCode(code?: string) {
+  private async assertSupplierCode(code: string | undefined, companyId: number) {
     if (!code) throw new BadRequestException("El codigo del proveedor es obligatorio");
-    const existing = await this.prisma.supplier.findUnique({ where: { code } });
+    const existing = await this.prisma.supplier.findFirst({ where: { code, companyId } });
     if (existing) throw new ConflictException("El codigo del proveedor ya esta registrado");
   }
 
-  private async assertProductSku(sku: string) {
-    const existing = await this.prisma.product.findUnique({ where: { sku } });
+  private async assertProductSku(sku: string, companyId: number) {
+    const existing = await this.prisma.product.findFirst({ where: { sku, companyId } });
     if (existing) throw new ConflictException("El SKU ya está registrado");
   }
 
@@ -358,6 +391,15 @@ export class BusinessService {
     const row = await this.prisma.product.findFirst({ where: { id, deletedAt: null } });
     if (!row) throw new NotFoundException("Producto no encontrado");
     return row;
+  }
+
+  private async legacyCompanyId() {
+    const company = await this.prisma.company.findFirst({
+      where: { deletedAt: null, isActive: true },
+      orderBy: { id: "asc" },
+    });
+    if (!company) throw new BadRequestException("Debe registrar una empresa activa antes de continuar");
+    return company.id;
   }
 
   private normalizeItems(items: any[], priceKey: "unitCost" | "unitPrice", requireLocation: boolean): DocumentItem[] {

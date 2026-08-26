@@ -4,6 +4,7 @@ import {
   ClipboardList,
   KeyRound,
   LayoutDashboard,
+  Package,
   Truck,
   ShieldCheck,
   Users,
@@ -65,6 +66,18 @@ export const navigationGroups: NavigationGroup[] = [
         route: "/suppliers",
         icon: Truck,
         permission: "suppliers.view",
+      },
+      {
+        label: "Productos",
+        route: "/products",
+        icon: Package,
+        permission: "products.view",
+      },
+      {
+        label: "Clientes",
+        route: "/customers",
+        icon: Users,
+        permission: "customers.view",
       },
       {
         label: "Bitacora",

@@ -17,7 +17,7 @@ import { RolesService } from "../application/services/roles.service";
 import { CreateRoleDto } from "../application/dto/create-role.dto";
 import { UpdateRoleDto } from "../application/dto/update-role.dto";
 import { AssignPermissionsDto } from "../application/dto/assign-permissions.dto";
-import { UpdateStatusDto } from "../application/dto/update-status.dto";
+import { UpdateRoleStatusDto } from "../application/dto/update-status.dto";
 import { DuplicateRoleDto } from "../application/dto/duplicate-role.dto";
 import { AuthenticatedUser, CurrentUser } from "../../auth/presentation/decorators/current-user.decorator";
 
@@ -131,7 +131,7 @@ export class RolesController {
   @ApiOperation({ summary: "Activar o desactivar rol" })
   async updateStatus(
     @Param("id", ParseIntPipe) id: number,
-    @Body() dto: UpdateStatusDto,
+    @Body() dto: UpdateRoleStatusDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
     const role = await this.rolesService.updateStatus(id, dto.isActive, user.sub);

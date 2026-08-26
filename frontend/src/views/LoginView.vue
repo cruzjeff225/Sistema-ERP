@@ -9,7 +9,7 @@ import AppButton from "../components/base/AppButton.vue";
 const router = useRouter();
 const authStore = useAuthStore();
 const email = ref("admin@erp.local");
-const password = ref("Admin1234");
+const password = ref("");
 const showPassword = ref(false);
 const errorMessage = ref("");
 const isSubmitting = ref(false);
