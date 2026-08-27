@@ -15,10 +15,10 @@ export class CreateProductDto {
   @MaxLength(80)
   sku: string;
 
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
   @MaxLength(80)
-  internalCode: string;
+  internalCode?: string;
 
   @IsString()
   @IsNotEmpty()

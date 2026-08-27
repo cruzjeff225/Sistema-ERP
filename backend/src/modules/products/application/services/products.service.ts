@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { randomUUID } from "crypto";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../../../infrastructure/database/prisma/prisma.service";
 import { AuditService } from "../../../audit/application/services/audit.service";
@@ -251,11 +252,15 @@ export class ProductsService {
   }
 
   async createProduct(dto: CreateProductDto, userId: number, companyId: number) {
-    await this.assertUniqueProductCodes(dto.sku, dto.internalCode, companyId);
+    await this.assertUniqueSku(dto.sku, companyId);
     await this.assertProductRelations(dto.categoryId, dto.subcategoryId, dto.purchaseUnitId, dto.saleUnitId);
     return this.prisma.$transaction(async (tx) => {
-      const product = await tx.product.create({
-        data: this.productCreateData(dto, companyId),
+      const created = await tx.product.create({
+        data: this.productCreateData(dto, companyId, `PENDING-${randomUUID()}`),
+      });
+      const product = await tx.product.update({
+        where: { id: created.id },
+        data: { internalCode: await this.nextInternalCode(tx, companyId, created.id) },
         include: productInclude,
       });
       await this.record(tx, "products", "CREATE", product.id, undefined, product, userId);
@@ -266,9 +271,6 @@ export class ProductsService {
   async updateProduct(id: number, dto: UpdateProductDto, userId: number, companyId: number) {
     const current = await this.product(id, companyId);
     if (dto.sku && dto.sku.trim().toLowerCase() !== current.sku.toLowerCase()) await this.assertUniqueSku(dto.sku, companyId, id);
-    if (dto.internalCode && dto.internalCode.trim().toLowerCase() !== current.internalCode.toLowerCase()) {
-      await this.assertUniqueInternalCode(dto.internalCode, companyId, id);
-    }
     await this.assertProductRelations(
       dto.categoryId ?? current.categoryId,
       dto.subcategoryId ?? current.subcategoryId,
@@ -416,13 +418,13 @@ export class ProductsService {
     });
   }
 
-  private productCreateData(dto: CreateProductDto, companyId: number): Prisma.ProductUncheckedCreateInput {
+  private productCreateData(dto: CreateProductDto, companyId: number, internalCode: string): Prisma.ProductUncheckedCreateInput {
     return {
       companyId,
       categoryId: dto.categoryId,
       subcategoryId: dto.subcategoryId,
       sku: dto.sku.trim(),
-      internalCode: dto.internalCode.trim(),
+      internalCode,
       name: dto.name.trim(),
       originalCode: this.optionalText(dto.originalCode),
       size: this.optionalText(dto.size),
@@ -441,7 +443,6 @@ export class ProductsService {
       ...(dto.categoryId !== undefined ? { categoryId: dto.categoryId } : {}),
       ...(dto.subcategoryId !== undefined ? { subcategoryId: dto.subcategoryId } : {}),
       ...(dto.sku !== undefined ? { sku: dto.sku.trim() } : {}),
-      ...(dto.internalCode !== undefined ? { internalCode: dto.internalCode.trim() } : {}),
       ...(dto.name !== undefined ? { name: dto.name.trim() } : {}),
       ...(dto.originalCode !== undefined ? { originalCode: this.optionalText(dto.originalCode) } : {}),
       ...(dto.size !== undefined ? { size: this.optionalText(dto.size) } : {}),
@@ -548,10 +549,6 @@ export class ProductsService {
     if (unit) throw new ConflictException("Ya existe una unidad con este nombre para el tipo seleccionado");
   }
 
-  private async assertUniqueProductCodes(sku: string, internalCode: string, companyId: number) {
-    await Promise.all([this.assertUniqueSku(sku, companyId), this.assertUniqueInternalCode(internalCode, companyId)]);
-  }
-
   private async assertUniqueSku(sku: string, companyId: number, ignoreId?: number) {
     const product = await this.prisma.product.findFirst({
       where: { companyId, sku: { equals: sku.trim(), mode: "insensitive" }, deletedAt: null, ...(ignoreId ? { id: { not: ignoreId } } : {}) },
@@ -559,16 +556,15 @@ export class ProductsService {
     if (product) throw new ConflictException("El SKU ya está registrado");
   }
 
-  private async assertUniqueInternalCode(internalCode: string, companyId: number, ignoreId?: number) {
-    const product = await this.prisma.product.findFirst({
-      where: {
-          companyId,
-          internalCode: { equals: internalCode.trim(), mode: "insensitive" },
-        deletedAt: null,
-        ...(ignoreId ? { id: { not: ignoreId } } : {}),
-      },
-    });
-    if (product) throw new ConflictException("El código interno ya está registrado");
+  private async nextInternalCode(tx: Prisma.TransactionClient, companyId: number, productId: number) {
+    const base = `PRD-${String(companyId).padStart(3, "0")}-${String(productId).padStart(6, "0")}`;
+    let candidate = base;
+    let suffix = 2;
+    while (await tx.product.findFirst({ where: { companyId, internalCode: candidate } })) {
+      candidate = `${base}-${suffix}`;
+      suffix += 1;
+    }
+    return candidate;
   }
 
   private async clearPreferredSupplier(tx: Prisma.TransactionClient, productId: number, exceptId?: number) {
