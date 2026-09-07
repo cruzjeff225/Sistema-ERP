@@ -5,19 +5,23 @@ import * as argon2 from "argon2";
 import * as crypto from "crypto";
 import { PrismaService } from "../../../../infrastructure/database/prisma/prisma.service";
 import { parseDurationToMs } from "../../../../common/utils/parse-duration.util";
+import { AuditService } from "../../../audit/application/services/audit.service";
+import { CompanyScopeService } from "../../../../common/services/company-scope.service";
 
-interface TokenPair {
+export interface TokenPair {
   accessToken: string;
   refreshToken: string;
   refreshTokenExpiresAt: Date;
 }
 
-interface SafeUser {
+export interface SafeUser {
   id: number;
   username: string;
   email: string;
   roles: string[];
   permissions: string[];
+  employee: { id: number; code: string; fullName: string };
+  companies: Array<{ id: number; name: string; commercialName: string }>;
 }
 
 @Injectable()
@@ -26,6 +30,8 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly auditService: AuditService,
+    private readonly companyScope: CompanyScopeService,
   ) {}
 
   private hashToken(token: string): string {
@@ -34,8 +40,9 @@ export class AuthService {
 
   private async loadActiveUserWithAccess(userId: number) {
     const user = await this.prisma.user.findFirst({
-      where: { id: userId, isActive: true, deletedAt: null },
+      where: { id: userId, isActive: true, lockedAt: null, deletedAt: null },
       include: {
+        employee: { select: { id: true, code: true, fullName: true } },
         userRoles: {
           where: { role: { isActive: true, deletedAt: null } },
           include: {
@@ -64,12 +71,16 @@ export class AuthService {
       }
     }
 
+    const companies = await this.companyScope.accessibleCompanies({ sub: user.id, roles });
+
     const safeUser: SafeUser = {
       id: user.id,
       username: user.username,
       email: user.email,
       roles,
       permissions: Array.from(permissionsSet),
+      employee: user.employee,
+      companies,
     };
 
     return safeUser;
@@ -134,14 +145,48 @@ export class AuthService {
       throw new UnauthorizedException("El usuario está inactivo");
     }
 
+    if (userRecord.lockedAt) {
+      throw new UnauthorizedException("El usuario esta bloqueado por intentos fallidos");
+    }
+
     const passwordValid = await argon2.verify(
       userRecord.passwordHash,
       password,
     );
 
     if (!passwordValid) {
+      const failedLoginAttempts = userRecord.failedLoginAttempts + 1;
+      const lockedAt = failedLoginAttempts >= 5 ? new Date() : null;
+      await this.prisma.$transaction(async (tx) => {
+        await tx.user.update({
+          where: { id: userRecord.id },
+          data: { failedLoginAttempts, lockedAt },
+        });
+        await this.auditService.record(tx, {
+          controller: "auth",
+          action: "LOGIN_FAILED",
+          recordId: userRecord.id,
+          originalData: { failedLoginAttempts: userRecord.failedLoginAttempts, lockedAt: userRecord.lockedAt },
+          modifiedData: { failedLoginAttempts, lockedAt },
+          userId: userRecord.id,
+        });
+      });
       throw new UnauthorizedException("Credenciales inválidas");
     }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: userRecord.id },
+        data: { failedLoginAttempts: 0, lockedAt: null },
+      });
+      await this.auditService.record(tx, {
+        controller: "auth",
+        action: "LOGIN",
+        recordId: userRecord.id,
+        modifiedData: { authenticated: true, email: userRecord.email },
+        userId: userRecord.id,
+      });
+    });
 
     const user = await this.loadActiveUserWithAccess(userRecord.id);
     if (!user) {

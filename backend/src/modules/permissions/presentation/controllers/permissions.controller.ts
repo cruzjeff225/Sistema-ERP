@@ -15,7 +15,8 @@ import { PERMISSION_PERMISSIONS } from "../../../../common/constants/permission-
 import { PermissionsService } from "../../application/services/permissions.service";
 import { CreatePermissionDto } from "../../application/dto/create-permission.dto";
 import { UpdatePermissionDto } from "../../application/dto/update-permission.dto";
-import { UpdateStatusDto } from "../../application/dto/update-status.dto";
+import { UpdatePermissionStatusDto } from "../../application/dto/update-status.dto";
+import { AuthenticatedUser, CurrentUser } from "../../../auth/presentation/decorators/current-user.decorator";
 
 // Agrupa los endpoints relacionados con la gestión de permisos
 @ApiTags("permissions")
@@ -61,8 +62,8 @@ export class PermissionsController {
   @RequirePermissions(PERMISSION_PERMISSIONS.CREATE)
   @Post()
   @ApiOperation({ summary: "Crear permiso" })
-  async create(@Body() dto: CreatePermissionDto) {
-    const permission = await this.permissionsService.create(dto);
+  async create(@Body() dto: CreatePermissionDto, @CurrentUser() user: AuthenticatedUser) {
+    const permission = await this.permissionsService.create(dto, user.sub);
 
     return {
       success: true,
@@ -78,8 +79,9 @@ export class PermissionsController {
   async update(
     @Param("id", ParseIntPipe) id: number,
     @Body() dto: UpdatePermissionDto,
+    @CurrentUser() user: AuthenticatedUser,
   ) {
-    const permission = await this.permissionsService.update(id, dto);
+    const permission = await this.permissionsService.update(id, dto, user.sub);
 
     return {
       success: true,
@@ -94,11 +96,13 @@ export class PermissionsController {
   @ApiOperation({ summary: "Activar o desactivar permiso" })
   async updateStatus(
     @Param("id", ParseIntPipe) id: number,
-    @Body() dto: UpdateStatusDto,
+    @Body() dto: UpdatePermissionStatusDto,
+    @CurrentUser() user: AuthenticatedUser,
   ) {
     const permission = await this.permissionsService.updateStatus(
       id,
       dto.isActive,
+      user.sub,
     );
 
     return {
@@ -112,8 +116,8 @@ export class PermissionsController {
   @RequirePermissions(PERMISSION_PERMISSIONS.DELETE)
   @Delete(":id")
   @ApiOperation({ summary: "Eliminar permiso (soft delete)" })
-  async remove(@Param("id", ParseIntPipe) id: number) {
-    await this.permissionsService.remove(id);
+  async remove(@Param("id", ParseIntPipe) id: number, @CurrentUser() user: AuthenticatedUser) {
+    await this.permissionsService.remove(id, user.sub);
 
     return {
       success: true,

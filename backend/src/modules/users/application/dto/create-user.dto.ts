@@ -1,6 +1,10 @@
 import { ApiProperty } from "@nestjs/swagger";
 import {
+  ArrayNotEmpty,
+  ArrayUnique,
+  IsArray,
   IsEmail,
+  IsInt,
   IsOptional,
   IsString,
   MaxLength,
@@ -28,8 +32,49 @@ export class CreateUserDto {
   @MaxLength(100)
   password: string;
 
-  // Lista opcional de roles a asignar al crear el usuario
-  @ApiProperty({ example: [1], required: false, type: [Number] })
+  @ApiProperty({ example: "EMP-001" })
+  @IsString()
+  @MinLength(2)
+  @MaxLength(40)
+  employeeCode: string;
+
+  @ApiProperty({ example: "Juan Perez" })
+  @IsString()
+  @MinLength(3)
+  @MaxLength(150)
+  employeeName: string;
+
+  @ApiProperty({ example: 1 })
+  @IsInt()
+  countryId: number;
+
+  @ApiProperty({ example: 1, required: false })
   @IsOptional()
-  roleIds?: number[];
+  @IsInt()
+  departmentId?: number;
+
+  @ApiProperty({ example: 1, required: false })
+  @IsOptional()
+  @IsInt()
+  municipalityId?: number;
+
+  @ApiProperty({ example: 1, required: false })
+  @IsOptional()
+  @IsInt()
+  districtId?: number;
+
+  // Todo usuario debe iniciar con al menos un rol.
+  @ApiProperty({ example: [1], type: [Number] })
+  @IsArray()
+  @ArrayNotEmpty()
+  @ArrayUnique()
+  @IsInt({ each: true })
+  roleIds: number[];
+
+  @ApiProperty({ example: [1], type: [Number] })
+  @IsArray()
+  @ArrayNotEmpty()
+  @ArrayUnique()
+  @IsInt({ each: true })
+  companyIds: number[];
 }

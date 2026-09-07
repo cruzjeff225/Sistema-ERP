@@ -1,5 +1,14 @@
 import type { Component } from "vue";
-import { LayoutDashboard, Users, ShieldCheck, KeyRound } from "lucide-vue-next";
+import {
+  Building2,
+  ClipboardList,
+  KeyRound,
+  LayoutDashboard,
+  Package,
+  Truck,
+  ShieldCheck,
+  Users,
+} from "lucide-vue-next";
 
 export interface NavigationItem {
   label: string;
@@ -26,7 +35,7 @@ export const navigationGroups: NavigationGroup[] = [
     ],
   },
   {
-    label: "Administración",
+    label: "Administracion",
     items: [
       {
         label: "Usuarios",
@@ -45,6 +54,36 @@ export const navigationGroups: NavigationGroup[] = [
         route: "/permissions",
         icon: KeyRound,
         permission: "permissions.view",
+      },
+      {
+        label: "Organizacion",
+        route: "/organization",
+        icon: Building2,
+        permission: "companies.view",
+      },
+      {
+        label: "Proveedores",
+        route: "/suppliers",
+        icon: Truck,
+        permission: "suppliers.view",
+      },
+      {
+        label: "Productos",
+        route: "/products",
+        icon: Package,
+        permission: "products.view",
+      },
+      {
+        label: "Clientes",
+        route: "/customers",
+        icon: Users,
+        permission: "customers.view",
+      },
+      {
+        label: "Bitacora",
+        route: "/audit",
+        icon: ClipboardList,
+        permission: "logs.view",
       },
     ],
   },

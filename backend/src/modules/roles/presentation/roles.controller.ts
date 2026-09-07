@@ -17,7 +17,9 @@ import { RolesService } from "../application/services/roles.service";
 import { CreateRoleDto } from "../application/dto/create-role.dto";
 import { UpdateRoleDto } from "../application/dto/update-role.dto";
 import { AssignPermissionsDto } from "../application/dto/assign-permissions.dto";
-import { UpdateStatusDto } from "../application/dto/update-status.dto";
+import { UpdateRoleStatusDto } from "../application/dto/update-status.dto";
+import { DuplicateRoleDto } from "../application/dto/duplicate-role.dto";
+import { AuthenticatedUser, CurrentUser } from "../../auth/presentation/decorators/current-user.decorator";
 
 // Agrupa los endpoints relacionados con la gestión de roles
 @ApiTags("roles")
@@ -59,8 +61,8 @@ export class RolesController {
   @RequirePermissions(ROLE_PERMISSIONS.CREATE)
   @Post()
   @ApiOperation({ summary: "Crear rol" })
-  async create(@Body() dto: CreateRoleDto) {
-    const role = await this.rolesService.create(dto);
+  async create(@Body() dto: CreateRoleDto, @CurrentUser() user: AuthenticatedUser) {
+    const role = await this.rolesService.create(dto, user.sub);
 
     return {
       success: true,
@@ -76,8 +78,9 @@ export class RolesController {
   async update(
     @Param("id", ParseIntPipe) id: number,
     @Body() dto: UpdateRoleDto,
+    @CurrentUser() user: AuthenticatedUser,
   ) {
-    const role = await this.rolesService.update(id, dto);
+    const role = await this.rolesService.update(id, dto, user.sub);
 
     return {
       success: true,
@@ -90,8 +93,8 @@ export class RolesController {
   @RequirePermissions(ROLE_PERMISSIONS.DELETE)
   @Delete(":id")
   @ApiOperation({ summary: "Eliminar rol (soft delete)" })
-  async remove(@Param("id", ParseIntPipe) id: number) {
-    await this.rolesService.remove(id);
+  async remove(@Param("id", ParseIntPipe) id: number, @CurrentUser() user: AuthenticatedUser) {
+    await this.rolesService.remove(id, user.sub);
 
     return {
       success: true,
@@ -107,10 +110,12 @@ export class RolesController {
   async assignPermissions(
     @Param("id", ParseIntPipe) id: number,
     @Body() dto: AssignPermissionsDto,
+    @CurrentUser() user: AuthenticatedUser,
   ) {
     const role = await this.rolesService.assignPermissions(
       id,
       dto.permissionIds,
+      user.sub,
     );
 
     return {
@@ -126,14 +131,27 @@ export class RolesController {
   @ApiOperation({ summary: "Activar o desactivar rol" })
   async updateStatus(
     @Param("id", ParseIntPipe) id: number,
-    @Body() dto: UpdateStatusDto,
+    @Body() dto: UpdateRoleStatusDto,
+    @CurrentUser() user: AuthenticatedUser,
   ) {
-    const role = await this.rolesService.updateStatus(id, dto.isActive);
+    const role = await this.rolesService.updateStatus(id, dto.isActive, user.sub);
 
     return {
       success: true,
       message: "Estado actualizado correctamente",
       data: role,
     };
+  }
+
+  @RequirePermissions(ROLE_PERMISSIONS.CREATE)
+  @Post(":id/duplicate")
+  @ApiOperation({ summary: "Duplicar un rol con sus permisos" })
+  async duplicate(
+    @Param("id", ParseIntPipe) id: number,
+    @Body() dto: DuplicateRoleDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    const role = await this.rolesService.duplicate(id, dto.name, user.sub);
+    return { success: true, message: "Rol duplicado correctamente", data: role };
   }
 }

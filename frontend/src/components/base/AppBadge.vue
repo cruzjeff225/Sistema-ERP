@@ -1,18 +1,19 @@
 <script setup lang="ts">
 withDefaults(
     defineProps<{
-        variant?: 'success' | 'danger' | 'warning' | 'neutral';
+        variant?: 'success' | 'danger' | 'warning' | 'info' | 'neutral';
     }>(),
     { variant: 'neutral' },
 );
 </script>
 
 <template>
-    <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium" :class="[
-        variant === 'success' && 'bg-success/10 text-success',
-        variant === 'danger' && 'bg-danger/10 text-danger',
-        variant === 'warning' && 'bg-warning/10 text-warning',
-        variant === 'neutral' && 'bg-surface-secondary text-muted-fg',
+    <span class="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium" :class="[
+        variant === 'success' && 'border-success/20 bg-success/10 text-success',
+        variant === 'danger' && 'border-danger/20 bg-danger/10 text-danger',
+        variant === 'warning' && 'border-warning/20 bg-warning/10 text-warning',
+        variant === 'info' && 'border-accent/20 bg-accent/10 text-accent',
+        variant === 'neutral' && 'border-border bg-surface-secondary text-muted-fg',
     ]">
         <slot />
     </span>

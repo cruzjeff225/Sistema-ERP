@@ -1,0 +1,53 @@
+export type GeographyEntry = {
+  department: string;
+  municipality: string;
+  districts: string[];
+};
+
+// Decreto Legislativo 762: 14 departamentos, 44 municipios y 262 distritos.
+export const EL_SALVADOR_GEOGRAPHY: GeographyEntry[] = [
+  { department: "Ahuachapán", municipality: "Ahuachapán Norte", districts: ["Atiquizaya", "El Refugio", "San Lorenzo", "Turín"] },
+  { department: "Ahuachapán", municipality: "Ahuachapán Centro", districts: ["Ahuachapán", "Apaneca", "Concepción de Ataco", "Tacuba"] },
+  { department: "Ahuachapán", municipality: "Ahuachapán Sur", districts: ["Guaymango", "Jujutla", "San Francisco Menéndez", "San Pedro Puxtla"] },
+  { department: "San Salvador", municipality: "San Salvador Norte", districts: ["Aguilares", "El Paisnal", "Guazapa"] },
+  { department: "San Salvador", municipality: "San Salvador Oeste", districts: ["Apopa", "Nejapa"] },
+  { department: "San Salvador", municipality: "San Salvador Este", districts: ["Ilopango", "San Martín", "Soyapango", "Tonacatepeque"] },
+  { department: "San Salvador", municipality: "San Salvador Centro", districts: ["Ayutuxtepeque", "Mejicanos", "San Salvador", "Cuscatancingo", "Ciudad Delgado"] },
+  { department: "San Salvador", municipality: "San Salvador Sur", districts: ["Panchimalco", "Rosario de Mora", "San Marcos", "Santo Tomás", "Santiago Texacuangos"] },
+  { department: "La Libertad", municipality: "La Libertad Norte", districts: ["Quezaltepeque", "San Matías", "San Pablo Tacachico"] },
+  { department: "La Libertad", municipality: "La Libertad Centro", districts: ["San Juan Opico", "Ciudad Arce"] },
+  { department: "La Libertad", municipality: "La Libertad Oeste", districts: ["Colón", "Jayaque", "Sacacoyo", "Tepecoyo", "Talnique"] },
+  { department: "La Libertad", municipality: "La Libertad Este", districts: ["Antiguo Cuscatlán", "Huizúcar", "Nuevo Cuscatlán", "San José Villanueva", "Zaragoza"] },
+  { department: "La Libertad", municipality: "La Libertad Costa", districts: ["Chiltiupán", "Jicalapa", "La Libertad", "Tamanique", "Teotepeque"] },
+  { department: "La Libertad", municipality: "La Libertad Sur", districts: ["Comasagua", "Santa Tecla"] },
+  { department: "Chalatenango", municipality: "Chalatenango Norte", districts: ["La Palma", "Citalá", "San Ignacio"] },
+  { department: "Chalatenango", municipality: "Chalatenango Centro", districts: ["Nueva Concepción", "Tejutla", "La Reina", "Agua Caliente", "Dulce Nombre de María", "El Paraíso", "San Fernando", "San Francisco Morazán", "San Rafael", "Santa Rita"] },
+  { department: "Chalatenango", municipality: "Chalatenango Sur", districts: ["Chalatenango", "Arcatao", "Azacualpa", "Comalapa", "Concepción Quezaltepeque", "El Carrizal", "La Laguna", "Las Vueltas", "Nombre de Jesús", "Nueva Trinidad", "Ojos de Agua", "Potonico", "San Antonio de La Cruz", "San Antonio Los Ranchos", "San Francisco Lempa", "San Isidro Labrador", "San José Cancasque", "San Miguel de Mercedes", "San José Las Flores", "San Luis del Carmen"] },
+  { department: "Cuscatlán", municipality: "Cuscatlán Norte", districts: ["Suchitoto", "San José Guayabal", "Oratorio de Concepción", "San Bartolomé Perulapía", "San Pedro Perulapán"] },
+  { department: "Cuscatlán", municipality: "Cuscatlán Sur", districts: ["Cojutepeque", "San Rafael Cedros", "Candelaria", "Monte San Juan", "El Carmen", "San Cristóbal", "Santa Cruz Michapa", "San Ramón", "El Rosario", "Santa Cruz Analquito", "Tenancingo"] },
+  { department: "Cabañas", municipality: "Cabañas Este", districts: ["Sensuntepeque", "Victoria", "Dolores", "Guacotecti", "San Isidro"] },
+  { department: "Cabañas", municipality: "Cabañas Oeste", districts: ["Ilobasco", "Tejutepeque", "Jutiapa", "Cinquera"] },
+  { department: "La Paz", municipality: "La Paz Oeste", districts: ["Cuyultitán", "Olocuilta", "San Juan Talpa", "San Luis Talpa", "San Pedro Masahuat", "Tapalhuaca", "San Francisco Chinameca"] },
+  { department: "La Paz", municipality: "La Paz Centro", districts: ["El Rosario", "Jerusalén", "Mercedes La Ceiba", "Paraíso de Osorio", "San Antonio Masahuat", "San Emigdio", "San Juan Tepezontes", "San Luis La Herradura", "San Miguel Tepezontes", "San Pedro Nonualco", "Santa María Ostuma", "Santiago Nonualco"] },
+  { department: "La Paz", municipality: "La Paz Este", districts: ["San Juan Nonualco", "San Rafael Obrajuelo", "Zacatecoluca"] },
+  { department: "La Unión", municipality: "La Unión Norte", districts: ["Anamorós", "Bolívar", "Concepción de Oriente", "El Sauce", "Lislique", "Nueva Esparta", "Pasaquina", "Polorós", "San José La Fuente", "Santa Rosa de Lima"] },
+  { department: "La Unión", municipality: "La Unión Sur", districts: ["Conchagua", "El Carmen", "Intipucá", "La Unión", "Meanguera del Golfo", "San Alejo", "Yayantique", "Yucuaiquín"] },
+  { department: "Usulután", municipality: "Usulután Norte", districts: ["Santiago de María", "Alegría", "Berlín", "Mercedes Umaña", "Jucuapa", "El Triunfo", "Estanzuelas", "San Buenaventura", "Nueva Granada"] },
+  { department: "Usulután", municipality: "Usulután Este", districts: ["Usulután", "Jucuarán", "San Dionisio", "Concepción Batres", "Santa María", "Ozatlán", "Tecapán", "Santa Elena", "California", "Ereguayquín"] },
+  { department: "Usulután", municipality: "Usulután Oeste", districts: ["Jiquilisco", "Puerto El Triunfo", "San Agustín", "San Francisco Javier"] },
+  { department: "Sonsonate", municipality: "Sonsonate Norte", districts: ["Juayúa", "Nahuizalco", "Salcoatitán", "Santa Catarina Masahuat"] },
+  { department: "Sonsonate", municipality: "Sonsonate Centro", districts: ["Sonsonate", "Sonzacate", "Nahulingo", "San Antonio del Monte", "Santo Domingo de Guzmán"] },
+  { department: "Sonsonate", municipality: "Sonsonate Este", districts: ["Izalco", "Armenia", "Caluco", "San Julián", "Cuisnahuat", "Santa Isabel Ishuatán"] },
+  { department: "Sonsonate", municipality: "Sonsonate Oeste", districts: ["Acajutla"] },
+  { department: "Santa Ana", municipality: "Santa Ana Norte", districts: ["Masahuat", "Metapán", "Santa Rosa Guachipilín", "Texistepeque"] },
+  { department: "Santa Ana", municipality: "Santa Ana Centro", districts: ["Santa Ana"] },
+  { department: "Santa Ana", municipality: "Santa Ana Este", districts: ["Coatepeque", "El Congo"] },
+  { department: "Santa Ana", municipality: "Santa Ana Oeste", districts: ["Candelaria de la Frontera", "Chalchuapa", "El Porvenir", "San Antonio Pajonal", "San Sebastián Salitrillo", "Santiago de La Frontera"] },
+  { department: "San Vicente", municipality: "San Vicente Norte", districts: ["Apastepeque", "Santa Clara", "San Ildefonso", "San Esteban Catarina", "San Sebastián", "San Lorenzo", "Santo Domingo"] },
+  { department: "San Vicente", municipality: "San Vicente Sur", districts: ["San Vicente", "Guadalupe", "Verapaz", "Tepetitán", "Tecoluca", "San Cayetano Istepeque"] },
+  { department: "San Miguel", municipality: "San Miguel Norte", districts: ["Ciudad Barrios", "Sesori", "Nuevo Edén de San Juan", "San Gerardo", "San Luis de La Reina", "Carolina", "San Antonio del Mosco", "Chapeltique"] },
+  { department: "San Miguel", municipality: "San Miguel Centro", districts: ["San Miguel", "Comacarán", "Uluazapa", "Moncagua", "Quelepa", "Chirilagua"] },
+  { department: "San Miguel", municipality: "San Miguel Oeste", districts: ["Chinameca", "Nueva Guadalupe", "Lolotique", "San Jorge", "San Rafael Oriente", "El Tránsito"] },
+  { department: "Morazán", municipality: "Morazán Norte", districts: ["Arambala", "Cacaopera", "Corinto", "El Rosario", "Joateca", "Jocoaitique", "Meanguera", "Perquín", "San Fernando", "San Isidro", "Torola"] },
+  { department: "Morazán", municipality: "Morazán Sur", districts: ["Chilanga", "Delicias de Concepción", "El Divisadero", "Gualococti", "Guatajiagua", "Jocoro", "Lolotiquillo", "Osicala", "San Carlos", "San Francisco Gotera", "San Simón", "Sensembra", "Sociedad", "Yamabal", "Yoloaiquín"] },
+];

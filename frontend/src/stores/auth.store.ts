@@ -1,5 +1,6 @@
 import { defineStore } from "pinia";
 import { http, setAccessToken } from "../services/http.service";
+import { syncActiveCompany, type AccessibleCompany } from "../services/company-context";
 
 export interface AuthUser {
   id: number;
@@ -7,6 +8,8 @@ export interface AuthUser {
   email: string;
   roles: string[];
   permissions: string[];
+  employee?: { id: number; code: string; fullName: string };
+  companies: AccessibleCompany[];
 }
 
 interface AuthState {
@@ -31,11 +34,14 @@ export const useAuthStore = defineStore("auth", {
 
       setAccessToken(accessToken);
       this.user = user;
+      syncActiveCompany(user.companies);
     },
 
     async fetchCurrentUser() {
       const response = await http.get("/auth/me");
-      this.user = response.data.data;
+      const user = response.data.data;
+      this.user = user;
+      syncActiveCompany(user.companies);
     },
 
     async refreshAccessToken(): Promise<string> {
@@ -44,6 +50,7 @@ export const useAuthStore = defineStore("auth", {
 
       setAccessToken(accessToken);
       this.user = user;
+      syncActiveCompany(user.companies);
 
       return accessToken;
     },
@@ -59,6 +66,7 @@ export const useAuthStore = defineStore("auth", {
     forceLogout() {
       setAccessToken(null);
       this.user = null;
+      syncActiveCompany([]);
     },
 
     async initialize() {
