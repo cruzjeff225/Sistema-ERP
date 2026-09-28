@@ -9,6 +9,7 @@ import { http } from "../services/http.service";
 import { activeCompanyId } from "../services/company-context";
 import { usePermissions } from "../composables/usePermissions";
 import { getApiErrorMessage } from "../utils/api-error";
+import { comparisonRequestId } from "../utils/purchase-workflow";
 type Request = { id: number; code: string; details: { productId: number; quantity: string; product: { name: string } }[] };
 type Quote = { id: number; code: string; status: string; currency: string; total: string; additionalExpenses: string; deliveryDays: number; paymentTerms: string | null; validUntil: string; isExpired: boolean; supplier: { name: string }; requestLinks: { request: { code: string } }[]; details: { productId: number; quantity: string; unitPrice: string; availableQuantity: string; discount: string; taxAmount: string }[] };
 const { can } = usePermissions();
@@ -28,13 +29,17 @@ async function load() {
   const current = ++version;
   const config = { headers: { "X-Company-Id": String(activeCompanyId.value) } };
   loading.value = true; error.value = "";
+  comparison.value = null;
+  pending.value = null;
   try {
     const list = await http.get("/purchase-requests/comparison-options", config);
     if (current !== version) return;
     requests.value = list.data.data;
-    const preferred = requestId.value || Number(route.query.requestId);
-    requestId.value = requests.value.some(request => request.id === preferred) ? preferred : requests.value[0]?.id || 0;
-    if (!requestId.value) { comparison.value = null; return; }
+    requestId.value = comparisonRequestId(requests.value, route.query.requestId, requestId.value);
+    if (!requestId.value) {
+      if (route.query.requestId !== undefined) error.value = 'La solicitud del enlace no está disponible para comparar. Seleccione una solicitud.';
+      return;
+    }
     const response = await http.get(`/purchase-requests/${requestId.value}/quotation-comparison`, config);
     if (current === version) comparison.value = response.data.data;
   } catch (caught) { if (current === version) error.value = getApiErrorMessage(caught, "No se pudo cargar la comparacion"); }
@@ -61,7 +66,7 @@ async function select() {
 <template>
   <AdminLayout title="Comparación de ofertas">
     <div class="flex flex-wrap items-center justify-between gap-3"><h1 class="page-title">Comparación de ofertas</h1><AppButton variant="outline" :disabled="loading || busy" @click="load"><RefreshCw class="h-4 w-4" />Actualizar</AppButton></div>
-    <label class="my-6 block max-w-sm text-sm">Solicitud<select v-model.number="requestId" class="field-control" :disabled="loading || busy" @change="changeRequest"><option v-for="request in requests" :key="request.id" :value="request.id">{{ request.code }}</option></select></label>
+    <label class="my-6 block max-w-sm text-sm">Solicitud<select v-model.number="requestId" class="field-control" :disabled="loading || busy" @change="changeRequest"><option disabled :value="0">Seleccionar solicitud</option><option v-for="request in requests" :key="request.id" :value="request.id">{{ request.code }}</option></select></label>
     <p v-if="error" role="alert" class="my-4 text-sm text-danger">{{ error }}</p>
     <p v-if="loading" role="status" class="py-6 text-muted-fg">Cargando ofertas...</p>
     <div v-else-if="comparison?.quotations.length" class="overflow-x-auto border-y border-border"><table class="w-full min-w-[700px] text-left text-sm"><thead class="bg-surface-secondary"><tr><th class="p-4">{{ comparison.request.code }}</th><th v-for="quote in comparison.quotations" :key="quote.id" class="min-w-56 p-4"><span class="block">{{ quote.supplier.name }}</span><RouterLink class="text-accent" :to="`/purchases/quotations?id=${quote.id}`">{{ quote.code }}</RouterLink></th></tr></thead><tbody class="divide-y divide-border">

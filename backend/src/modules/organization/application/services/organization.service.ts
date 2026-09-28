@@ -515,6 +515,10 @@ export class OrganizationService {
 
     return companyTransaction(this.prisma, current.warehouse.branch.company.id, async (tx) => {
       const fresh = await tx.location.findUniqueOrThrow({ where: { id } });
+      if (dto.capacity !== undefined) {
+        const occupied = await tx.inventoryStock.aggregate({ where: { locationId: id, quantity: { gt: 0 } }, _sum: { quantity: true } });
+        if (occupied._sum.quantity?.gt(dto.capacity)) throw new ConflictException("La capacidad no puede ser menor que las existencias del espacio");
+      }
       if (dto.warehouseId !== undefined && dto.warehouseId !== fresh.warehouseId && (await tx.inventoryStock.count({ where: { locationId: id } }) || await tx.purchaseItem.count({ where: { locationId: id } }))) throw new ConflictException("No se puede mover una ubicacion con historial a otro almacen");
       const updated = await tx.location.update({
         where: { id },

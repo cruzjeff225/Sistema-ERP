@@ -52,6 +52,17 @@ const router = createRouter({
       component: () => import("../views/OrganizationView.vue"),
       meta: { permission: "companies.view" },
     },
+    ...[
+      { section: "branches", permission: "branches.view" },
+      { section: "warehouses", permission: "warehouses.view" },
+      { section: "locations", permission: "locations.view" },
+      { section: "categories", permission: "warehouse_categories.view" },
+    ].map(({ section, permission }) => ({
+      path: `/organization/${section}`,
+      name: `organization-${section}`,
+      component: () => import("../views/OrganizationView.vue"),
+      meta: { permission },
+    })),
     {
       path: "/suppliers",
       name: "suppliers",

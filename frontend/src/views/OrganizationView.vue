@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, onMounted, onBeforeUnmount, reactive, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import {
   Building2,
   CheckCircle2,
@@ -23,6 +24,10 @@ import AppInput from "../components/base/AppInput.vue";
 import { http } from "../services/http.service";
 import { usePermissions } from "../composables/usePermissions";
 import { activeCompanyId } from "../services/company-context";
+import PurchaseActionDialog from "../components/base/PurchaseActionDialog.vue";
+import { useUnsavedChanges } from "../composables/useUnsavedChanges";
+import { onlyOptionId } from "../utils/purchase-workflow";
+import { organizationLocations, organizationPayload } from "../utils/organization-form";
 
 type Level = "companies" | "branches" | "warehouses" | "locations" | "categories";
 type AnyRecord = Record<string, any>;
@@ -40,7 +45,9 @@ type Catalogs = {
   }>;
 };
 
-const { can, canAny } = usePermissions();
+const { can } = usePermissions();
+const route = useRoute();
+const router = useRouter();
 const levels: Array<{ id: Level; label: string; singular: string; icon: any; permission: string }> = [
   { id: "companies", label: "Empresa", singular: "empresa", icon: Building2, permission: "companies" },
   { id: "branches", label: "Sucursales", singular: "sucursal", icon: FolderTree, permission: "branches" },
@@ -50,6 +57,12 @@ const levels: Array<{ id: Level; label: string; singular: string; icon: any; per
 ];
 
 const activeLevel = ref<Level>("companies");
+let loadVersion = 0;
+let initialForm = '';
+const discardChanges = ref(false);
+const statusChange = ref<{ id: number; level: Level; name: string; active: boolean } | null>(null);
+const { leaving, resolveLeave } = useUnsavedChanges(() => editorOpen.value && formSnapshot() !== initialForm, () => saving.value);
+onBeforeUnmount(() => { loadVersion++; });
 const selectedCompanyId = ref<number | null>(null);
 const selectedBranchId = ref<number | null>(null);
 const selectedWarehouseId = ref<number | null>(null);
@@ -78,12 +91,15 @@ const locationForm = reactive({ warehouseId: "", code: "", aisle: "", rack: "", 
 
 const activeConfig = computed(() => levels.find((item) => item.id === activeLevel.value)!);
 const activeCompany = computed(() => companies.value.find((item) => item.id === activeCompanyId.value) ?? null);
-const selectedCompany = computed(() => companies.value.find((item) => item.id === selectedCompanyId.value) ?? null);
+
 const selectedBranch = computed(() => branches.value.find((item) => item.id === selectedBranchId.value) ?? null);
 const selectedWarehouse = computed(() => warehouses.value.find((item) => item.id === selectedWarehouseId.value) ?? null);
 const visibleBranches = computed(() => selectedCompanyId.value ? branches.value.filter((item) => item.companyId === selectedCompanyId.value) : branches.value);
 const visibleWarehouses = computed(() => selectedBranchId.value ? warehouses.value.filter((item) => item.branchId === selectedBranchId.value) : warehouses.value);
-const visibleLocations = computed(() => selectedWarehouseId.value ? locations.value.filter((item) => item.warehouseId === selectedWarehouseId.value) : locations.value);
+const visibleLocations = computed(() => organizationLocations(locations.value as (AnyRecord & { warehouseId: number })[], warehouses.value as (AnyRecord & { id: number; branchId: number })[], selectedBranchId.value, selectedWarehouseId.value));
+const activeBranches = computed(() => branches.value.filter(item => item.isActive));
+const activeWarehouses = computed(() => warehouses.value.filter(item => item.isActive && item.branch?.isActive !== false));
+const activeCategories = computed(() => categories.value.filter(item => item.isActive));
 
 const activeRows = computed(() => {
   if (activeLevel.value === "companies") return activeCompany.value ? [activeCompany.value] : [];
@@ -101,7 +117,6 @@ const filteredRows = computed(() => {
 const contextItems = computed(() => {
   if (activeLevel.value === "companies" || activeLevel.value === "categories") return [];
   const items: Array<{ label: string; value: string }> = [];
-  if (selectedCompany.value) items.push({ label: "Empresa", value: selectedCompany.value.commercialName || selectedCompany.value.name });
   if (["warehouses", "locations"].includes(activeLevel.value) && selectedBranch.value) items.push({ label: "Sucursal", value: selectedBranch.value.name });
   if (activeLevel.value === "locations" && selectedWarehouse.value) items.push({ label: "Almacen", value: selectedWarehouse.value.name });
   return items;
@@ -117,16 +132,12 @@ function apiMessage(error: any, fallback: string) {
   return Array.isArray(message) ? message[0] : message ?? fallback;
 }
 
-function levelCount(level: Level) {
-  return level === "companies" ? (activeCompany.value ? 1 : 0)
-    : level === "branches" ? branches.value.length
-      : level === "warehouses" ? warehouses.value.length
-        : level === "locations" ? locations.value.length
-          : categories.value.length;
+function cleanObject(source: Record<string, unknown>) {
+  return organizationPayload(source, ['commercialLine1', 'phone', 'email', 'webSite', 'logo', 'description', 'notes']);
 }
 
-function cleanObject(source: Record<string, unknown>) {
-  return Object.fromEntries(Object.entries(source).filter(([, value]) => value !== "" && value !== null && value !== undefined));
+function formSnapshot() {
+  return JSON.stringify(({ companies: companyForm, branches: branchForm, warehouses: warehouseForm, locations: locationForm, categories: categoryForm })[activeLevel.value]);
 }
 
 function municipalitiesFor(departmentId: string) {
@@ -138,23 +149,15 @@ function districtsFor(municipalityId: string) {
 }
 
 function applyDefaultGeography(form: GeoForm) {
-  const department = catalogs.value.departments[0];
-  const municipality = department?.municipalities[0];
-  const district = municipality?.districts[0];
-  form.departmentId = department ? String(department.id) : "";
-  form.municipalityId = municipality ? String(municipality.id) : "";
-  form.districtId = district ? String(district.id) : "";
+  form.departmentId = ""; form.municipalityId = ""; form.districtId = "";
 }
 
 function onDepartmentChange(form: GeoForm) {
-  const municipality = municipalitiesFor(form.departmentId)[0];
-  form.municipalityId = municipality ? String(municipality.id) : "";
-  form.districtId = municipality?.districts[0] ? String(municipality.districts[0].id) : "";
+  form.municipalityId = ""; form.districtId = "";
 }
 
 function onMunicipalityChange(form: GeoForm) {
-  const district = districtsFor(form.municipalityId)[0];
-  form.districtId = district ? String(district.id) : "";
+  form.districtId = "";
 }
 
 function entityName(level: Level, item: AnyRecord) {
@@ -171,39 +174,38 @@ function entityDetail(level: Level, item: AnyRecord) {
   return item.description || "Sin descripcion";
 }
 
-function setActive(level: Level) {
-  activeLevel.value = level;
+function syncSection() {
+  const section = route.path.split('/')[2] ?? 'companies';
+  activeLevel.value = levels.find(level => level.id === section)?.id ?? 'companies';
+  const positiveId = (value: unknown) => typeof value === 'string' && /^[1-9]\d*$/.test(value) && Number.isSafeInteger(Number(value)) ? Number(value) : null;
+  selectedBranchId.value = positiveId(route.query.branch);
+  selectedWarehouseId.value = positiveId(route.query.warehouse);
+  editorOpen.value = false;
+  discardChanges.value = false;
+  statusChange.value = null;
   search.value = "";
   errorMessage.value = "";
+  successMessage.value = "";
 }
+watch(() => route.fullPath, syncSection, { immediate: true });
 
 function selectCompany(item: AnyRecord) {
   selectedCompanyId.value = item.id;
-  const branch = branches.value.find((row) => row.companyId === item.id);
-  selectedBranchId.value = branch?.id ?? null;
-  const warehouseItem = branch ? warehouses.value.find((row) => row.branchId === branch.id) : null;
-  selectedWarehouseId.value = warehouseItem?.id ?? null;
-  activeLevel.value = "branches";
-  search.value = "";
+  void router.push('/organization/branches');
 }
 
 function selectBranch(item: AnyRecord) {
-  selectedCompanyId.value = item.companyId;
-  selectedBranchId.value = item.id;
-  selectedWarehouseId.value = warehouses.value.find((row) => row.branchId === item.id)?.id ?? null;
-  activeLevel.value = "warehouses";
-  search.value = "";
+  void router.push({ path: '/organization/warehouses', query: { branch: item.id } });
 }
 
 function selectWarehouse(item: AnyRecord) {
-  selectedBranchId.value = item.branchId;
-  selectedCompanyId.value = branches.value.find((row) => row.id === item.branchId)?.companyId ?? null;
-  selectedWarehouseId.value = item.id;
-  activeLevel.value = "locations";
-  search.value = "";
+  void router.push({ path: '/organization/locations', query: { branch: item.branchId, warehouse: item.id } });
 }
 
 function drillDown(item: AnyRecord) {
+  if (saving.value || editorOpen.value) return;
+  const next = activeLevel.value === 'companies' ? 'branches' : activeLevel.value === 'branches' ? 'warehouses' : 'locations';
+  if (!can(next + '.view')) return;
   if (activeLevel.value === "companies") selectCompany(item);
   else if (activeLevel.value === "branches") selectBranch(item);
   else if (activeLevel.value === "warehouses") selectWarehouse(item);
@@ -218,21 +220,24 @@ function resetForm(level = activeLevel.value) {
     Object.assign(branchForm, { companyId: activeCompany.value ? String(activeCompany.value.id) : "", name: "", address: "", phone: "", email: "" });
     applyDefaultGeography(branchForm);
   } else if (level === "warehouses") {
-    Object.assign(warehouseForm, { branchId: selectedBranchId.value ? String(selectedBranchId.value) : branches.value[0] ? String(branches.value[0].id) : "", categoryId: categories.value[0] ? String(categories.value[0].id) : "", name: "", description: "" });
+    Object.assign(warehouseForm, { branchId: activeBranches.value.some(item => item.id === selectedBranchId.value) ? String(selectedBranchId.value) : String(onlyOptionId(activeBranches.value.map(item => ({ id: item.id }))) || ""), categoryId: String(onlyOptionId(activeCategories.value.map(item => ({ id: item.id }))) || ""), name: "", description: "" });
   } else if (level === "locations") {
-    Object.assign(locationForm, { warehouseId: selectedWarehouseId.value ? String(selectedWarehouseId.value) : warehouses.value[0] ? String(warehouses.value[0].id) : "", code: "", aisle: "", rack: "", level: "", position: "", capacity: "1", notes: "" });
+    Object.assign(locationForm, { warehouseId: activeWarehouses.value.some(item => item.id === selectedWarehouseId.value) ? String(selectedWarehouseId.value) : String(onlyOptionId(activeWarehouses.value.map(item => ({ id: item.id }))) || ""), code: "", aisle: "", rack: "", level: "", position: "", capacity: "1", notes: "" });
   } else {
     Object.assign(categoryForm, { name: "", description: "" });
   }
 }
 
 function openCreate() {
+  if (saving.value || loading.value) return;
   resetForm();
   editorOpen.value = true;
+  initialForm = formSnapshot();
   errorMessage.value = "";
 }
 
 function editItem(item: AnyRecord) {
+  if (saving.value || loading.value) return;
   const level = activeLevel.value;
   editing[level] = item.id;
   if (level === "companies") Object.assign(companyForm, { name: item.name, commercialName: item.commercialName, nit: item.nit, nrc: item.nrc, commercialLine1: item.commercialLine1 ?? "", address: item.address, departmentId: String(item.departmentId), municipalityId: String(item.municipalityId), districtId: String(item.districtId), phone: item.phone ?? "", email: item.email ?? "", webSite: item.webSite ?? "", logo: item.logo ?? "" });
@@ -241,10 +246,18 @@ function editItem(item: AnyRecord) {
   else if (level === "locations") Object.assign(locationForm, { warehouseId: String(item.warehouseId), code: item.code, aisle: item.aisle, rack: item.rack, level: item.level, position: item.position, capacity: String(item.capacity), notes: item.notes ?? "" });
   else Object.assign(categoryForm, { name: item.name, description: item.description ?? "" });
   editorOpen.value = true;
+  initialForm = formSnapshot();
   errorMessage.value = "";
 }
 
 function closeEditor() {
+  if (saving.value) return;
+  if (formSnapshot() !== initialForm) { discardChanges.value = true; return; }
+  discardEditor();
+}
+
+function discardEditor() {
+  discardChanges.value = false;
   editorOpen.value = false;
   resetForm();
 }
@@ -262,13 +275,15 @@ function onLogoSelected(event: Event) {
 }
 
 async function loadAll() {
+  const version = ++loadVersion;
   loading.value = true;
   errorMessage.value = "";
   try {
     const [geo, companyRes, branchRes, categoryRes, warehouseRes, locationRes] = await Promise.all([
-      http.get("/catalogs/geography"), http.get("/companies"), http.get("/branches"),
-      http.get("/warehouse-categories"), http.get("/warehouses"), http.get("/locations"),
+      http.get("/catalogs/geography"), loadAllowed("/companies", "companies.view"), loadAllowed("/branches", "branches.view"),
+      loadAllowed("/warehouse-categories", "warehouse_categories.view"), loadAllowed("/warehouses", "warehouses.view"), loadAllowed("/locations", "locations.view"),
     ]);
+    if (version !== loadVersion) return;
     catalogs.value = geo.data.data;
     companies.value = companyRes.data.data;
     branches.value = branchRes.data.data;
@@ -276,16 +291,15 @@ async function loadAll() {
     warehouses.value = warehouseRes.data.data;
     locations.value = locationRes.data.data;
     if (!selectedCompanyId.value && activeCompany.value) selectedCompanyId.value = activeCompany.value.id;
-    if (!selectedBranchId.value && visibleBranches.value[0]) selectedBranchId.value = visibleBranches.value[0].id;
-    if (!selectedWarehouseId.value && visibleWarehouses.value[0]) selectedWarehouseId.value = visibleWarehouses.value[0].id;
   } catch (error: any) {
     errorMessage.value = apiMessage(error, "No se pudo cargar la estructura organizacional");
   } finally {
-    loading.value = false;
+    if (version === loadVersion) loading.value = false;
   }
 }
 
 async function saveActive() {
+  if (saving.value) return;
   const level = activeLevel.value;
   if (level === "companies") return saveEntity("/companies", { ...cleanObject(companyForm), departmentId: Number(companyForm.departmentId), municipalityId: Number(companyForm.municipalityId), districtId: Number(companyForm.districtId) });
   if (level === "branches") return saveEntity("/branches", { ...cleanObject(branchForm), companyId: Number(activeCompany.value?.id ?? branchForm.companyId), departmentId: Number(branchForm.departmentId), municipalityId: Number(branchForm.municipalityId), districtId: Number(branchForm.districtId) });
@@ -295,6 +309,7 @@ async function saveActive() {
 }
 
 async function saveEntity(endpoint: string, payload: Record<string, unknown>) {
+  if (saving.value) return;
   saving.value = true;
   errorMessage.value = "";
   try {
@@ -316,12 +331,20 @@ function endpointFor(level: Level) {
   return level === "companies" ? "/companies" : level === "branches" ? "/branches" : level === "warehouses" ? "/warehouses" : level === "locations" ? "/locations" : "/warehouse-categories";
 }
 
-async function toggleStatus(item: AnyRecord) {
+function toggleStatus(item: AnyRecord) {
+  if (saving.value) return;
+  statusChange.value = { id: item.id, level: activeLevel.value, name: entityName(activeLevel.value, item), active: !item.isActive };
+}
+
+async function confirmStatusChange() {
+  const change = statusChange.value;
+  if (!change || saving.value) return;
   saving.value = true;
   errorMessage.value = "";
   try {
-    await http.patch(`${endpointFor(activeLevel.value)}/${item.id}/status`, { isActive: !item.isActive });
-    successMessage.value = item.isActive ? "Registro desactivado" : "Registro activado";
+    await http.patch(`${endpointFor(change.level)}/${change.id}/status`, { isActive: change.active });
+    successMessage.value = change.active ? "Registro activado" : "Registro desactivado";
+    statusChange.value = null;
     await loadAll();
   } catch (error: any) {
     errorMessage.value = apiMessage(error, "No se pudo actualizar el estado");
@@ -330,6 +353,9 @@ async function toggleStatus(item: AnyRecord) {
   }
 }
 
+function loadAllowed(path: string, permission: string) {
+  return can(permission) ? http.get(path) : Promise.resolve({ data: { data: [] } });
+}
 onMounted(async () => {
   await loadAll();
   resetForm("companies"); resetForm("branches"); resetForm("warehouses"); resetForm("locations"); resetForm("categories");
@@ -337,20 +363,12 @@ onMounted(async () => {
 </script>
 
 <template>
-  <AdminLayout title="Organizacion">
+  <AdminLayout :title="`Organización · ${activeConfig.label}`">
     <div class="mb-7 flex flex-wrap items-end justify-between gap-4">
-      <div><p class="section-eyebrow">Estructura operativa</p><h1 class="page-title mt-1">Organización</h1><p class="page-subtitle">{{ activeCompany ? `Gestionando ${activeCompany.commercialName}: Empresa, sucursal, almacén y espacio.` : "Administra la estructura Empresa, Sucursal, Almacén y Espacio." }}</p></div>
+      <div><p class="section-eyebrow">Organización</p><h1 class="page-title mt-1">{{ activeConfig.label }}</h1></div>
       <div class="flex gap-2">
-        <AppButton variant="outline" :disabled="loading" title="Actualizar" @click="loadAll"><RefreshCw class="h-4 w-4" :class="loading && 'animate-spin'" /><span class="hidden sm:inline">Actualizar</span></AppButton>
-        <AppButton v-if="activeLevel !== 'companies' && can(`${activeConfig.permission}.create`)" @click="openCreate"><Plus class="h-4 w-4" />Nueva {{ activeConfig.singular }}</AppButton>
-      </div>
-    </div>
-
-    <div class="scrollbar-thin -mx-1 mb-4 overflow-x-auto px-1 pb-1">
-      <div class="inline-flex min-w-full gap-1 rounded-lg border border-border bg-surface p-1 sm:min-w-0">
-        <button v-for="level in levels" :key="level.id" type="button" class="flex min-w-max flex-1 items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition" :class="activeLevel === level.id ? 'bg-accent-soft text-sidebar-active-fg' : 'text-muted-fg hover:bg-surface-secondary hover:text-fg'" @click="setActive(level.id)">
-          <component :is="level.icon" class="h-4 w-4" /><span>{{ level.label }}</span><span class="rounded-full bg-surface-secondary px-1.5 py-0.5 text-[11px]">{{ levelCount(level.id) }}</span>
-        </button>
+        <AppButton variant="outline" :disabled="loading || saving || editorOpen" title="Actualizar" @click="loadAll"><RefreshCw class="h-4 w-4" :class="loading && 'animate-spin'" /><span class="hidden sm:inline">Actualizar</span></AppButton>
+        <AppButton v-if="activeLevel !== 'companies' && can(`${activeConfig.permission}.create`)" :disabled="loading || saving" @click="openCreate"><Plus class="h-4 w-4" />Nueva {{ activeConfig.singular }}</AppButton>
       </div>
     </div>
 
@@ -377,7 +395,7 @@ onMounted(async () => {
               <td class="px-4 py-3"><button type="button" class="flex items-center gap-2 text-left font-medium text-fg" :class="['companies','branches','warehouses'].includes(activeLevel) && 'hover:text-accent'" @click="drillDown(item)">{{ entityName(activeLevel, item) }}<ChevronRight v-if="['companies','branches','warehouses'].includes(activeLevel)" class="h-4 w-4 opacity-0 transition group-hover:opacity-100" /></button></td>
               <td class="px-4 py-3 text-muted-fg">{{ entityDetail(activeLevel, item) }}</td>
               <td class="px-4 py-3"><AppBadge :variant="item.isActive ? 'success' : 'neutral'">{{ item.isActive ? "Activo" : "Inactivo" }}</AppBadge></td>
-              <td class="px-4 py-3"><div class="flex justify-end gap-1"><button v-if="can(`${activeConfig.permission}.update`)" type="button" class="grid h-8 w-8 place-items-center rounded-lg text-muted-fg hover:bg-surface-secondary hover:text-fg" title="Editar" @click="editItem(item)"><Edit2 class="h-4 w-4" /></button><button v-if="activeLevel !== 'companies' && canAny([`${activeConfig.permission}.activate`, `${activeConfig.permission}.deactivate`])" type="button" class="grid h-8 w-8 place-items-center rounded-lg text-muted-fg hover:bg-surface-secondary hover:text-fg" :title="item.isActive ? 'Desactivar' : 'Activar'" @click="toggleStatus(item)"><Power class="h-4 w-4" /></button></div></td>
+              <td class="px-4 py-3"><div class="flex justify-end gap-1"><button v-if="can(`${activeConfig.permission}.update`)" type="button" class="grid h-8 w-8 place-items-center rounded-lg text-muted-fg hover:bg-surface-secondary hover:text-fg" title="Editar" @click="editItem(item)"><Edit2 class="h-4 w-4" /></button><button v-if="activeLevel !== 'companies' && can(`${activeConfig.permission}.${item.isActive ? 'deactivate' : 'activate'}`)" type="button" class="grid h-8 w-8 place-items-center rounded-lg text-muted-fg hover:bg-surface-secondary hover:text-fg" :title="item.isActive ? 'Desactivar' : 'Activar'" @click="toggleStatus(item)"><Power class="h-4 w-4" /></button></div></td>
             </tr>
             <tr v-if="!loading && !filteredRows.length"><td colspan="4" class="px-4 py-12 text-center text-muted-fg">No hay registros para esta seleccion.</td></tr>
           </tbody>
@@ -385,34 +403,38 @@ onMounted(async () => {
       </div>
 
       <div class="divide-y divide-border md:hidden">
-        <article v-for="item in filteredRows" :key="item.id" class="p-4"><div class="flex items-start justify-between gap-3"><button type="button" class="min-w-0 text-left" @click="drillDown(item)"><p class="truncate font-medium text-fg">{{ entityName(activeLevel, item) }}</p><p class="mt-1 text-xs leading-5 text-muted-fg">{{ entityDetail(activeLevel, item) }}</p></button><AppBadge :variant="item.isActive ? 'success' : 'neutral'">{{ item.isActive ? "Activo" : "Inactivo" }}</AppBadge></div><div class="mt-3 flex justify-end gap-2 border-t border-border pt-3"><AppButton v-if="can(`${activeConfig.permission}.update`)" size="sm" variant="ghost" @click="editItem(item)"><Edit2 class="h-4 w-4" />Editar</AppButton><button v-if="activeLevel !== 'companies' && canAny([`${activeConfig.permission}.activate`, `${activeConfig.permission}.deactivate`])" type="button" class="grid h-8 w-8 place-items-center rounded-lg text-muted-fg hover:bg-surface-secondary" :title="item.isActive ? 'Desactivar' : 'Activar'" @click="toggleStatus(item)"><Power class="h-4 w-4" /></button></div></article>
+        <article v-for="item in filteredRows" :key="item.id" class="p-4"><div class="flex items-start justify-between gap-3"><button type="button" class="min-w-0 text-left" @click="drillDown(item)"><p class="truncate font-medium text-fg">{{ entityName(activeLevel, item) }}</p><p class="mt-1 text-xs leading-5 text-muted-fg">{{ entityDetail(activeLevel, item) }}</p></button><AppBadge :variant="item.isActive ? 'success' : 'neutral'">{{ item.isActive ? "Activo" : "Inactivo" }}</AppBadge></div><div class="mt-3 flex justify-end gap-2 border-t border-border pt-3"><AppButton v-if="can(`${activeConfig.permission}.update`)" size="sm" variant="ghost" @click="editItem(item)"><Edit2 class="h-4 w-4" />Editar</AppButton><button v-if="activeLevel !== 'companies' && can(`${activeConfig.permission}.${item.isActive ? 'deactivate' : 'activate'}`)" type="button" class="grid h-8 w-8 place-items-center rounded-lg text-muted-fg hover:bg-surface-secondary" :title="item.isActive ? 'Desactivar' : 'Activar'" @click="toggleStatus(item)"><Power class="h-4 w-4" /></button></div></article>
         <p v-if="!loading && !filteredRows.length" class="px-4 py-12 text-center text-sm text-muted-fg">No hay registros para esta seleccion.</p>
       </div>
     </section>
 
     <div v-if="editorOpen" class="fixed inset-0 z-50 flex justify-end bg-black/35 backdrop-blur-[2px]" @click.self="closeEditor">
-      <aside class="flex h-full w-full max-w-2xl flex-col bg-surface shadow-2xl">
+      <aside role="dialog" aria-modal="true" aria-label="Registro de organización" @keydown.esc="closeEditor" class="flex h-full w-full max-w-2xl flex-col bg-surface shadow-2xl">
         <header class="flex items-start justify-between border-b border-border px-5 py-4 sm:px-6"><div><p class="text-sm font-medium text-accent">{{ editing[activeLevel] ? "Editar" : "Nuevo registro" }}</p><h2 class="mt-1 text-xl font-semibold text-fg">{{ editing[activeLevel] ? `Editar ${activeConfig.singular}` : `Nueva ${activeConfig.singular}` }}</h2><p class="mt-1 text-sm text-muted-fg">Completa los datos necesarios para continuar.</p></div><button type="button" class="grid h-9 w-9 place-items-center rounded-lg text-muted-fg hover:bg-surface-secondary" title="Cerrar" @click="closeEditor"><X class="h-5 w-5" /></button></header>
         <form class="scrollbar-thin flex min-h-0 flex-1 flex-col" @submit.prevent="saveActive">
-          <div class="flex-1 overflow-y-auto px-5 py-5 sm:px-6">
+          <p v-if="errorMessage" role="alert" class="px-5 pt-4 text-sm text-danger">{{ errorMessage }}</p>
+          <fieldset :disabled="saving" class="flex-1 overflow-y-auto px-5 py-5 sm:px-6">
             <div v-if="activeLevel === 'companies'" class="grid gap-4 sm:grid-cols-2">
               <label class="sm:col-span-2"><span class="mb-1.5 block text-sm font-medium text-fg">Logo</span><span class="flex items-center gap-4 rounded-lg border border-dashed border-border p-3"><span class="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-lg bg-surface-secondary text-muted-fg"><img v-if="companyForm.logo" :src="companyForm.logo" alt="Vista previa del logo" class="h-full w-full object-contain" /><ImagePlus v-else class="h-5 w-5" /></span><span class="min-w-0"><span class="block text-sm font-medium text-fg">Seleccionar imagen</span><span class="block text-xs text-muted-fg">PNG, JPEG o WEBP, hasta 2 MB</span><input type="file" accept="image/png,image/jpeg,image/webp" class="mt-2 block w-full text-xs text-muted-fg file:mr-3 file:rounded-md file:border-0 file:bg-surface-secondary file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-fg" @change="onLogoSelected" /></span></span></label>
               <AppInput v-model="companyForm.commercialName" label="Nombre comercial" required /><AppInput v-model="companyForm.name" label="Razon social" required /><AppInput v-model="companyForm.nit" label="NIT" required /><AppInput v-model="companyForm.nrc" label="NRC" required /><AppInput v-model="companyForm.commercialLine1" label="Giro" /><AppInput v-model="companyForm.phone" label="Telefono" /><AppInput v-model="companyForm.email" label="Correo" type="email" /><AppInput v-model="companyForm.webSite" label="Sitio web" /><AppInput v-model="companyForm.address" class="sm:col-span-2" label="Direccion" required />
-              <label class="text-sm font-medium text-fg">Departamento<select v-model="companyForm.departmentId" class="field-control" required @change="onDepartmentChange(companyForm)"><option v-for="department in catalogs.departments" :key="department.id" :value="String(department.id)">{{ department.name }}</option></select></label>
-              <label class="text-sm font-medium text-fg">Municipio<select v-model="companyForm.municipalityId" class="field-control" required @change="onMunicipalityChange(companyForm)"><option v-for="municipality in companyMunicipalities" :key="municipality.id" :value="String(municipality.id)">{{ municipality.name }}</option></select></label>
-              <label class="text-sm font-medium text-fg">Distrito<select v-model="companyForm.districtId" class="field-control" required><option v-for="district in companyDistricts" :key="district.id" :value="String(district.id)">{{ district.name }}</option></select></label>
+              <label class="text-sm font-medium text-fg">Departamento<select v-model="companyForm.departmentId" class="field-control" required @change="onDepartmentChange(companyForm)"><option disabled value="">Seleccionar</option><option v-for="department in catalogs.departments" :key="department.id" :value="String(department.id)">{{ department.name }}</option></select></label>
+              <label class="text-sm font-medium text-fg">Municipio<select v-model="companyForm.municipalityId" class="field-control" required @change="onMunicipalityChange(companyForm)"><option disabled value="">Seleccionar</option><option v-for="municipality in companyMunicipalities" :key="municipality.id" :value="String(municipality.id)">{{ municipality.name }}</option></select></label>
+              <label class="text-sm font-medium text-fg">Distrito<select v-model="companyForm.districtId" class="field-control" required><option disabled value="">Seleccionar</option><option v-for="district in companyDistricts" :key="district.id" :value="String(district.id)">{{ district.name }}</option></select></label>
             </div>
             <div v-else-if="activeLevel === 'branches'" class="grid gap-4 sm:grid-cols-2">
               <div class="rounded-lg border border-border bg-surface-secondary px-3 py-2.5"><p class="text-xs font-medium text-muted-fg">Empresa</p><p class="mt-1 text-sm font-semibold text-fg">{{ activeCompany?.commercialName ?? "Empresa activa" }}</p></div><AppInput v-model="branchForm.name" label="Sucursal" required /><AppInput v-model="branchForm.phone" label="Telefono" /><AppInput v-model="branchForm.email" label="Correo" type="email" /><AppInput v-model="branchForm.address" class="sm:col-span-2" label="Direccion" required />
-              <label class="text-sm font-medium text-fg">Departamento<select v-model="branchForm.departmentId" class="field-control" required @change="onDepartmentChange(branchForm)"><option v-for="department in catalogs.departments" :key="department.id" :value="String(department.id)">{{ department.name }}</option></select></label><label class="text-sm font-medium text-fg">Municipio<select v-model="branchForm.municipalityId" class="field-control" required @change="onMunicipalityChange(branchForm)"><option v-for="municipality in branchMunicipalities" :key="municipality.id" :value="String(municipality.id)">{{ municipality.name }}</option></select></label><label class="text-sm font-medium text-fg">Distrito<select v-model="branchForm.districtId" class="field-control" required><option v-for="district in branchDistricts" :key="district.id" :value="String(district.id)">{{ district.name }}</option></select></label>
+              <label class="text-sm font-medium text-fg">Departamento<select v-model="branchForm.departmentId" class="field-control" required @change="onDepartmentChange(branchForm)"><option disabled value="">Seleccionar</option><option v-for="department in catalogs.departments" :key="department.id" :value="String(department.id)">{{ department.name }}</option></select></label><label class="text-sm font-medium text-fg">Municipio<select v-model="branchForm.municipalityId" class="field-control" required @change="onMunicipalityChange(branchForm)"><option disabled value="">Seleccionar</option><option v-for="municipality in branchMunicipalities" :key="municipality.id" :value="String(municipality.id)">{{ municipality.name }}</option></select></label><label class="text-sm font-medium text-fg">Distrito<select v-model="branchForm.districtId" class="field-control" required><option disabled value="">Seleccionar</option><option v-for="district in branchDistricts" :key="district.id" :value="String(district.id)">{{ district.name }}</option></select></label>
             </div>
-            <div v-else-if="activeLevel === 'warehouses'" class="grid gap-4 sm:grid-cols-2"><label class="text-sm font-medium text-fg">Sucursal<select v-model="warehouseForm.branchId" class="field-control" required><option v-for="branch in branches" :key="branch.id" :value="String(branch.id)">{{ branch.company?.commercialName }} / {{ branch.name }}</option></select></label><label class="text-sm font-medium text-fg">Categoria<select v-model="warehouseForm.categoryId" class="field-control" required><option v-for="category in categories" :key="category.id" :value="String(category.id)">{{ category.name }}</option></select></label><AppInput v-model="warehouseForm.name" label="Almacen" required /><AppInput v-model="warehouseForm.description" label="Descripcion" /></div>
-            <div v-else-if="activeLevel === 'locations'" class="grid gap-4 sm:grid-cols-2"><label class="text-sm font-medium text-fg sm:col-span-2">Almacen<select v-model="locationForm.warehouseId" class="field-control" required><option v-for="item in warehouses" :key="item.id" :value="String(item.id)">{{ item.branch?.name }} / {{ item.name }}</option></select></label><AppInput v-model="locationForm.code" label="Codigo" required /><AppInput v-model="locationForm.capacity" label="Capacidad" type="number" required /><AppInput v-model="locationForm.aisle" label="Pasillo" required /><AppInput v-model="locationForm.rack" label="Estante" required /><AppInput v-model="locationForm.level" label="Nivel" required /><AppInput v-model="locationForm.position" label="Posicion" required /><AppInput v-model="locationForm.notes" class="sm:col-span-2" label="Notas" /></div>
+            <div v-else-if="activeLevel === 'warehouses'" class="grid gap-4 sm:grid-cols-2"><label class="text-sm font-medium text-fg">Sucursal<select v-model="warehouseForm.branchId" class="field-control" required><option disabled value="">Seleccionar</option><option v-for="branch in branches.filter(item => item.isActive || String(item.id) === warehouseForm.branchId)" :key="branch.id" :value="String(branch.id)">{{ branch.company?.commercialName }} / {{ branch.name }}</option></select></label><label class="text-sm font-medium text-fg">Categoria<select v-model="warehouseForm.categoryId" class="field-control" required><option disabled value="">Seleccionar</option><option v-for="category in categories.filter(item => item.isActive || String(item.id) === warehouseForm.categoryId)" :key="category.id" :value="String(category.id)">{{ category.name }}</option></select></label><AppInput v-model="warehouseForm.name" label="Almacen" required /><AppInput v-model="warehouseForm.description" label="Descripcion" /></div>
+            <div v-else-if="activeLevel === 'locations'" class="grid gap-4 sm:grid-cols-2"><label class="text-sm font-medium text-fg sm:col-span-2">Almacen<select v-model="locationForm.warehouseId" class="field-control" required><option disabled value="">Seleccionar</option><option v-for="item in warehouses.filter(item => (item.isActive && item.branch?.isActive !== false) || String(item.id) === locationForm.warehouseId)" :key="item.id" :value="String(item.id)">{{ item.branch?.name }} / {{ item.name }}</option></select></label><AppInput v-model="locationForm.code" label="Codigo" required /><AppInput v-model="locationForm.capacity" label="Capacidad" type="number" min="1" step="1" required /><AppInput v-model="locationForm.aisle" label="Pasillo" required /><AppInput v-model="locationForm.rack" label="Estante" required /><AppInput v-model="locationForm.level" label="Nivel" required /><AppInput v-model="locationForm.position" label="Posicion" required /><AppInput v-model="locationForm.notes" class="sm:col-span-2" label="Notas" /></div>
             <div v-else class="grid gap-4"><AppInput v-model="categoryForm.name" label="Categoria" required /><AppInput v-model="categoryForm.description" label="Descripcion" /></div>
-          </div>
-          <footer class="flex justify-end gap-2 border-t border-border px-5 py-4 sm:px-6"><AppButton variant="outline" type="button" @click="closeEditor">Cancelar</AppButton><AppButton type="submit" :disabled="saving"><Save class="h-4 w-4" />{{ saving ? "Guardando..." : "Guardar" }}</AppButton></footer>
+          </fieldset>
+          <footer class="flex justify-end gap-2 border-t border-border px-5 py-4 sm:px-6"><AppButton variant="outline" type="button" :disabled="saving" @click="closeEditor">Cancelar</AppButton><AppButton type="submit" :disabled="saving"><Save class="h-4 w-4" />{{ saving ? "Guardando..." : "Guardar" }}</AppButton></footer>
         </form>
       </aside>
     </div>
+    <PurchaseActionDialog v-if="discardChanges" title="Descartar cambios" description="Los cambios del registro no se han guardado." @confirm="discardEditor" @close="discardChanges = false" />
+    <PurchaseActionDialog v-if="leaving" title="Salir sin guardar" description="Los cambios de organización no se han guardado." @confirm="resolveLeave(true)" @close="resolveLeave(false)" />
+    <PurchaseActionDialog v-if="statusChange" :title="statusChange.active ? 'Activar registro' : 'Desactivar registro'" :description="statusChange.name + '. Se conservará el historial. El servidor comprobará las restricciones de sus relaciones y existencias.'" :busy="saving" :error="errorMessage" @confirm="confirmStatusChange" @close="statusChange = null" />
   </AdminLayout>
 </template>

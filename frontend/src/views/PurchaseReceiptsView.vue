@@ -157,7 +157,7 @@ async function mutate(reason?: string) {
         <RouterLink v-if="selected.purchaseOrder && can('purchase_orders.view')" :to="`/purchases/orders?id=${selected.purchaseOrder.id}`">Orden {{ selected.purchaseOrder.code }}</RouterLink>
         <RouterLink v-if="selected.purchaseOrder?.quotation && can('purchase_quotations.view')" :to="`/purchases/quotations?id=${selected.purchaseOrder.quotation.id}`">Cotización {{ selected.purchaseOrder.quotation.code }}</RouterLink>
         <template v-if="can('purchase_requests.view')"><RouterLink v-for="link in selected.purchaseOrder?.quotation?.requestLinks" :key="link.request.id" :to="`/purchases/requests?id=${link.request.id}`">Solicitud {{ link.request.code }}</RouterLink></template>
-        <RouterLink v-if="can('retaceos.view') && selected.status !== 'CANCELLED'" :to="`/purchases/retaceos?purchaseId=${selected.id}`">{{ retaceoPending ? 'Continuar retaceo' : 'Retaceo' }}</RouterLink>
+        <RouterLink v-if="can('retaceos.view') && selected.status !== 'CANCELLED'" :to="`/purchases/retaceos?purchaseId=${selected.id}`">{{ selected.retaceos.some(item => item.status !== 'cancelled') ? (retaceoPending ? 'Continuar retaceo' : 'Ver costos de adquisición') : 'Preparar retaceo' }}</RouterLink>
       </nav>
       <div class="overflow-x-auto">
         <table class="w-full min-w-[850px] text-left text-sm">

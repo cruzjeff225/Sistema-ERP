@@ -62,6 +62,17 @@ async function run() {
   assert.equal(await db.log.count({ where: { controller: 'inventory', recordId: entered.id, userId: login.user.id } }), 1);
   assert.equal(await db.company.count(), companiesBefore);
   console.log('PASS Inventario Atlas: ajuste, idempotencia, validaciones, saldo, kardex y auditoria');
+  await api(`/locations/${locationId}`, 'PATCH', { capacity: 2 }, 409);
+  assert.equal((await db.location.findUniqueOrThrow({ where: { id: locationId } })).capacity, 100);
+  await api(`/locations/${locationId}`, 'PATCH', { capacity: null }, 400);
+  await api(`/locations/${locationId}`, 'PATCH', { capacity: 0 }, 400);
+  await api(`/locations/${locationId}`, 'PATCH', { code: '   ' }, 400);
+  await api(`/locations/${locationId}`, 'PATCH', { notes: 'Temporal', capacity: 3 });
+  await api(`/locations/${locationId}`, 'PATCH', { notes: null, capacity: 100 });
+  assert.equal((await db.location.findUniqueOrThrow({ where: { id: locationId } })).notes, null);
+  await api(`/branches/${branchId}`, 'PATCH', { name: '   ' }, 400);
+  await api(`/warehouses/${warehouseId}`, 'PATCH', { name: null }, 400);
+  console.log('PASS Organizacion: capacidad protege existencias, campos vacios rechazados y notas eliminables');
   unitId = (await db.productUnit.create({ data: { name: `QA UNIT ${key}`, type: 'purchase' } })).id;
   secondWarehouseId = (await db.warehouse.create({ data: { branchId, categoryId: category.id, name: `QA DESTINO ${key}` } })).id;
   await api(`/products/${productId}`, 'PATCH', { purchaseUnitId: unitId }, 409);

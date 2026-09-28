@@ -31,6 +31,14 @@ export function quotationDestination(sources: Source[], branches: Branch[]) {
 export function onlyOptionId(options: { id: number }[]) {
   return options.length === 1 ? options[0]!.id : 0;
 }
+
+export function comparisonRequestId(options: { id: number }[], requested: unknown, current = 0) {
+  if (requested !== undefined && requested !== null) {
+    const id = typeof requested === 'string' && /^[1-9]\d*$/.test(requested) ? Number(requested) : 0;
+    return options.some(option => option.id === id) ? id : 0;
+  }
+  return options.some(option => option.id === current) ? current : onlyOptionId(options);
+}
 export function purchasePurposeLabel(purpose: string | null | undefined): string {
   return ({ resale: 'Reposición para reventa', operations: 'Insumos para operación / instalación', mixed: 'Mixta: reventa y operación' } as Record<string, string>)[purpose ?? ''] ?? 'Finalidad sin registrar';
 }

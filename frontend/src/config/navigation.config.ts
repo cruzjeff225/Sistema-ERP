@@ -10,6 +10,7 @@ import {
   Truck,
   ShieldCheck,
   Users,
+  Boxes,
 } from "lucide-vue-next";
 
 export interface NavigationItem {
@@ -27,7 +28,7 @@ export interface NavigationGroup {
 
 export const navigationGroups: NavigationGroup[] = [
   {
-    label: "General",
+    label: "Inicio",
     items: [
       {
         label: "Dashboard",
@@ -38,37 +39,20 @@ export const navigationGroups: NavigationGroup[] = [
     ],
   },
   {
-    label: "Administracion",
+    label: "Operaciones",
     items: [
       {
-        label: "Usuarios",
-        route: "/users",
-        icon: Users,
-        permission: "users.view",
-      },
-      {
-        label: "Roles",
-        route: "/roles",
-        icon: ShieldCheck,
-        permission: "roles.view",
-      },
-      {
-        label: "Permisos",
-        route: "/permissions",
-        icon: KeyRound,
-        permission: "permissions.view",
-      },
-      {
-        label: "Organizacion",
+        label: "Organización",
         route: "/organization",
         icon: Building2,
         permission: "companies.view",
-      },
-      {
-        label: "Proveedores",
-        route: "/suppliers",
-        icon: Truck,
-        permission: "suppliers.view",
+        sections: [
+          { label: "Empresa", route: "/organization", permission: "companies.view" },
+          { label: "Sucursales", route: "/organization/branches", permission: "branches.view" },
+          { label: "Almacenes", route: "/organization/warehouses", permission: "warehouses.view" },
+          { label: "Espacios", route: "/organization/locations", permission: "locations.view" },
+          { label: "Categorías", route: "/organization/categories", permission: "warehouse_categories.view" },
+        ],
       },
       {
         label: "Productos",
@@ -76,18 +60,13 @@ export const navigationGroups: NavigationGroup[] = [
         icon: Package,
         permission: "products.view",
       },
-      { label: "Inventario", route: "/inventory", icon: Package, permission: "inventory.view" },
-      {
-        label: "Bitacora",
-        route: "/audit",
-        icon: ClipboardList,
-        permission: "logs.view",
-      },
+      { label: "Inventario", route: "/inventory", icon: Boxes, permission: "inventory.view" },
     ],
   },
   {
     label: "Compras",
     items: [
+      { label: "Proveedores", route: "/suppliers", icon: Truck, permission: "suppliers.view" },
       {
         label: "Solicitudes",
         route: "/purchases/requests",
@@ -101,7 +80,7 @@ export const navigationGroups: NavigationGroup[] = [
         permission: "purchase_quotations.view",
         sections: [
           { label: "Cotizaciones", route: "/purchases/quotations", permission: "purchase_quotations.view" },
-          { label: "Comparacion de ofertas", route: "/purchases/comparison", permission: "purchase_quotations.view" },
+          { label: "Comparación de ofertas", route: "/purchases/comparison", permission: "purchase_quotations.view" },
         ],
       },
       {
@@ -110,12 +89,21 @@ export const navigationGroups: NavigationGroup[] = [
         icon: ShoppingCart,
         permission: "purchase_orders.view",
         sections: [
-          { label: "Ordenes", route: "/purchases/orders", permission: "purchase_orders.view" },
+          { label: "Órdenes", route: "/purchases/orders", permission: "purchase_orders.view" },
           { label: "Recepciones", route: "/purchases/receipts", permission: "purchases.view" },
           { label: "Retaceo", route: "/purchases/retaceos", permission: "retaceos.view" },
           { label: "Tipos de gasto", route: "/purchases/expense-types", permission: "expense_types.view" },
         ],
       },
+    ],
+  },
+  {
+    label: "Administración",
+    items: [
+      { label: "Usuarios", route: "/users", icon: Users, permission: "users.view" },
+      { label: "Roles", route: "/roles", icon: ShieldCheck, permission: "roles.view" },
+      { label: "Permisos", route: "/permissions", icon: KeyRound, permission: "permissions.view" },
+      { label: "Bitácora", route: "/audit", icon: ClipboardList, permission: "logs.view" },
     ],
   },
 ];

@@ -38,7 +38,7 @@ async function main() {
       const data = { warehouseId: warehouse.id, code, aisle, rack, level, position, capacity: 100,
         notes: 'Distribucion inicial de espacios. Capacidad referencial: validar contra la bodega fisica antes de uso operativo.' };
       if (apply) {
-        const response = await fetch(base + '/locations', { method: 'POST',
+        const response: Awaited<ReturnType<typeof fetch>> = await fetch(base + '/locations', { method: 'POST',
           headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'X-Company-Id': String(config.companyId) },
           body: JSON.stringify(data) });
         assert.equal(response.status, 201, `No se pudo crear ${code}: ${await response.text()}`);

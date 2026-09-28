@@ -1,3 +1,4 @@
+import { Transform } from "class-transformer";
 import { IsEmail, IsInt, IsNotEmpty, IsOptional, IsString, Matches } from "class-validator";
 
 export class CreateBranchDto {
@@ -6,10 +7,12 @@ export class CreateBranchDto {
 
   @IsString()
   @IsNotEmpty()
+  @Transform(({ value }) => typeof value === "string" ? value.trim() : value)
   name: string;
 
   @IsString()
   @IsNotEmpty()
+  @Transform(({ value }) => typeof value === "string" ? value.trim() : value)
   address: string;
 
   @IsInt()
