@@ -48,20 +48,20 @@ const activeCompany = computed(() => currentUser.value?.companies?.find((company
 
 const metrics = computed(() => [
   { label: "Usuarios activos", value: counts.value.users, detail: `${counts.value.roles} ${counts.value.roles === 1 ? "rol configurado" : "roles configurados"}`, icon: Users, to: "/users", tone: "bg-accent-soft text-accent" },
-  { label: "Empresas", value: counts.value.companies, detail: `${counts.value.branches} ${counts.value.branches === 1 ? "sucursal operativa" : "sucursales operativas"}`, icon: Building2, to: "/organization", tone: "bg-success/10 text-success" },
+  { label: "Empresa", value: counts.value.companies, detail: `${counts.value.branches} ${counts.value.branches === 1 ? "sucursal operativa" : "sucursales operativas"}`, icon: Building2, to: "/organization", tone: "bg-success/10 text-success" },
   { label: "Ubicaciones", value: counts.value.locations, detail: `${counts.value.warehouses} ${counts.value.warehouses === 1 ? "almacen" : "almacenes"}`, icon: Warehouse, to: "/organization", tone: "bg-warning/10 text-warning" },
   { label: "Proveedores", value: counts.value.suppliers, detail: `${counts.value.contacts} ${counts.value.contacts === 1 ? "contacto" : "contactos"}`, icon: Truck, to: "/suppliers", tone: "bg-danger/10 text-danger" },
 ]);
 
 const hierarchy = computed(() => [
-  { label: "Empresas", value: counts.value.companies },
+  { label: "Empresa", value: counts.value.companies },
   { label: "Sucursales", value: counts.value.branches },
   { label: "Almacenes", value: counts.value.warehouses },
   { label: "Espacios", value: counts.value.locations },
 ]);
 
 const quickLinks = computed(() => [
-  { label: "Organizacion", detail: "Empresas y ubicaciones", icon: Building2, to: "/organization", visible: can("companies.view") },
+  { label: "Organizacion", detail: "Sucursales y ubicaciones", icon: Building2, to: "/organization", visible: can("companies.view") },
   { label: "Usuarios", detail: "Accesos del equipo", icon: Users, to: "/users", visible: can("users.view") },
   { label: "Roles y permisos", detail: "Politicas de acceso", icon: ShieldCheck, to: "/roles", visible: can("roles.view") },
   { label: "Proveedores", detail: "Directorio comercial", icon: Truck, to: "/suppliers", visible: can("suppliers.view") },

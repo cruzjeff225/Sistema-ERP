@@ -8,6 +8,10 @@ import {
 import { Prisma } from "@prisma/client";
 import * as argon2 from "argon2";
 import { PrismaService } from "../../../../infrastructure/database/prisma/prisma.service";
+import {
+  PASSWORD_HASH_OPTIONS,
+  passwordPolicyError,
+} from "../../../../common/security/password-security";
 import { AuditService } from "../../../audit/application/services/audit.service";
 import { CompanyScopeService } from "../../../../common/services/company-scope.service";
 import { OrganizationService } from "../../../organization/application/services/organization.service";
@@ -74,10 +78,12 @@ export class UsersService {
   }
 
   async findAll(query: QueryUsersDto) {
+    const companyId = await this.companyScope.primaryCompanyId();
     const page = query.page ?? 1;
     const limit = query.limit ?? 10;
     const where: Prisma.UserWhereInput = {
       deletedAt: null,
+      AND: [{ OR: [{ userCompanies: { some: { companyId } } }, { userRoles: { some: { role: { name: SUPERADMIN_ROLE } } } }] }],
       ...(query.search
         ? {
             OR: [
@@ -110,14 +116,20 @@ export class UsersService {
   }
 
   async findOne(id: number) {
-    const user = await this.prisma.user.findFirst({ where: { id, deletedAt: null }, select: this.safeSelect });
+    const companyId = await this.companyScope.primaryCompanyId();
+    const user = await this.prisma.user.findFirst({ where: { id, deletedAt: null, OR: [{ userCompanies: { some: { companyId } } }, { userRoles: { some: { role: { name: SUPERADMIN_ROLE } } } }] }, select: this.safeSelect });
     if (!user) throw new NotFoundException("Usuario no encontrado");
     return this.formatUser(user);
   }
 
   async create(dto: CreateUserDto, actorUserId: number) {
-    await this.assertUserIdentityAvailable(dto.email, dto.username);
-    await this.assertEmployeeIdentityAvailable(dto.employeeCode, dto.email);
+    const email = this.normalizedEmail(dto.email);
+    const username = this.normalizedUsername(dto.username);
+    const employeeCode = this.normalizedEmployeeCode(dto.employeeCode);
+    const employeeName = dto.employeeName.trim();
+    this.assertPasswordMeetsPolicy(dto.password, [email, username, employeeCode]);
+    await this.assertUserIdentityAvailable(email, username);
+    await this.assertEmployeeIdentityAvailable(employeeCode, email);
     await this.assertRolesExist(dto.roleIds);
     const companyIds = await this.companyScope.assertCompanyIds(dto.companyIds);
     const nationalAddress = await this.organizationService.resolveNationalAddress(
@@ -126,16 +138,16 @@ export class UsersService {
       dto.municipalityId,
       dto.districtId,
     );
-    const passwordHash = await argon2.hash(dto.password);
+    const passwordHash = await argon2.hash(dto.password, PASSWORD_HASH_OPTIONS);
 
     return this.prisma.$transaction(async (tx) => {
       const employee = await tx.employee.create({
-        data: { code: dto.employeeCode, fullName: dto.employeeName, email: dto.email, ...nationalAddress },
+        data: { code: employeeCode, fullName: employeeName, email, ...nationalAddress },
       });
       const user = await tx.user.create({
         data: {
-          username: dto.username,
-          email: dto.email,
+          username,
+          email,
           passwordHash,
           employeeId: employee.id,
           userRoles: { create: dto.roleIds.map((roleId) => ({ roleId })) },
@@ -157,9 +169,14 @@ export class UsersService {
 
   async update(id: number, dto: UpdateUserDto, actorUserId: number) {
     const current = await this.findOne(id);
-    if (dto.email || dto.username) await this.assertUserIdentityAvailable(dto.email, dto.username, id);
+    const email = dto.email === undefined ? undefined : this.normalizedEmail(dto.email);
+    const username = dto.username === undefined ? undefined : this.normalizedUsername(dto.username);
+    const employeeCode = dto.employeeCode === undefined ? undefined : this.normalizedEmployeeCode(dto.employeeCode);
+    const employeeName = dto.employeeName === undefined ? undefined : dto.employeeName.trim();
+
+    if (email || username) await this.assertUserIdentityAvailable(email, username, id);
     if (dto.employeeCode || dto.email) {
-      await this.assertEmployeeIdentityAvailable(dto.employeeCode, dto.email, current.employee.id);
+      await this.assertEmployeeIdentityAvailable(employeeCode, email, current.employee.id);
     }
     const nationalAddress = await this.organizationService.resolveNationalAddress(
       dto.countryId ?? current.employee.countryId,
@@ -168,21 +185,36 @@ export class UsersService {
       dto.districtId ?? current.employee.districtId,
     );
     const companyIds = dto.companyIds === undefined ? undefined : await this.companyScope.assertCompanyIds(dto.companyIds);
+    if (companyIds !== undefined && !companyIds.length) throw new BadRequestException("Todo usuario debe tener al menos una empresa");
+    if (dto.roleIds !== undefined && !dto.roleIds.length) throw new BadRequestException("Todo usuario debe tener al menos un rol");
+    if (dto.roleIds !== undefined) await this.assertRolesExist(dto.roleIds);
+    if (dto.roleIds !== undefined && !(await this.roleIdsIncludeSuperadmin(dto.roleIds))) {
+      const currentRoles = await this.prisma.userRole.findMany({ where: { userId: id }, include: { role: true } });
+      if (currentRoles.some((entry) => entry.role.name === SUPERADMIN_ROLE)) await this.assertNotLastSuperadmin(id);
+    }
 
     return this.prisma.$transaction(async (tx) => {
       await tx.employee.update({
         where: { id: current.employee.id },
-        data: { code: dto.employeeCode, fullName: dto.employeeName, email: dto.email, ...nationalAddress },
+        data: {
+          ...(employeeCode !== undefined ? { code: employeeCode } : {}),
+          ...(employeeName !== undefined ? { fullName: employeeName } : {}),
+          ...(email !== undefined ? { email } : {}),
+          ...nationalAddress,
+        },
       });
       const user = await tx.user.update({
         where: { id },
         data: {
-          username: dto.username,
-          email: dto.email,
-          ...(companyIds ? { userCompanies: { deleteMany: {}, create: companyIds.map((companyId) => ({ companyId })) } } : {}),
+          ...(username !== undefined ? { username } : {}),
+          ...(email !== undefined ? { email } : {}),
+          sessionVersion: { increment: 1 },
+          ...(companyIds !== undefined ? { userCompanies: { deleteMany: {}, create: companyIds.map((companyId) => ({ companyId })) } } : {}),
+          ...(dto.roleIds !== undefined ? { userRoles: { deleteMany: {}, create: dto.roleIds.map((roleId) => ({ roleId })) } } : {}),
         },
         select: this.safeSelect,
       });
+      await this.revokeActiveRefreshTokens(tx, id);
       const formatted = this.formatUser(user);
       await this.auditService.record(tx, {
         controller: "users",
@@ -202,10 +234,15 @@ export class UsersService {
     return this.prisma.$transaction(async (tx) => {
       const user = await tx.user.update({
         where: { id },
-        data: { isActive, ...(isActive ? { failedLoginAttempts: 0, lockedAt: null } : {}) },
+        data: {
+          isActive,
+          sessionVersion: { increment: 1 },
+          ...(isActive ? { failedLoginAttempts: 0, lockedAt: null } : {}),
+        },
         select: this.safeSelect,
       });
       await tx.employee.update({ where: { id: current.employee.id }, data: { isActive } });
+      await this.revokeActiveRefreshTokens(tx, id);
       const formatted = this.formatUser(user);
       await this.auditService.record(tx, {
         controller: "users",
@@ -224,9 +261,10 @@ export class UsersService {
     return this.prisma.$transaction(async (tx) => {
       const user = await tx.user.update({
         where: { id },
-        data: { failedLoginAttempts: 0, lockedAt: null },
+        data: { failedLoginAttempts: 0, lockedAt: null, sessionVersion: { increment: 1 } },
         select: this.safeSelect,
       });
+      await this.revokeActiveRefreshTokens(tx, id);
       const formatted = this.formatUser(user);
       await this.auditService.record(tx, {
         controller: "users",
@@ -245,8 +283,9 @@ export class UsersService {
     await this.assertNotLastSuperadmin(id);
     await this.prisma.$transaction(async (tx) => {
       const deletedAt = new Date();
-      await tx.user.update({ where: { id }, data: { deletedAt, isActive: false } });
+      await tx.user.update({ where: { id }, data: { deletedAt, isActive: false, sessionVersion: { increment: 1 } } });
       await tx.employee.update({ where: { id: current.employee.id }, data: { deletedAt, isActive: false } });
+      await this.revokeActiveRefreshTokens(tx, id);
       await this.auditService.record(tx, {
         controller: "users",
         action: "DELETE",
@@ -272,6 +311,8 @@ export class UsersService {
     return this.prisma.$transaction(async (tx) => {
       await tx.userRole.deleteMany({ where: { userId: id } });
       await tx.userRole.createMany({ data: roleIds.map((roleId) => ({ userId: id, roleId })), skipDuplicates: true });
+      await tx.user.update({ where: { id }, data: { sessionVersion: { increment: 1 } } });
+      await this.revokeActiveRefreshTokens(tx, id);
       const user = await tx.user.findUniqueOrThrow({ where: { id }, select: this.safeSelect });
       const formatted = this.formatUser(user);
       await this.auditService.record(tx, {
@@ -287,21 +328,58 @@ export class UsersService {
   }
 
   async changePassword(id: number, newPassword: string, actorUserId: number) {
-    await this.findOne(id);
-    const passwordHash = await argon2.hash(newPassword);
+    const current = await this.prisma.user.findFirst({
+      where: { id, deletedAt: null },
+      select: { id: true, email: true, username: true, passwordHash: true, failedLoginAttempts: true, lockedAt: true },
+    });
+    if (!current) throw new NotFoundException("Usuario no encontrado");
+    this.assertPasswordMeetsPolicy(newPassword, [current.email, current.username]);
+    if (await argon2.verify(current.passwordHash, newPassword)) {
+      throw new BadRequestException("La nueva contraseña debe ser diferente de la actual");
+    }
+    const passwordHash = await argon2.hash(newPassword, PASSWORD_HASH_OPTIONS);
     await this.prisma.$transaction(async (tx) => {
-      await tx.user.update({ where: { id }, data: { passwordHash } });
-      await tx.refreshToken.updateMany({ where: { userId: id, revokedAt: null }, data: { revokedAt: new Date() } });
+      await tx.user.update({
+        where: { id },
+        data: {
+          passwordHash,
+          failedLoginAttempts: 0,
+          lockedAt: null,
+          sessionVersion: { increment: 1 },
+        },
+      });
+      await this.revokeActiveRefreshTokens(tx, id);
       await this.auditService.record(tx, {
         controller: "users",
         action: "CHANGE_PASSWORD",
         recordId: id,
-        originalData: { passwordChanged: false },
-        modifiedData: { passwordChanged: true },
+        originalData: { passwordChanged: false, failedLoginAttempts: current.failedLoginAttempts, lockedAt: current.lockedAt },
+        modifiedData: { passwordChanged: true, sessionsRevoked: true, accountUnlocked: true },
         userId: actorUserId,
       });
     });
     return { id };
+  }
+
+  private assertPasswordMeetsPolicy(password: string, identityValues: string[]) {
+    const error = passwordPolicyError(password, identityValues);
+    if (error) throw new BadRequestException(error);
+  }
+
+  private normalizedEmail(value: string) {
+    return value.trim().toLocaleLowerCase();
+  }
+
+  private normalizedUsername(value: string) {
+    return value.trim().toLocaleLowerCase();
+  }
+
+  private normalizedEmployeeCode(value: string) {
+    return value.trim().toLocaleUpperCase();
+  }
+
+  private revokeActiveRefreshTokens(tx: Prisma.TransactionClient, userId: number) {
+    return tx.refreshToken.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: new Date() } });
   }
 
   private async assertUserIdentityAvailable(email?: string, username?: string, ignoreId?: number) {
@@ -310,10 +388,13 @@ export class UsersService {
       where: {
         deletedAt: null,
         ...(ignoreId ? { id: { not: ignoreId } } : {}),
-        OR: [...(email ? [{ email }] : []), ...(username ? [{ username }] : [])],
+        OR: [
+          ...(email ? [{ email: { equals: this.normalizedEmail(email), mode: "insensitive" as const } }] : []),
+          ...(username ? [{ username: { equals: this.normalizedUsername(username), mode: "insensitive" as const } }] : []),
+        ],
       },
     });
-    if (user) throw new ConflictException(user.email === email ? "El correo ya esta registrado" : "El usuario ya esta en uso");
+    if (user) throw new ConflictException(user.email.toLocaleLowerCase() === this.normalizedEmail(email ?? "") ? "El correo ya está registrado" : "El usuario ya está en uso");
   }
 
   private async assertEmployeeIdentityAvailable(code?: string, email?: string, ignoreId?: number) {
@@ -322,10 +403,13 @@ export class UsersService {
       where: {
         deletedAt: null,
         ...(ignoreId ? { id: { not: ignoreId } } : {}),
-        OR: [...(code ? [{ code }] : []), ...(email ? [{ email }] : [])],
+        OR: [
+          ...(code ? [{ code: { equals: this.normalizedEmployeeCode(code), mode: "insensitive" as const } }] : []),
+          ...(email ? [{ email: { equals: this.normalizedEmail(email), mode: "insensitive" as const } }] : []),
+        ],
       },
     });
-    if (employee) throw new ConflictException(employee.code === code ? "El codigo de empleado ya existe" : "El correo ya pertenece a otro empleado");
+    if (employee) throw new ConflictException(employee.code.toLocaleUpperCase() === this.normalizedEmployeeCode(code ?? "") ? "El código de empleado ya existe" : "El correo ya pertenece a otro empleado");
   }
 
   private async assertRolesExist(roleIds: number[]) {

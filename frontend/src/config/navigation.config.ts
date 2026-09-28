@@ -2,9 +2,11 @@ import type { Component } from "vue";
 import {
   Building2,
   ClipboardList,
+  FileSearch,
   KeyRound,
   LayoutDashboard,
   Package,
+  ShoppingCart,
   Truck,
   ShieldCheck,
   Users,
@@ -15,6 +17,7 @@ export interface NavigationItem {
   route: string;
   icon: Component;
   permission: string | null;
+  sections?: { label: string; route: string; permission: string }[];
 }
 
 export interface NavigationGroup {
@@ -73,17 +76,45 @@ export const navigationGroups: NavigationGroup[] = [
         icon: Package,
         permission: "products.view",
       },
-      {
-        label: "Clientes",
-        route: "/customers",
-        icon: Users,
-        permission: "customers.view",
-      },
+      { label: "Inventario", route: "/inventory", icon: Package, permission: "inventory.view" },
       {
         label: "Bitacora",
         route: "/audit",
         icon: ClipboardList,
         permission: "logs.view",
+      },
+    ],
+  },
+  {
+    label: "Compras",
+    items: [
+      {
+        label: "Solicitudes",
+        route: "/purchases/requests",
+        icon: ClipboardList,
+        permission: "purchase_requests.view",
+      },
+      {
+        label: "Cotizaciones",
+        route: "/purchases/quotations",
+        icon: FileSearch,
+        permission: "purchase_quotations.view",
+        sections: [
+          { label: "Cotizaciones", route: "/purchases/quotations", permission: "purchase_quotations.view" },
+          { label: "Comparacion de ofertas", route: "/purchases/comparison", permission: "purchase_quotations.view" },
+        ],
+      },
+      {
+        label: "Órdenes de compra",
+        route: "/purchases/orders",
+        icon: ShoppingCart,
+        permission: "purchase_orders.view",
+        sections: [
+          { label: "Ordenes", route: "/purchases/orders", permission: "purchase_orders.view" },
+          { label: "Recepciones", route: "/purchases/receipts", permission: "purchases.view" },
+          { label: "Retaceo", route: "/purchases/retaceos", permission: "retaceos.view" },
+          { label: "Tipos de gasto", route: "/purchases/expense-types", permission: "expense_types.view" },
+        ],
       },
     ],
   },

@@ -14,16 +14,23 @@ model User {
   isActive            Boolean   @default(true) @map("is_active")
   failedLoginAttempts Int       @default(0) @map("failed_login_attempts")
   lockedAt            DateTime? @map("locked_at")
+  sessionVersion      Int       @default(0) @map("session_version")
   employeeId          Int       @unique @map("id_employee")
   createdAt           DateTime  @default(now()) @map("created_at")
   updatedAt           DateTime  @updatedAt @map("updated_at")
   deletedAt           DateTime? @map("deleted_at")
 
-  employee      Employee       @relation(fields: [employeeId], references: [id])
-  userRoles     UserRole[]
-  userCompanies UserCompany[]
-  logs          Log[]
-  refreshTokens RefreshToken[]
+  employee           Employee            @relation(fields: [employeeId], references: [id])
+  userRoles          UserRole[]
+  userCompanies      UserCompany[]
+  logs               Log[]
+  refreshTokens      RefreshToken[]
+  purchaseRequests   PurchaseRequest[]   @relation("PurchaseRequestUser")
+  purchaseQuotations PurchaseQuotation[] @relation("PurchaseQuotationUser")
+  purchaseOrders     PurchaseOrder[]     @relation("PurchaseOrderUser")
+  purchases          Purchase[]          @relation("PurchaseUser")
+  retaceos           Retaceo[]           @relation("RetaceoUser")
+  inventoryMovements InventoryMovement[]
 
   @@map("users")
 }
@@ -43,10 +50,10 @@ model Employee {
   deletedAt      DateTime? @map("deleted_at")
 
   user         User?
-  country      Country      @relation("EmployeeCountry", fields: [countryId], references: [id])
-  department   Department?  @relation("EmployeeDepartment", fields: [departmentId], references: [id])
+  country      Country       @relation("EmployeeCountry", fields: [countryId], references: [id])
+  department   Department?   @relation("EmployeeDepartment", fields: [departmentId], references: [id])
   municipality Municipality? @relation("EmployeeMunicipality", fields: [municipalityId], references: [id])
-  district     District?    @relation("EmployeeDistrict", fields: [districtId], references: [id])
+  district     District?     @relation("EmployeeDistrict", fields: [districtId], references: [id])
 
   @@index([countryId])
   @@index([departmentId])
@@ -188,9 +195,9 @@ model Department {
   companies      Company[]
   branches       Branch[]
   municipalities Municipality[]
-  employees      Employee[] @relation("EmployeeDepartment")
-  suppliers      Supplier[] @relation("SupplierDepartment")
-  customers      Customer[] @relation("CustomerDepartment")
+  employees      Employee[]     @relation("EmployeeDepartment")
+  suppliers      Supplier[]     @relation("SupplierDepartment")
+  customers      Customer[]     @relation("CustomerDepartment")
 
   @@map("departments")
 }
@@ -227,9 +234,9 @@ model District {
   municipality Municipality @relation(fields: [municipalityId], references: [id])
   companies    Company[]
   branches     Branch[]
-  employees    Employee[] @relation("EmployeeDistrict")
-  suppliers    Supplier[] @relation("SupplierDistrict")
-  customers    Customer[] @relation("CustomerDistrict")
+  employees    Employee[]   @relation("EmployeeDistrict")
+  suppliers    Supplier[]   @relation("SupplierDistrict")
+  customers    Customer[]   @relation("CustomerDistrict")
 
   @@unique([municipalityId, name])
   @@index([municipalityId])
@@ -237,6 +244,7 @@ model District {
 }
 
 model Company {
+  erpConfiguration ErpConfiguration?
   id              Int       @id @default(autoincrement()) @map("id_company")
   name            String
   commercialName  String    @map("commercial_name")
@@ -258,19 +266,32 @@ model Company {
   updatedAt       DateTime  @updatedAt @map("updated_at")
   deletedAt       DateTime? @map("deleted_at")
 
-  department   Department   @relation(fields: [departmentId], references: [id])
-  municipality Municipality @relation(fields: [municipalityId], references: [id])
-  district     District     @relation(fields: [districtId], references: [id])
-  branches     Branch[]
-  userCompanies UserCompany[]
-  suppliers    Supplier[]
-  customers    Customer[]
-  products     Product[]
+  department         Department          @relation(fields: [departmentId], references: [id])
+  municipality       Municipality        @relation(fields: [municipalityId], references: [id])
+  district           District            @relation(fields: [districtId], references: [id])
+  branches           Branch[]
+  userCompanies      UserCompany[]
+  suppliers          Supplier[]
+  customers          Customer[]
+  products           Product[]
+  purchaseRequests   PurchaseRequest[]
+  purchaseQuotations PurchaseQuotation[]
+  purchaseOrders     PurchaseOrder[]
+  expenseTypes       ExpenseType[]
+  purchases          Purchase[]
+  retaceos           Retaceo[]
 
   @@index([departmentId])
   @@index([municipalityId])
   @@index([districtId])
   @@map("companies")
+}
+
+model ErpConfiguration {
+  id Int @id @default(1)
+  companyId Int @unique @map("company_id")
+  company Company @relation(fields: [companyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  @@map("erp_configuration")
 }
 
 model Branch {
@@ -288,14 +309,16 @@ model Branch {
   updatedAt      DateTime  @updatedAt @map("updated_at")
   deletedAt      DateTime? @map("deleted_at")
 
-  company      Company      @relation(fields: [companyId], references: [id])
-  department   Department   @relation(fields: [departmentId], references: [id])
-  municipality Municipality @relation(fields: [municipalityId], references: [id])
-  district     District     @relation(fields: [districtId], references: [id])
-  warehouses   Warehouse[]
-  purchases    Purchase[]
-  sales        Sale[]
-  quotations   Quotation[]
+  company          Company           @relation(fields: [companyId], references: [id])
+  department       Department        @relation(fields: [departmentId], references: [id])
+  municipality     Municipality      @relation(fields: [municipalityId], references: [id])
+  district         District          @relation(fields: [districtId], references: [id])
+  warehouses       Warehouse[]
+  purchases        Purchase[]
+  sales            Sale[]
+  quotations       Quotation[]
+  purchaseRequests PurchaseRequest[]
+  purchaseOrders   PurchaseOrder[]
 
   @@unique([companyId, name])
   @@index([companyId])
@@ -330,9 +353,12 @@ model Warehouse {
   updatedAt   DateTime  @updatedAt @map("updated_at")
   deletedAt   DateTime? @map("deleted_at")
 
-  branch    Branch            @relation(fields: [branchId], references: [id])
-  category  WarehouseCategory @relation(fields: [categoryId], references: [id])
-  locations Location[]
+  branch           Branch            @relation(fields: [branchId], references: [id])
+  category         WarehouseCategory @relation(fields: [categoryId], references: [id])
+  locations        Location[]
+  purchaseRequests PurchaseRequest[]
+  purchaseOrders   PurchaseOrder[]
+  purchases        Purchase[]
 
   @@unique([branchId, name])
   @@index([branchId])
@@ -355,8 +381,9 @@ model Location {
   updatedAt   DateTime  @updatedAt @map("updated_at")
   deletedAt   DateTime? @map("deleted_at")
 
-  warehouse Warehouse        @relation(fields: [warehouseId], references: [id])
-  stocks    InventoryStock[]
+  warehouse     Warehouse        @relation(fields: [warehouseId], references: [id])
+  stocks        InventoryStock[]
+  purchaseItems PurchaseItem[]
 
   @@unique([warehouseId, code])
   @@unique([warehouseId, aisle, rack, level, position])
@@ -381,13 +408,13 @@ model Customer {
   updatedAt      DateTime  @updatedAt @map("updated_at")
   deletedAt      DateTime? @map("deleted_at")
 
-  company     Company      @relation(fields: [companyId], references: [id])
-  country     Country      @relation("CustomerCountry", fields: [countryId], references: [id])
-  department  Department?  @relation("CustomerDepartment", fields: [departmentId], references: [id])
+  company      Company       @relation(fields: [companyId], references: [id])
+  country      Country       @relation("CustomerCountry", fields: [countryId], references: [id])
+  department   Department?   @relation("CustomerDepartment", fields: [departmentId], references: [id])
   municipality Municipality? @relation("CustomerMunicipality", fields: [municipalityId], references: [id])
-  district    District?    @relation("CustomerDistrict", fields: [districtId], references: [id])
-  quotations Quotation[]
-  sales      Sale[]
+  district     District?     @relation("CustomerDistrict", fields: [districtId], references: [id])
+  quotations   Quotation[]
+  sales        Sale[]
 
   @@unique([companyId, document])
   @@index([companyId])
@@ -431,14 +458,17 @@ model Supplier {
   updatedAt      DateTime  @updatedAt @map("updated_at")
   deletedAt      DateTime? @map("deleted_at")
 
-  company   Company           @relation(fields: [companyId], references: [id])
-  country   Country           @relation("SupplierCountry", fields: [countryId], references: [id])
-  department Department?      @relation("SupplierDepartment", fields: [departmentId], references: [id])
-  municipality Municipality?  @relation("SupplierMunicipality", fields: [municipalityId], references: [id])
-  district District?          @relation("SupplierDistrict", fields: [districtId], references: [id])
-  contacts  SupplierContact[]
-  purchases Purchase[]
-  productSuppliers ProductSupplier[]
+  company            Company             @relation(fields: [companyId], references: [id])
+  country            Country             @relation("SupplierCountry", fields: [countryId], references: [id])
+  department         Department?         @relation("SupplierDepartment", fields: [departmentId], references: [id])
+  municipality       Municipality?       @relation("SupplierMunicipality", fields: [municipalityId], references: [id])
+  district           District?           @relation("SupplierDistrict", fields: [districtId], references: [id])
+  contacts           SupplierContact[]
+  purchases          Purchase[]
+  productSuppliers   ProductSupplier[]
+  purchaseQuotations PurchaseQuotation[]
+  purchaseOrders     PurchaseOrder[]
+  retaceos           Retaceo[]
 
   @@unique([companyId, code])
   @@index([companyId])
@@ -477,9 +507,9 @@ model Product {
   companyId      Int       @map("id_company")
   categoryId     Int       @map("id_category")
   subcategoryId  Int       @map("id_sub_category")
-  sku            String
+  sku            String    @unique
   originalCode   String?   @map("original_code")
-  internalCode   String    @map("internal_code")
+  internalCode   String    @unique @map("internal_code")
   name           String
   size           String?
   dimensions     String?
@@ -494,18 +524,22 @@ model Product {
   updatedAt      DateTime  @updatedAt @map("updated_at")
   deletedAt      DateTime? @map("deleted_at")
 
-  company        Company            @relation(fields: [companyId], references: [id])
-  category       ProductCategory    @relation(fields: [categoryId], references: [id])
-  subcategory    ProductSubcategory @relation(fields: [subcategoryId], references: [id])
-  purchaseUnit   ProductUnit        @relation("ProductPurchaseUnit", fields: [purchaseUnitId], references: [id])
-  saleUnit       ProductUnit        @relation("ProductSaleUnit", fields: [saleUnitId], references: [id])
-  images         ProductImage[]
-  suppliers      ProductSupplier[]
-  stocks         InventoryStock[]
-  purchaseItems  PurchaseItem[]
-  quotationItems QuotationItem[]
-  saleItems      SaleItem[]
-  transferItems  TransferItem[]
+  company                  Company                   @relation(fields: [companyId], references: [id])
+  category                 ProductCategory           @relation(fields: [categoryId], references: [id])
+  subcategory              ProductSubcategory        @relation(fields: [subcategoryId], references: [id])
+  purchaseUnit             ProductUnit               @relation("ProductPurchaseUnit", fields: [purchaseUnitId], references: [id])
+  saleUnit                 ProductUnit               @relation("ProductSaleUnit", fields: [saleUnitId], references: [id])
+  images                   ProductImage[]
+  suppliers                ProductSupplier[]
+  stocks                   InventoryStock[]
+  purchaseItems            PurchaseItem[]
+  quotationItems           QuotationItem[]
+  saleItems                SaleItem[]
+  transferItems            TransferItem[]
+  purchaseRequestDetails   PurchaseRequestDetail[]
+  purchaseQuotationDetails PurchaseQuotationDetail[]
+  purchaseOrderDetails     PurchaseOrderDetail[]
+  retaceoDetails           RetaceoDetail[]
 
   @@unique([companyId, sku])
   @@unique([companyId, internalCode])
@@ -560,8 +594,12 @@ model ProductUnit {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  purchaseProducts Product[] @relation("ProductPurchaseUnit")
-  saleProducts     Product[] @relation("ProductSaleUnit")
+  purchaseProducts         Product[]                 @relation("ProductPurchaseUnit")
+  saleProducts             Product[]                 @relation("ProductSaleUnit")
+  purchaseRequestDetails   PurchaseRequestDetail[]
+  purchaseQuotationDetails PurchaseQuotationDetail[]
+  purchaseOrderDetails     PurchaseOrderDetail[]
+  purchaseItems            PurchaseItem[]
 
   @@unique([name, type])
   @@index([type])
@@ -608,51 +646,111 @@ model InventoryStock {
   id         Int      @id @default(autoincrement()) @map("id_inventory_stock")
   productId  Int      @map("id_product")
   locationId Int      @map("id_location")
-  quantity   Int      @default(0)
+  quantity   Decimal  @default(0) @db.Decimal(12, 2)
   minStock   Int      @default(0) @map("min_stock")
   updatedAt  DateTime @updatedAt @map("updated_at")
 
   product  Product  @relation(fields: [productId], references: [id])
   location Location @relation(fields: [locationId], references: [id])
+  movements InventoryMovement[]
 
   @@unique([productId, locationId])
   @@index([locationId])
   @@map("inventory_stocks")
 }
 
+model InventoryMovement {
+  id Int @id @default(autoincrement())
+  stockId Int @map("stock_id")
+  userId Int? @map("user_id")
+  purchaseItemId Int? @map("purchase_item_id")
+  key String @unique
+  type String
+  quantity Decimal @db.Decimal(12, 2)
+  balance Decimal @db.Decimal(12, 2)
+  reason String
+  createdAt DateTime @default(now()) @map("created_at")
+  stock InventoryStock @relation(fields: [stockId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user User? @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  purchaseItem PurchaseItem? @relation(fields: [purchaseItemId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  @@index([stockId, id])
+  @@index([purchaseItemId])
+  @@index([userId])
+  @@map("inventory_movements")
+}
+
 model Purchase {
-  id             Int      @id @default(autoincrement()) @map("id_purchase")
-  supplierId     Int      @map("id_supplier")
-  branchId       Int      @map("id_branch")
-  documentNumber String   @unique @map("document_number")
-  status         String   @default("COMPLETED")
-  total          Decimal  @default(0) @db.Decimal(12, 2)
-  createdAt      DateTime @default(now()) @map("created_at")
+  id                    Int       @id @default(autoincrement()) @map("id_purchase")
+  uuid                  String    @unique @default(uuid())
+  companyId             Int?      @map("id_company")
+  purchaseOrderId       Int       @map("id_purchase_order")
+  supplierId            Int       @map("id_supplier")
+  branchId              Int       @map("id_branch")
+  warehouseId           Int?      @map("id_warehouse")
+  userId                Int?      @map("id_user")
+  documentNumber        String    @unique @map("document_number")
+  purchaseDate          DateTime  @default(now()) @map("purchase_date")
+  supplierInvoiceNumber String?   @map("supplier_invoice_number") @db.VarChar(100)
+  supplierInvoiceDate   DateTime? @map("supplier_invoice_date") @db.Date
+  currency              String    @default("USD") @db.VarChar(3)
+  subtotal              Decimal   @default(0) @db.Decimal(14, 2)
+  discount              Decimal   @default(0) @db.Decimal(14, 2)
+  tax                   Decimal   @default(0) @db.Decimal(14, 2)
+  total                 Decimal   @default(0) @db.Decimal(14, 2)
+  status                String    @default("RECEIVED")
+  notes                 String?
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
 
-  supplier Supplier       @relation(fields: [supplierId], references: [id])
-  branch   Branch         @relation(fields: [branchId], references: [id])
-  items    PurchaseItem[]
+  company       Company?       @relation(fields: [companyId], references: [id])
+  supplier      Supplier       @relation(fields: [supplierId], references: [id])
+  branch        Branch         @relation(fields: [branchId], references: [id])
+  warehouse     Warehouse?     @relation(fields: [warehouseId], references: [id])
+  user          User?          @relation("PurchaseUser", fields: [userId], references: [id])
+  items         PurchaseItem[]
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+  retaceos      Retaceo[]
 
+  @@index([companyId, status])
   @@index([supplierId])
   @@index([branchId])
+  @@index([warehouseId])
+  @@index([userId])
+  @@index([purchaseOrderId])
   @@map("purchases")
 }
 
 model PurchaseItem {
-  id         Int     @id @default(autoincrement()) @map("id_purchase_item")
-  purchaseId Int     @map("id_purchase")
-  productId  Int     @map("id_product")
-  locationId Int     @map("id_location")
-  quantity   Int
-  unitCost   Decimal @map("unit_cost") @db.Decimal(12, 2)
-  lineTotal  Decimal @map("line_total") @db.Decimal(12, 2)
+  id                    Int     @id @default(autoincrement()) @map("id_purchase_item")
+  purchaseId            Int     @map("id_purchase")
+  productId             Int     @map("id_product")
+  locationId            Int     @map("id_location")
+  quantity              Decimal @db.Decimal(12, 2)
+  unitCost              Decimal @map("unit_cost") @db.Decimal(14, 4)
+  lineTotal             Decimal @map("line_total") @db.Decimal(12, 2)
+  purchaseOrderDetailId Int     @map("id_purchase_order_detail")
+  quantityOrdered      Decimal @map("quantity_ordered") @db.Decimal(12, 2)
+  receivedBefore       Decimal? @map("received_before") @db.Decimal(12, 2)
+  unitId               Int     @map("id_unit")
+  unitPrice            Decimal @map("unit_price") @db.Decimal(14, 4)
+  discount             Decimal @map("discount") @db.Decimal(14, 2)
+  taxRate              Decimal @map("tax_rate") @db.Decimal(5, 2)
+  taxAmount            Decimal @map("tax_amount") @db.Decimal(14, 2)
+  total                Decimal @db.Decimal(14, 2)
 
-  purchase Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
-  product  Product  @relation(fields: [productId], references: [id])
+  purchase            Purchase             @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  product             Product              @relation(fields: [productId], references: [id])
+  location            Location             @relation(fields: [locationId], references: [id])
+  purchaseOrderDetail PurchaseOrderDetail @relation(fields: [purchaseOrderDetailId], references: [id], onDelete: Restrict)
+  unit                ProductUnit @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  retaceoDetails      RetaceoDetail[]
+  inventoryMovements InventoryMovement[]
 
   @@index([purchaseId])
   @@index([productId])
   @@index([locationId])
+  @@index([purchaseOrderDetailId])
+  @@index([unitId])
   @@map("purchase_items")
 }
 
@@ -784,4 +882,357 @@ model Driver {
   deletedAt DateTime? @map("deleted_at")
 
   @@map("drivers")
+}
+
+enum PurchaseRequestPurpose {
+  resale
+  operations
+  mixed
+}
+
+model PurchaseRequest {
+  id            Int       @id @default(autoincrement()) @map("id_purchase_request")
+  uuid          String    @unique @default(uuid())
+  code          String    @unique @map("purchase_request_code")
+  companyId     Int       @map("id_company")
+  branchId      Int       @map("id_branch")
+  warehouseId   Int       @map("id_warehouse")
+  userId        Int       @map("id_user")
+  requestDate   DateTime  @default(now()) @map("request_date")
+  requiredDate  DateTime  @map("required_date")
+  justification String
+  purpose       PurchaseRequestPurpose?
+  status        String    @default("draft")
+  notes         String?
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  deletedAt     DateTime? @map("deleted_at")
+
+  company        Company                    @relation(fields: [companyId], references: [id])
+  branch         Branch                     @relation(fields: [branchId], references: [id])
+  warehouse      Warehouse                  @relation(fields: [warehouseId], references: [id])
+  user           User                       @relation("PurchaseRequestUser", fields: [userId], references: [id])
+  details        PurchaseRequestDetail[]
+  quotationLinks PurchaseQuotationRequest[]
+
+  @@index([companyId, status])
+  @@index([branchId])
+  @@index([warehouseId])
+  @@index([userId])
+  @@map("purchase_requests")
+}
+
+model PurchaseRequestDetail {
+  id          Int     @id @default(autoincrement()) @map("id_purchase_request_detail")
+  requestId   Int     @map("id_purchase_request")
+  productId   Int     @map("id_product")
+  quantity    Decimal @db.Decimal(12, 2)
+  unitId      Int     @map("id_unit")
+  description String? @db.VarChar(500)
+  notes       String?
+
+  request        PurchaseRequest                  @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  product        Product                          @relation(fields: [productId], references: [id])
+  unit           ProductUnit                      @relation(fields: [unitId], references: [id])
+  quotationLinks PurchaseQuotationRequestDetail[]
+
+  @@unique([requestId, productId])
+  @@index([productId])
+  @@index([unitId])
+  @@map("purchase_request_details")
+}
+
+model PurchaseQuotation {
+  id                 Int       @id @default(autoincrement()) @map("id_purchase_quotation")
+  uuid               String    @unique @default(uuid())
+  code               String    @unique @map("purchase_quotation_code")
+  companyId          Int       @map("id_company")
+  supplierId         Int       @map("id_supplier")
+  quotationDate      DateTime  @map("quotation_date")
+  validUntil         DateTime  @map("valid_until")
+  currency           String    @default("USD") @db.VarChar(3)
+  paymentTerms       String?   @map("payment_terms") @db.VarChar(100)
+  deliveryDays       Int       @default(0) @map("delivery_days")
+  subtotal           Decimal   @default(0) @db.Decimal(14, 2)
+  discount           Decimal   @default(0) @db.Decimal(14, 2)
+  tax                Decimal   @default(0) @db.Decimal(14, 2)
+  additionalExpenses Decimal   @default(0) @map("additional_expenses") @db.Decimal(14, 2)
+  total              Decimal   @default(0) @db.Decimal(14, 2)
+  status             String    @default("draft")
+  notes              String?
+  userId             Int       @map("id_user")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+  deletedAt          DateTime? @map("deleted_at")
+
+  company      Company                    @relation(fields: [companyId], references: [id])
+  supplier     Supplier                   @relation(fields: [supplierId], references: [id])
+  user         User                       @relation("PurchaseQuotationUser", fields: [userId], references: [id])
+  details      PurchaseQuotationDetail[]
+  requestLinks PurchaseQuotationRequest[]
+  expenses     PurchaseQuotationExpense[]
+  orders       PurchaseOrder[]
+
+  @@index([companyId, status])
+  @@index([supplierId])
+  @@index([userId])
+  @@map("purchase_quotations")
+}
+
+model PurchaseQuotationDetail {
+  id                Int     @id @default(autoincrement()) @map("id_purchase_quotation_detail")
+  quotationId       Int     @map("id_purchase_quotation")
+  productId         Int     @map("id_product")
+  quantity          Decimal @db.Decimal(12, 2)
+  unitId            Int     @map("id_unit")
+  unitPrice         Decimal @map("unit_price") @db.Decimal(14, 4)
+  discount          Decimal @default(0) @db.Decimal(14, 2)
+  subtotal          Decimal @db.Decimal(14, 2)
+  taxRate           Decimal @default(0) @map("tax_rate") @db.Decimal(5, 2)
+  taxAmount         Decimal @default(0) @map("tax_amount") @db.Decimal(14, 2)
+  total             Decimal @db.Decimal(14, 2)
+  deliveryDays      Int?    @map("delivery_days")
+  availableQuantity Decimal @map("available_quantity") @db.Decimal(12, 2)
+  notes             String?
+
+  quotation          PurchaseQuotation                @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  product            Product                          @relation(fields: [productId], references: [id])
+  unit               ProductUnit                      @relation(fields: [unitId], references: [id])
+  requestDetailLinks PurchaseQuotationRequestDetail[]
+  orderDetails       PurchaseOrderDetail[]
+
+  @@unique([quotationId, productId])
+  @@index([productId])
+  @@index([unitId])
+  @@map("purchase_quotation_details")
+}
+
+model PurchaseQuotationRequest {
+  id          Int      @id @default(autoincrement()) @map("id_purchase_quotation_request")
+  quotationId Int      @map("id_purchase_quotation")
+  requestId   Int      @map("id_purchase_request")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  quotation PurchaseQuotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  request   PurchaseRequest   @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@unique([quotationId, requestId])
+  @@index([requestId])
+  @@map("purchase_quotation_requests")
+}
+
+model PurchaseQuotationRequestDetail {
+  id                Int      @id @default(autoincrement()) @map("id_purchase_quotation_request_detail")
+  quotationDetailId Int      @map("id_purchase_quotation_detail")
+  requestDetailId   Int      @map("id_purchase_request_detail")
+  quantity          Decimal  @db.Decimal(12, 2)
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  quotationDetail PurchaseQuotationDetail @relation(fields: [quotationDetailId], references: [id], onDelete: Cascade)
+  requestDetail   PurchaseRequestDetail   @relation(fields: [requestDetailId], references: [id], onDelete: Cascade)
+
+  @@unique([quotationDetailId, requestDetailId])
+  @@index([requestDetailId])
+  @@map("purchase_quotation_request_details")
+}
+
+model ExpenseType {
+  id          Int       @id @default(autoincrement()) @map("id_expense_type")
+  companyId   Int       @map("id_company")
+  name        String
+  description String?
+  isActive    Boolean   @default(true) @map("is_active")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  company           Company                    @relation(fields: [companyId], references: [id])
+  quotationExpenses PurchaseQuotationExpense[]
+  orderExpenses     PurchaseOrderExpense[]
+
+  @@unique([companyId, name])
+  @@index([companyId, isActive])
+  @@map("expense_types")
+}
+
+model PurchaseQuotationExpense {
+  id            Int      @id @default(autoincrement()) @map("id_purchase_quotation_expense")
+  quotationId   Int      @map("id_purchase_quotation")
+  expenseTypeId Int      @map("id_expense_type")
+  description   String?  @db.VarChar(500)
+  amount        Decimal  @db.Decimal(14, 2)
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  quotation   PurchaseQuotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  expenseType ExpenseType       @relation(fields: [expenseTypeId], references: [id])
+
+  @@index([quotationId])
+  @@index([expenseTypeId])
+  @@map("purchase_quotation_expenses")
+}
+
+model PurchaseOrder {
+  id                 Int       @id @default(autoincrement()) @map("id_purchase_order")
+  uuid               String    @unique @default(uuid())
+  code               String    @unique @map("purchase_order_code")
+  companyId          Int       @map("id_company")
+  supplierId         Int       @map("id_supplier")
+  branchId           Int       @map("id_branch")
+  warehouseId        Int       @map("id_warehouse")
+  quotationId        Int       @map("id_purchase_quotation")
+  userId             Int       @map("id_user")
+  orderDate          DateTime  @default(now()) @map("order_date")
+  expectedDate       DateTime  @map("expected_date")
+  currency           String    @default("USD") @db.VarChar(3)
+  paymentTerms       String?   @map("payment_terms") @db.VarChar(100)
+  subtotal           Decimal   @default(0) @db.Decimal(14, 2)
+  discount           Decimal   @default(0) @db.Decimal(14, 2)
+  tax                Decimal   @default(0) @db.Decimal(14, 2)
+  additionalExpenses Decimal   @default(0) @map("additional_expenses") @db.Decimal(14, 2)
+  total              Decimal   @default(0) @db.Decimal(14, 2)
+  status             String    @default("draft")
+  notes              String?
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+  deletedAt          DateTime? @map("deleted_at")
+
+  company   Company                @relation(fields: [companyId], references: [id])
+  supplier  Supplier               @relation(fields: [supplierId], references: [id])
+  branch    Branch                 @relation(fields: [branchId], references: [id])
+  warehouse Warehouse              @relation(fields: [warehouseId], references: [id])
+  quotation PurchaseQuotation     @relation(fields: [quotationId], references: [id], onDelete: Restrict)
+  user      User                   @relation("PurchaseOrderUser", fields: [userId], references: [id])
+  details   PurchaseOrderDetail[]
+  expenses  PurchaseOrderExpense[]
+  purchases Purchase[]
+
+  @@index([companyId, status])
+  @@index([supplierId])
+  @@index([branchId])
+  @@index([warehouseId])
+  @@index([quotationId])
+  @@index([userId])
+  @@map("purchase_orders")
+}
+
+model PurchaseOrderDetail {
+  id                Int     @id @default(autoincrement()) @map("id_purchase_order_detail")
+  orderId           Int     @map("id_purchase_order")
+  quotationDetailId Int?    @map("id_purchase_quotation_detail")
+  productId         Int     @map("id_product")
+  quantity          Decimal @db.Decimal(12, 2)
+  receivedQuantity  Decimal @default(0) @map("received_quantity") @db.Decimal(12, 2)
+  unitId            Int     @map("id_unit")
+  unitPrice         Decimal @map("unit_price") @db.Decimal(14, 4)
+  discount          Decimal @default(0) @db.Decimal(14, 2)
+  subtotal          Decimal @db.Decimal(14, 2)
+  taxRate           Decimal @default(0) @map("tax_rate") @db.Decimal(5, 2)
+  taxAmount         Decimal @default(0) @map("tax_amount") @db.Decimal(14, 2)
+  total             Decimal @db.Decimal(14, 2)
+  notes             String?
+
+  order           PurchaseOrder            @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  quotationDetail PurchaseQuotationDetail? @relation(fields: [quotationDetailId], references: [id], onDelete: SetNull)
+  product         Product                  @relation(fields: [productId], references: [id])
+  unit            ProductUnit              @relation(fields: [unitId], references: [id])
+  purchaseItems   PurchaseItem[]
+
+  @@unique([orderId, productId])
+  @@index([quotationDetailId])
+  @@index([productId])
+  @@index([unitId])
+  @@map("purchase_order_details")
+}
+
+model PurchaseOrderExpense {
+  id            Int      @id @default(autoincrement()) @map("id_purchase_order_expense")
+  orderId       Int      @map("id_purchase_order")
+  expenseTypeId Int      @map("id_expense_type")
+  description   String?  @db.VarChar(500)
+  amount        Decimal  @db.Decimal(14, 2)
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  order       PurchaseOrder                  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  expenseType ExpenseType                    @relation(fields: [expenseTypeId], references: [id])
+  documents   PurchaseOrderExpenseDocument[]
+
+  @@index([orderId])
+  @@index([expenseTypeId])
+  @@map("purchase_order_expenses")
+}
+
+model PurchaseOrderExpenseDocument {
+  id         Int      @id @default(autoincrement()) @map("id_purchase_order_expense_document")
+  expenseId  Int      @map("id_purchase_order_expense")
+  fileName   String   @map("file_name")
+  filePath   String   @map("file_path")
+  fileType   String   @map("file_type")
+  uploadedAt DateTime @default(now()) @map("uploaded_at")
+
+  expense PurchaseOrderExpense @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+
+  @@index([expenseId])
+  @@map("purchase_order_expense_documents")
+}
+
+model Retaceo {
+  id                  Int       @id @default(autoincrement()) @map("id_retaceo")
+  uuid                String    @unique @default(uuid())
+  code                String    @unique @map("retaceo_code")
+  companyId           Int       @map("id_company")
+  supplierId          Int       @map("id_supplier")
+  purchaseId          Int       @map("id_purchase")
+  userId              Int       @map("id_user")
+  retaceoDate         DateTime  @default(now()) @map("retaceo_date")
+  originCountry       String?   @map("origin_country") @db.VarChar(100)
+  importInvoiceNumber String?   @map("import_invoice_number") @db.VarChar(100)
+  importInvoiceDate   DateTime? @map("import_invoice_date") @db.Date
+  importPolicyNumber  String?   @map("import_policy_number") @db.VarChar(100)
+  importPolicyDate    DateTime? @map("import_policy_date") @db.Date
+  totalFob            Decimal   @default(0) @map("total_fob") @db.Decimal(14, 2)
+  totalFreight        Decimal   @default(0) @map("total_freight") @db.Decimal(14, 2)
+  totalExpenses       Decimal   @default(0) @map("total_expenses") @db.Decimal(14, 2)
+  totalDai            Decimal   @default(0) @map("total_dai") @db.Decimal(14, 2)
+  importVat           Decimal   @default(0) @map("import_vat") @db.Decimal(14, 2)
+  totalCost           Decimal   @default(0) @map("total_cost") @db.Decimal(14, 2)
+  status              String    @default("draft")
+  notes               String?
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+  deletedAt           DateTime? @map("deleted_at")
+
+  company  Company         @relation(fields: [companyId], references: [id])
+  supplier Supplier        @relation(fields: [supplierId], references: [id])
+  purchase Purchase        @relation(fields: [purchaseId], references: [id])
+  user     User            @relation("RetaceoUser", fields: [userId], references: [id])
+  details  RetaceoDetail[]
+
+  @@index([purchaseId])
+  @@index([companyId, status])
+  @@index([supplierId])
+  @@index([userId])
+  @@map("retaceos")
+}
+
+model RetaceoDetail {
+  id             Int     @id @default(autoincrement()) @map("id_retaceo_detail")
+  retaceoId      Int     @map("id_retaceo")
+  purchaseItemId Int     @map("id_purchase_item")
+  productId      Int     @map("id_product")
+  quantity       Decimal @db.Decimal(12, 2)
+  costFob        Decimal @map("cost_fob") @db.Decimal(14, 2)
+  freightAmount  Decimal @default(0) @map("freight_amount") @db.Decimal(14, 2)
+  expenseAmount  Decimal @default(0) @map("expense_amount") @db.Decimal(14, 2)
+  daiAmount      Decimal @default(0) @map("dai_amount") @db.Decimal(14, 2)
+  unitCost       Decimal @default(0) @map("unit_cost") @db.Decimal(14, 4)
+  totalCost      Decimal @default(0) @map("total_cost") @db.Decimal(14, 2)
+
+  retaceo      Retaceo      @relation(fields: [retaceoId], references: [id], onDelete: Cascade)
+  purchaseItem PurchaseItem @relation(fields: [purchaseItemId], references: [id])
+  product      Product      @relation(fields: [productId], references: [id])
+
+  @@unique([retaceoId, purchaseItemId])
+  @@index([productId])
+  @@index([purchaseItemId])
+  @@map("retaceo_details")
 }

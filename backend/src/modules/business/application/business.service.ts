@@ -209,37 +209,8 @@ export class BusinessService {
     return data;
   }
 
-  async createPurchase(dto: any, userId?: number) {
-    const supplier = await this.assertSupplier(Number(dto.supplierId));
-    if (!supplier.isActive) throw new BadRequestException("El proveedor esta inactivo y no puede utilizarse en compras");
-    const items = this.normalizeItems(dto.items, "unitCost", true);
-    const total = this.total(items, "unitCost");
-    const data = await this.prisma.$transaction(async (tx) => {
-      const purchase = await tx.purchase.create({
-        data: {
-          supplierId: Number(dto.supplierId),
-          branchId: Number(dto.branchId),
-          documentNumber: dto.documentNumber,
-          total,
-          items: {
-            create: items.map((item) => ({
-              productId: item.productId,
-              locationId: item.locationId!,
-              quantity: item.quantity,
-              unitCost: item.unitCost!,
-              lineTotal: item.quantity * item.unitCost!,
-            })),
-          },
-        },
-        include: { supplier: true, branch: true, items: true },
-      });
-      for (const item of items) {
-        await this.incrementStock(tx, item.productId, item.locationId!, item.quantity);
-      }
-      return purchase;
-    });
-    await this.audit("purchases", "CREATE", data.id, null, data, userId);
-    return data;
+  async createPurchase(_dto: any, _userId?: number) {
+    throw new BadRequestException('Registre la recepcion desde una orden en Gestion de Compras');
   }
 
   async createQuotation(dto: any, userId?: number) {

@@ -42,7 +42,7 @@ type Catalogs = {
 
 const { can, canAny } = usePermissions();
 const levels: Array<{ id: Level; label: string; singular: string; icon: any; permission: string }> = [
-  { id: "companies", label: "Empresas", singular: "empresa", icon: Building2, permission: "companies" },
+  { id: "companies", label: "Empresa", singular: "empresa", icon: Building2, permission: "companies" },
   { id: "branches", label: "Sucursales", singular: "sucursal", icon: FolderTree, permission: "branches" },
   { id: "warehouses", label: "Almacenes", singular: "almacen", icon: Warehouse, permission: "warehouses" },
   { id: "locations", label: "Espacios", singular: "espacio", icon: MapPin, permission: "locations" },
@@ -342,7 +342,7 @@ onMounted(async () => {
       <div><p class="section-eyebrow">Estructura operativa</p><h1 class="page-title mt-1">Organización</h1><p class="page-subtitle">{{ activeCompany ? `Gestionando ${activeCompany.commercialName}: Empresa, sucursal, almacén y espacio.` : "Administra la estructura Empresa, Sucursal, Almacén y Espacio." }}</p></div>
       <div class="flex gap-2">
         <AppButton variant="outline" :disabled="loading" title="Actualizar" @click="loadAll"><RefreshCw class="h-4 w-4" :class="loading && 'animate-spin'" /><span class="hidden sm:inline">Actualizar</span></AppButton>
-        <AppButton v-if="can(`${activeConfig.permission}.create`)" @click="openCreate"><Plus class="h-4 w-4" />Nueva {{ activeConfig.singular }}</AppButton>
+        <AppButton v-if="activeLevel !== 'companies' && can(`${activeConfig.permission}.create`)" @click="openCreate"><Plus class="h-4 w-4" />Nueva {{ activeConfig.singular }}</AppButton>
       </div>
     </div>
 
@@ -377,7 +377,7 @@ onMounted(async () => {
               <td class="px-4 py-3"><button type="button" class="flex items-center gap-2 text-left font-medium text-fg" :class="['companies','branches','warehouses'].includes(activeLevel) && 'hover:text-accent'" @click="drillDown(item)">{{ entityName(activeLevel, item) }}<ChevronRight v-if="['companies','branches','warehouses'].includes(activeLevel)" class="h-4 w-4 opacity-0 transition group-hover:opacity-100" /></button></td>
               <td class="px-4 py-3 text-muted-fg">{{ entityDetail(activeLevel, item) }}</td>
               <td class="px-4 py-3"><AppBadge :variant="item.isActive ? 'success' : 'neutral'">{{ item.isActive ? "Activo" : "Inactivo" }}</AppBadge></td>
-              <td class="px-4 py-3"><div class="flex justify-end gap-1"><button v-if="can(`${activeConfig.permission}.update`)" type="button" class="grid h-8 w-8 place-items-center rounded-lg text-muted-fg hover:bg-surface-secondary hover:text-fg" title="Editar" @click="editItem(item)"><Edit2 class="h-4 w-4" /></button><button v-if="canAny([`${activeConfig.permission}.activate`, `${activeConfig.permission}.deactivate`])" type="button" class="grid h-8 w-8 place-items-center rounded-lg text-muted-fg hover:bg-surface-secondary hover:text-fg" :title="item.isActive ? 'Desactivar' : 'Activar'" @click="toggleStatus(item)"><Power class="h-4 w-4" /></button></div></td>
+              <td class="px-4 py-3"><div class="flex justify-end gap-1"><button v-if="can(`${activeConfig.permission}.update`)" type="button" class="grid h-8 w-8 place-items-center rounded-lg text-muted-fg hover:bg-surface-secondary hover:text-fg" title="Editar" @click="editItem(item)"><Edit2 class="h-4 w-4" /></button><button v-if="activeLevel !== 'companies' && canAny([`${activeConfig.permission}.activate`, `${activeConfig.permission}.deactivate`])" type="button" class="grid h-8 w-8 place-items-center rounded-lg text-muted-fg hover:bg-surface-secondary hover:text-fg" :title="item.isActive ? 'Desactivar' : 'Activar'" @click="toggleStatus(item)"><Power class="h-4 w-4" /></button></div></td>
             </tr>
             <tr v-if="!loading && !filteredRows.length"><td colspan="4" class="px-4 py-12 text-center text-muted-fg">No hay registros para esta seleccion.</td></tr>
           </tbody>
@@ -385,7 +385,7 @@ onMounted(async () => {
       </div>
 
       <div class="divide-y divide-border md:hidden">
-        <article v-for="item in filteredRows" :key="item.id" class="p-4"><div class="flex items-start justify-between gap-3"><button type="button" class="min-w-0 text-left" @click="drillDown(item)"><p class="truncate font-medium text-fg">{{ entityName(activeLevel, item) }}</p><p class="mt-1 text-xs leading-5 text-muted-fg">{{ entityDetail(activeLevel, item) }}</p></button><AppBadge :variant="item.isActive ? 'success' : 'neutral'">{{ item.isActive ? "Activo" : "Inactivo" }}</AppBadge></div><div class="mt-3 flex justify-end gap-2 border-t border-border pt-3"><AppButton v-if="can(`${activeConfig.permission}.update`)" size="sm" variant="ghost" @click="editItem(item)"><Edit2 class="h-4 w-4" />Editar</AppButton><button v-if="canAny([`${activeConfig.permission}.activate`, `${activeConfig.permission}.deactivate`])" type="button" class="grid h-8 w-8 place-items-center rounded-lg text-muted-fg hover:bg-surface-secondary" :title="item.isActive ? 'Desactivar' : 'Activar'" @click="toggleStatus(item)"><Power class="h-4 w-4" /></button></div></article>
+        <article v-for="item in filteredRows" :key="item.id" class="p-4"><div class="flex items-start justify-between gap-3"><button type="button" class="min-w-0 text-left" @click="drillDown(item)"><p class="truncate font-medium text-fg">{{ entityName(activeLevel, item) }}</p><p class="mt-1 text-xs leading-5 text-muted-fg">{{ entityDetail(activeLevel, item) }}</p></button><AppBadge :variant="item.isActive ? 'success' : 'neutral'">{{ item.isActive ? "Activo" : "Inactivo" }}</AppBadge></div><div class="mt-3 flex justify-end gap-2 border-t border-border pt-3"><AppButton v-if="can(`${activeConfig.permission}.update`)" size="sm" variant="ghost" @click="editItem(item)"><Edit2 class="h-4 w-4" />Editar</AppButton><button v-if="activeLevel !== 'companies' && canAny([`${activeConfig.permission}.activate`, `${activeConfig.permission}.deactivate`])" type="button" class="grid h-8 w-8 place-items-center rounded-lg text-muted-fg hover:bg-surface-secondary" :title="item.isActive ? 'Desactivar' : 'Activar'" @click="toggleStatus(item)"><Power class="h-4 w-4" /></button></div></article>
         <p v-if="!loading && !filteredRows.length" class="px-4 py-12 text-center text-sm text-muted-fg">No hay registros para esta seleccion.</p>
       </div>
     </section>

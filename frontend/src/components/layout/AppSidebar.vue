@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { LogOut, X } from "lucide-vue-next";
 import { navigationGroups } from "../../config/navigation.config";
 import { usePermissions } from "../../composables/usePermissions";
 import { useAuthStore } from "../../stores/auth.store";
 
 const router = useRouter();
+const route = useRoute();
 const authStore = useAuthStore();
 const { can, currentUser } = usePermissions();
 
@@ -17,7 +18,9 @@ const visibleGroups = computed(() =>
   navigationGroups
     .map((group) => ({
       ...group,
-      items: group.items.filter((item) => item.permission === null || can(item.permission)),
+      items: group.items.map(item => ({ ...item, sections: item.sections?.filter(section => can(section.permission)) }))
+        .filter(item => item.permission === null || can(item.permission) || item.sections?.length)
+        .map(item => ({ ...item, route: item.sections?.[0]?.route ?? item.route })),
     }))
     .filter((group) => group.items.length > 0),
 );
@@ -68,6 +71,7 @@ async function handleLogout() {
             :to="item.route"
             class="group flex min-h-10 items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-fg transition-colors hover:bg-surface-secondary hover:text-fg"
             active-class="!bg-sidebar-active !text-sidebar-active-fg shadow-sm"
+            :class="item.sections?.some(section => section.route === route.path) ? '!bg-sidebar-active !text-sidebar-active-fg shadow-sm' : ''"
             @click="emit('close')"
           >
             <component :is="item.icon" class="h-[18px] w-[18px] shrink-0" />
@@ -85,6 +89,7 @@ async function handleLogout() {
         <div class="min-w-0 flex-1">
           <p class="truncate text-sm font-medium text-fg">{{ currentUser?.username }}</p>
           <p class="truncate text-xs text-muted-fg">{{ currentUser?.email }}</p>
+          <RouterLink to="/account/security" class="mt-1 block text-xs text-muted-fg underline-offset-4 hover:text-fg hover:underline" @click="emit('close')">Seguridad de mi cuenta</RouterLink>
         </div>
         <button
           type="button"

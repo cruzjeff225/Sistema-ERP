@@ -8,6 +8,11 @@ const router = createRouter({
     return { top: 0 };
   },
   routes: [
+    { path: "/inventory", name: "inventory", component: () => import("../views/InventoryView.vue"), meta: { permission: "inventory.view" } },
+    { path: "/purchases/comparison", name: "quotation-comparison", component: () => import("../views/QuotationComparisonView.vue"), meta: { permission: "purchase_quotations.view" } },
+    { path: "/purchases/expense-types", name: "expense-types", component: () => import("../views/ExpenseTypesView.vue"), meta: { permission: "expense_types.view" } },
+    { path: "/purchases/receipts", name: "purchase-receipts", component: () => import("../views/PurchaseReceiptsView.vue"), meta: { permission: "purchases.view" } },
+    { path: "/account/security", name: "account-security", component: () => import("../views/AccountSecurityView.vue") },
     {
       path: "/",
       redirect: "/dashboard",
@@ -60,10 +65,31 @@ const router = createRouter({
       meta: { permission: "products.view" },
     },
     {
-      path: "/customers",
-      name: "customers",
-      component: () => import("../views/CustomersView.vue"),
-      meta: { permission: "customers.view" },
+      path: "/purchases/requests",
+      name: "purchase-requests",
+      component: () => import("../views/PurchasesView.vue"),
+      props: { section: "requests" },
+      meta: { permission: "purchase_requests.view" },
+    },
+    {
+      path: "/purchases/quotations",
+      name: "purchase-quotations",
+      component: () => import("../views/PurchasesView.vue"),
+      props: { section: "quotations" },
+      meta: { permission: "purchase_quotations.view" },
+    },
+    {
+      path: "/purchases/orders",
+      name: "purchase-orders",
+      component: () => import("../views/PurchasesView.vue"),
+      props: { section: "orders" },
+      meta: { permission: "purchase_orders.view" },
+    },
+    {
+      path: "/purchases/retaceos",
+      name: "retaceos",
+      component: () => import("../views/RetaceosView.vue"),
+      meta: { permission: "retaceos.view" },
     },
     {
       path: "/audit",

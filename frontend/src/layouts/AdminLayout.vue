@@ -3,6 +3,7 @@ import { ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import AppSidebar from '../components/layout/AppSidebar.vue';
 import AppTopbar from '../components/layout/AppTopbar.vue';
+import PurchaseSections from '../components/layout/PurchaseSections.vue';
 
 defineProps<{ title: string }>();
 
@@ -31,6 +32,7 @@ watch(
             <AppTopbar :title="title" @toggle-sidebar="sidebarOpen = !sidebarOpen" />
             <main class="min-h-0 flex-1 overflow-y-auto overscroll-contain">
                 <div class="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 lg:px-8 lg:py-7">
+                    <PurchaseSections />
                     <slot />
                 </div>
             </main>

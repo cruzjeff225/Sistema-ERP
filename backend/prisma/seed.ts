@@ -26,21 +26,27 @@ const MODULES = [
   "logs",
   "suppliers",
   "supplier_contacts",
-  "customers",
   "categories",
   "subcategories",
   "units",
   "products",
   "product_images",
   "product_suppliers",
+  "purchase_requests",
+  "purchase_quotations",
+  "purchase_orders",
+  "expense_types",
+  "purchase_expenses",
+  "purchases",
+  "retaceos",
   "dashboard",
+  "inventory",
 ] as const;
 
 type ModuleName = (typeof MODULES)[number];
 
 const REMOVED_MODULES = [
-  "inventory",
-  "purchases",
+  "customers",
   "quotations",
   "sales",
   "transfers",
@@ -49,10 +55,8 @@ const REMOVED_MODULES = [
 ];
 
 const REMOVED_PERMISSION_ACTIONS = [
-  "inventory.view",
+  "customers.view", "customers.create", "customers.update", "customers.activate", "customers.deactivate",
   "inventory.update",
-  "purchases.view",
-  "purchases.create",
   "quotations.view",
   "quotations.create",
   "sales.view",
@@ -74,6 +78,8 @@ const PERMISSIONS: Array<{
   module: ModuleName;
   isSystem: boolean;
 }> = [
+  ["inventory.view", "Consultar inventario", "Existencias y kardex por empresa", "inventory"],
+  ["inventory.adjust", "Ajustar inventario", "Entradas y salidas justificadas", "inventory"],
   ["users.view", "Ver usuarios", "Permite listar y consultar usuarios", "users"],
   ["users.create", "Crear usuarios", "Permite crear nuevos usuarios", "users"],
   ["users.update", "Actualizar usuarios", "Permite editar usuarios existentes", "users"],
@@ -130,11 +136,6 @@ const PERMISSIONS: Array<{
   ["supplier_contacts.update", "Actualizar contactos de proveedores", "Permite modificar contactos de proveedores", "supplier_contacts"],
   ["supplier_contacts.activate", "Activar contactos de proveedores", "Permite activar contactos de proveedores", "supplier_contacts"],
   ["supplier_contacts.deactivate", "Desactivar contactos de proveedores", "Permite desactivar contactos de proveedores", "supplier_contacts"],
-  ["customers.view", "Ver clientes", "Permite consultar clientes", "customers"],
-  ["customers.create", "Crear clientes", "Permite registrar clientes", "customers"],
-  ["customers.update", "Actualizar clientes", "Permite modificar clientes", "customers"],
-  ["customers.activate", "Activar clientes", "Permite activar clientes", "customers"],
-  ["customers.deactivate", "Desactivar clientes", "Permite desactivar clientes", "customers"],
   ["categories.view", "Ver categorias de productos", "Permite consultar categorias", "categories"],
   ["categories.create", "Crear categorias de productos", "Permite registrar categorias", "categories"],
   ["categories.update", "Actualizar categorias de productos", "Permite modificar categorias", "categories"],
@@ -166,6 +167,45 @@ const PERMISSIONS: Array<{
   ["product_suppliers.update", "Actualizar abastecimiento de productos", "Permite modificar asociaciones", "product_suppliers"],
   ["product_suppliers.activate", "Activar abastecimiento de productos", "Permite activar asociaciones", "product_suppliers"],
   ["product_suppliers.deactivate", "Desactivar abastecimiento de productos", "Permite desactivar asociaciones", "product_suppliers"],
+  ["purchase_requests.view", "Ver solicitudes de compra", "Permite consultar solicitudes y su trazabilidad", "purchase_requests"],
+  ["purchase_requests.create", "Crear solicitudes de compra", "Permite registrar solicitudes con múltiples productos", "purchase_requests"],
+  ["purchase_requests.update", "Actualizar solicitudes de compra", "Permite modificar y enviar solicitudes", "purchase_requests"],
+  ["purchase_requests.approve", "Aprobar solicitudes de compra", "Permite aprobar solicitudes enviadas", "purchase_requests"],
+  ["purchase_requests.reject", "Rechazar solicitudes de compra", "Permite rechazar solicitudes enviadas", "purchase_requests"],
+  ["purchase_requests.cancel", "Cancelar solicitudes de compra", "Permite cancelar solicitudes conservando el historial", "purchase_requests"],
+  ["purchase_quotations.view", "Ver cotizaciones de compra", "Permite consultar y comparar ofertas", "purchase_quotations"],
+  ["purchase_quotations.create", "Registrar cotizaciones de compra", "Permite registrar ofertas de proveedores", "purchase_quotations"],
+  ["purchase_quotations.update", "Actualizar cotizaciones de compra", "Permite modificar y evaluar ofertas", "purchase_quotations"],
+  ["purchase_quotations.select", "Seleccionar cotizaciones", "Permite seleccionar la oferta que originará una orden", "purchase_quotations"],
+  ["purchase_quotations.reject", "Rechazar cotizaciones", "Permite rechazar ofertas conservando el historial", "purchase_quotations"],
+  ["purchase_quotations.cancel", "Cancelar cotizaciones", "Permite cancelar ofertas", "purchase_quotations"],
+  ["purchase_orders.view", "Ver órdenes de compra", "Permite consultar órdenes y recepciones", "purchase_orders"],
+  ["purchase_orders.create", "Crear órdenes de compra", "Permite generar órdenes desde cotizaciones seleccionadas", "purchase_orders"],
+  ["purchase_orders.update", "Actualizar órdenes de compra", "Permite editar y enviar órdenes a aprobación", "purchase_orders"],
+  ["purchase_orders.approve", "Aprobar órdenes de compra", "Permite autorizar órdenes", "purchase_orders"],
+  ["purchase_orders.cancel", "Cancelar órdenes de compra", "Permite cancelar órdenes sin borrar su historial", "purchase_orders"],
+  ["purchase_orders.send", "Enviar órdenes de compra", "Permite marcar órdenes como enviadas al proveedor", "purchase_orders"],
+  ["purchase_orders.receive", "Recibir órdenes de compra", "Permite registrar recepciones parciales", "purchase_orders"],
+  ["expense_types.view", "Ver tipos de gasto", "Permite consultar el catálogo de gastos", "expense_types"],
+  ["expense_types.create", "Crear tipos de gasto", "Permite registrar tipos de gasto", "expense_types"],
+  ["expense_types.update", "Actualizar tipos de gasto", "Permite modificar tipos de gasto", "expense_types"],
+  ["expense_types.activate", "Activar tipos de gasto", "Permite activar tipos de gasto", "expense_types"],
+  ["expense_types.deactivate", "Desactivar tipos de gasto", "Permite desactivar tipos de gasto", "expense_types"],
+  ["purchase_expenses.view", "Ver gastos de compra", "Permite consultar gastos y sus documentos", "purchase_expenses"],
+  ["purchase_expenses.create", "Registrar gastos de compra", "Permite registrar gastos y adjuntar evidencias", "purchase_expenses"],
+  ["purchase_expenses.update", "Actualizar gastos de compra", "Permite modificar gastos y administrar evidencias", "purchase_expenses"],
+  ["purchases.view", "Ver compras y recepciones", "Permite consultar recepciones y su trazabilidad", "purchases"],
+  ["purchases.create", "Registrar compras y recepciones", "Permite registrar mercancía recibida desde una orden", "purchases"],
+  ["purchases.update", "Actualizar compras", "Permite modificar datos de recepción", "purchases"],
+  ["purchases.cancel", "Cancelar compras", "Permite cancelar una recepción con control de inventario", "purchases"],
+  ["purchases.close", "Cerrar compras", "Permite cerrar una recepción", "purchases"],
+  ["retaceos.view", "Ver retaceos", "Permite consultar costos reales y porcentajes", "retaceos"],
+  ["retaceos.create", "Crear retaceos", "Permite iniciar un retaceo desde una recepción", "retaceos"],
+  ["retaceos.update", "Actualizar retaceos", "Permite modificar retaceos en borrador", "retaceos"],
+  ["retaceos.calculate", "Calcular retaceos", "Permite distribuir costos proporcionalmente al FOB", "retaceos"],
+  ["retaceos.verify", "Verificar retaceos", "Permite validar el cálculo del costo real", "retaceos"],
+  ["retaceos.close", "Cerrar retaceos", "Permite cerrar el retaceo y actualizar costos", "retaceos"],
+  ["retaceos.cancel", "Cancelar retaceos", "Permite cancelar retaceos conservando el historial", "retaceos"],
   ["dashboard.view", "Ver dashboard", "Permite consultar indicadores del dashboard", "dashboard"],
 ].map(([action, name, description, module]) => ({
   action,
@@ -176,14 +216,13 @@ const PERMISSIONS: Array<{
 }));
 
 async function cleanupRemovedModules() {
-  await prisma.rolePermission.deleteMany({
-    where: { permission: { action: { in: REMOVED_PERMISSION_ACTIONS } } },
-  });
-  await prisma.permission.deleteMany({
+  await prisma.permission.updateMany({
     where: { action: { in: REMOVED_PERMISSION_ACTIONS } },
+    data: { isActive: false, deletedAt: new Date() },
   });
-  await prisma.module.deleteMany({
+  await prisma.module.updateMany({
     where: { name: { in: REMOVED_MODULES } },
+    data: { isActive: false, deletedAt: new Date() },
   });
 }
 
@@ -334,6 +373,30 @@ async function seedCountries() {
   }
 }
 
+async function seedExpenseTypes() {
+  const companies = await prisma.company.findMany({ where: { deletedAt: null }, select: { id: true } });
+  const types = [
+    ["Flete", "Transporte de mercancía"],
+    ["Seguro", "Seguro asociado al envío"],
+    ["Transporte", "Transporte terrestre o interno"],
+    ["Manejo", "Manipulación, carga y descarga"],
+    ["Embalaje", "Materiales y servicios de empaque"],
+    ["Aduana", "Aranceles y trámites aduanales"],
+    ["Documentación", "Documentos y trámites de envío"],
+    ["Almacenamiento", "Almacenamiento temporal"],
+    ["Otros", "Otros gastos asociados a la compra"],
+  ] as const;
+  for (const company of companies) {
+    for (const [name, description] of types) {
+      await prisma.expenseType.upsert({
+        where: { companyId_name: { companyId: company.id, name } },
+        update: { description, isActive: true, deletedAt: null },
+        create: { companyId: company.id, name, description },
+      });
+    }
+  }
+}
+
 async function seedAdminUser(superadminRole: { id: number }) {
   const adminEmail = process.env.SEED_ADMIN_EMAIL?.trim().toLowerCase();
   const adminUsername = process.env.SEED_ADMIN_USERNAME?.trim();
@@ -398,6 +461,7 @@ async function main(): Promise<void> {
   await seedOrganizationCatalogs();
   await seedProductCatalogs();
   await seedCountries();
+  await seedExpenseTypes();
   const adminUser = await seedAdminUser(superadminRole);
 
   console.log(`Modulos asegurados: ${MODULES.join(", ")}`);

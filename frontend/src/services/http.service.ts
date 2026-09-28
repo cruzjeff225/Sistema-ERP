@@ -21,7 +21,7 @@ http.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   if (accessToken) {
     config.headers.Authorization = `Bearer ${accessToken}`;
   }
-  if (activeCompanyId.value) {
+  if (activeCompanyId.value && !config.headers["X-Company-Id"]) {
     config.headers["X-Company-Id"] = String(activeCompanyId.value);
   }
   return config;

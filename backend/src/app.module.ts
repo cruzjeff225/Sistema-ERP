@@ -12,9 +12,10 @@ import { PermissionsModule } from "./modules/permissions/permissions.module";
 import { OrganizationModule } from "./modules/organization/organization.module";
 import { AuditModule } from "./modules/audit/audit.module";
 import { SuppliersModule } from "./modules/suppliers/suppliers.module";
-import { CustomersModule } from "./modules/customers/customers.module";
 import { DashboardModule } from "./modules/dashboard/dashboard.module";
 import { ProductsModule } from "./modules/products/products.module";
+import { PurchasesModule } from "./modules/purchases/purchases.module";
+import { InventoryModule } from "./modules/inventory/inventory.module";
 import { JwtAuthGuard } from "./modules/auth/presentation/guards/jwt-auth.guard";
 import { PermissionsGuard } from "./common/guards/permissions.guard";
 
@@ -46,9 +47,10 @@ import { PermissionsGuard } from "./common/guards/permissions.guard";
     OrganizationModule,
     AuditModule,
     SuppliersModule,
-    CustomersModule,
     DashboardModule,
     ProductsModule,
+    PurchasesModule,
+    InventoryModule,
   ],
   providers: [
     // Aplica la autenticación JWT a todos los endpoints

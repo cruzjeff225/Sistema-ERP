@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { randomUUID } from "crypto";
 import { Prisma } from "@prisma/client";
+import { companyTransaction } from "../../../../common/services/company-transaction";
 import { PrismaService } from "../../../../infrastructure/database/prisma/prisma.service";
 import { AuditService } from "../../../audit/application/services/audit.service";
 import { CreateProductCategoryDto } from "../dto/create-product-category.dto";
@@ -178,6 +179,9 @@ export class ProductsService {
   async updateSubcategory(id: number, dto: UpdateProductSubcategoryDto, userId: number) {
     const current = await this.subcategory(id);
     const categoryId = dto.categoryId ?? current.categoryId;
+    if (categoryId !== current.categoryId && await this.prisma.product.count({ where: { subcategoryId: id } })) {
+      throw new ConflictException("No se puede cambiar la categoria de una subcategoria asociada a productos");
+    }
     if (dto.categoryId !== undefined) await this.assertCategoryActive(dto.categoryId);
     if (dto.name && (dto.name.trim().toLowerCase() !== current.name.toLowerCase() || categoryId !== current.categoryId)) {
       await this.assertUniqueSubcategoryName(categoryId, dto.name, id);
@@ -254,6 +258,7 @@ export class ProductsService {
   async createProduct(dto: CreateProductDto, userId: number, companyId: number) {
     await this.assertUniqueSku(dto.sku, companyId);
     await this.assertProductRelations(dto.categoryId, dto.subcategoryId, dto.purchaseUnitId, dto.saleUnitId);
+    this.assertCommercialValues(dto.unitCost ?? 0, dto.salePrice ?? 0);
     return this.prisma.$transaction(async (tx) => {
       const created = await tx.product.create({
         data: this.productCreateData(dto, companyId, `PENDING-${randomUUID()}`),
@@ -277,7 +282,13 @@ export class ProductsService {
       dto.purchaseUnitId ?? current.purchaseUnitId,
       dto.saleUnitId ?? current.saleUnitId,
     );
-    return this.prisma.$transaction(async (tx) => {
+    this.assertCommercialValues(dto.unitCost ?? Number(current.unitCost), dto.salePrice ?? Number(current.salePrice));
+    return companyTransaction(this.prisma, companyId, async (tx) => {
+      const fresh = await tx.product.findUniqueOrThrow({ where: { id } });
+      if (dto.purchaseUnitId !== undefined && dto.purchaseUnitId !== fresh.purchaseUnitId) {
+        const referenced = await tx.product.count({ where: { id, OR: [{ stocks: { some: {} } }, { purchaseRequestDetails: { some: {} } }, { purchaseItems: { some: {} } }] } });
+        if (referenced) throw new ConflictException("No se puede cambiar la unidad de compra de un producto con historial; registre otro producto para la nueva unidad");
+      }
       const product = await tx.product.update({ where: { id }, data: this.productUpdateData(dto), include: productInclude });
       await this.record(tx, "products", "UPDATE", id, current, product, userId);
       return product;
@@ -287,7 +298,8 @@ export class ProductsService {
   async updateProductStatus(id: number, isActive: boolean, userId: number, companyId: number) {
     const current = await this.product(id, companyId);
     if (isActive) await this.assertProductRelations(current.categoryId, current.subcategoryId, current.purchaseUnitId, current.saleUnitId);
-    return this.prisma.$transaction(async (tx) => {
+    return companyTransaction(this.prisma, companyId, async (tx) => {
+      if (!isActive && await tx.inventoryStock.count({ where: { productId: id, quantity: { gt: 0 } } })) throw new ConflictException("No se puede desactivar un producto con existencias");
       const product = await tx.product.update({ where: { id }, data: { isActive }, include: productInclude });
       await this.record(tx, "products", isActive ? "ACTIVATE" : "DEACTIVATE", id, current, product, userId);
       return product;
@@ -423,7 +435,7 @@ export class ProductsService {
       companyId,
       categoryId: dto.categoryId,
       subcategoryId: dto.subcategoryId,
-      sku: dto.sku.trim(),
+      sku: this.normalizedSku(dto.sku),
       internalCode,
       name: dto.name.trim(),
       originalCode: this.optionalText(dto.originalCode),
@@ -442,7 +454,7 @@ export class ProductsService {
     return {
       ...(dto.categoryId !== undefined ? { categoryId: dto.categoryId } : {}),
       ...(dto.subcategoryId !== undefined ? { subcategoryId: dto.subcategoryId } : {}),
-      ...(dto.sku !== undefined ? { sku: dto.sku.trim() } : {}),
+      ...(dto.sku !== undefined ? { sku: this.normalizedSku(dto.sku) } : {}),
       ...(dto.name !== undefined ? { name: dto.name.trim() } : {}),
       ...(dto.originalCode !== undefined ? { originalCode: this.optionalText(dto.originalCode) } : {}),
       ...(dto.size !== undefined ? { size: this.optionalText(dto.size) } : {}),
@@ -458,6 +470,19 @@ export class ProductsService {
 
   private optionalText(value?: string) {
     return value?.trim() || null;
+  }
+
+  private normalizedSku(value: string) {
+    return value.trim().toUpperCase();
+  }
+
+  private assertCommercialValues(unitCost: number, salePrice: number) {
+    if (!Number.isFinite(unitCost) || !Number.isFinite(salePrice) || unitCost < 0 || salePrice < 0) {
+      throw new BadRequestException("El costo y el precio de venta deben ser valores numéricos iguales o mayores que cero");
+    }
+    if (salePrice < unitCost) {
+      throw new BadRequestException("El precio de venta no puede ser menor que el costo unitario");
+    }
   }
 
   private async category(id: number) {
@@ -551,7 +576,7 @@ export class ProductsService {
 
   private async assertUniqueSku(sku: string, companyId: number, ignoreId?: number) {
     const product = await this.prisma.product.findFirst({
-      where: { companyId, sku: { equals: sku.trim(), mode: "insensitive" }, deletedAt: null, ...(ignoreId ? { id: { not: ignoreId } } : {}) },
+      where: { sku: { equals: this.normalizedSku(sku), mode: "insensitive" }, ...(ignoreId ? { id: { not: ignoreId } } : {}) },
     });
     if (product) throw new ConflictException("El SKU ya está registrado");
   }

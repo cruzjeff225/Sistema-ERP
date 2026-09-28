@@ -8,6 +8,10 @@
     "start": "nest start",
     "seed": "tsx prisma/seed.ts",
     "verify:modules": "tsx scripts/verify-modules.ts",
+    "verify:users-security": "tsx scripts/verify-user-security.ts",
+    "verify:roles": "tsx scripts/verify-roles-module.ts",
+    "verify:purchases": "tsx scripts/verify-purchases-module.ts",
+    "verify:purchases-regressions": "tsx scripts/verify-purchase-regressions.ts",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/src/main"

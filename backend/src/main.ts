@@ -9,6 +9,7 @@ import helmet from "helmet";
 import { AppModule } from "./app.module";
 import { HttpExceptionFilter } from "./common/filters/http-exception.filter";
 import cookieParser from 'cookie-parser';
+import type { Request, Response } from "express";
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -29,6 +30,8 @@ async function bootstrap() {
   app.use(cookieParser());
   const uploadDirectory = join(process.cwd(), "uploads");
   mkdirSync(join(uploadDirectory, "product-images"), { recursive: true });
+  mkdirSync(join(uploadDirectory, "purchase-expenses"), { recursive: true });
+  app.use("/uploads/purchase-expenses", (_request: Request, response: Response) => response.sendStatus(404));
   app.useStaticAssets(uploadDirectory, { prefix: "/uploads/" });
 
   app.enableCors({

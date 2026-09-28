@@ -58,7 +58,7 @@ export class RolesController {
   }
 
   // Crea un nuevo rol
-  @RequirePermissions(ROLE_PERMISSIONS.CREATE)
+  @RequirePermissions(ROLE_PERMISSIONS.CREATE, ROLE_PERMISSIONS.ASSIGN_PERMISSIONS)
   @Post()
   @ApiOperation({ summary: "Crear rol" })
   async create(@Body() dto: CreateRoleDto, @CurrentUser() user: AuthenticatedUser) {
@@ -72,7 +72,7 @@ export class RolesController {
   }
 
   // Actualiza los datos editables de un rol
-  @RequirePermissions(ROLE_PERMISSIONS.UPDATE)
+  @RequirePermissions(ROLE_PERMISSIONS.UPDATE, ROLE_PERMISSIONS.ASSIGN_PERMISSIONS)
   @Patch(":id")
   @ApiOperation({ summary: "Actualizar rol" })
   async update(
@@ -143,7 +143,7 @@ export class RolesController {
     };
   }
 
-  @RequirePermissions(ROLE_PERMISSIONS.CREATE)
+  @RequirePermissions(ROLE_PERMISSIONS.CREATE, ROLE_PERMISSIONS.ASSIGN_PERMISSIONS)
   @Post(":id/duplicate")
   @ApiOperation({ summary: "Duplicar un rol con sus permisos" })
   async duplicate(

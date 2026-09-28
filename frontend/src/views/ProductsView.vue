@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 import {
   Boxes,
   ImageOff,
@@ -92,6 +92,7 @@ const imagePreview = ref<ProductImage | null>(null);
 const imageErrors = ref<Record<number, true>>({});
 const errorMessage = ref("");
 const successMessage = ref("");
+const productErrors = ref<Record<string, string>>({});
 
 const productForm = reactive({
   sku: "",
@@ -139,6 +140,51 @@ function showSuccess(message: string) {
   errorMessage.value = "";
   successMessage.value = message;
 }
+
+function validateProductForm() {
+  const errors: Record<string, string> = {};
+  const sku = productForm.sku.trim().toUpperCase();
+  const name = productForm.name.trim();
+  const amount = (value: string, field: "unitCost" | "salePrice", label: string) => {
+    const normalized = value.trim().replace(",", ".");
+    if (!/^\d+(?:\.\d{1,2})?$/.test(normalized)) {
+      errors[field] = `${label} debe ser un monto igual o mayor que cero, con máximo dos decimales`;
+      return Number.NaN;
+    }
+    return Number(normalized);
+  };
+
+  if (!/^[A-Z0-9][A-Z0-9._/-]{2,79}$/.test(sku)) {
+    errors.sku = "Usa 3 a 80 caracteres: letras, números, punto, guion, guion bajo o barra";
+  }
+  if (name.length < 3) errors.name = "Escribe un nombre de al menos 3 caracteres";
+  if (!Number.isInteger(Number(productForm.categoryId)) || Number(productForm.categoryId) <= 0) errors.categoryId = "Selecciona una categoría";
+  if (!Number.isInteger(Number(productForm.subcategoryId)) || Number(productForm.subcategoryId) <= 0) errors.subcategoryId = "Selecciona una subcategoría";
+  if (!Number.isInteger(Number(productForm.purchaseUnitId)) || Number(productForm.purchaseUnitId) <= 0) errors.purchaseUnitId = "Selecciona la unidad de compra";
+  if (!Number.isInteger(Number(productForm.saleUnitId)) || Number(productForm.saleUnitId) <= 0) errors.saleUnitId = "Selecciona la unidad de venta";
+
+  const unitCost = amount(productForm.unitCost, "unitCost", "El costo unitario");
+  const salePrice = amount(productForm.salePrice, "salePrice", "El precio de venta");
+  if (Number.isFinite(unitCost) && Number.isFinite(salePrice) && salePrice < unitCost) {
+    errors.salePrice = "El precio de venta no puede ser menor que el costo unitario";
+  }
+
+  productErrors.value = errors;
+  if (Object.keys(errors).length) {
+    errorMessage.value = "Revisa los campos marcados antes de guardar el producto.";
+    return false;
+  }
+
+  productForm.sku = sku;
+  productForm.name = name;
+  productForm.unitCost = String(unitCost);
+  productForm.salePrice = String(salePrice);
+  return true;
+}
+
+watch(productForm, () => {
+  if (Object.keys(productErrors.value).length) productErrors.value = {};
+}, { deep: true });
 
 function money(value: number | string) {
   return new Intl.NumberFormat("es-SV", { style: "currency", currency: "USD" }).format(Number(value));
@@ -246,6 +292,7 @@ function onFilterCategoryChange() {
 }
 
 async function saveProduct() {
+  if (!validateProductForm()) return;
   saving.value = true;
   try {
     const { internalCode: _internalCode, ...productData } = productForm;
@@ -306,14 +353,23 @@ function catalogEndpoint(kind: CatalogKind) {
 }
 
 async function saveCatalog() {
+  const name = catalogForm.name.trim();
+  if (name.length < 2) {
+    errorMessage.value = "El nombre debe tener al menos 2 caracteres.";
+    return;
+  }
+  if (catalogKind.value === "subcategory" && (!Number.isInteger(Number(catalogForm.categoryId)) || Number(catalogForm.categoryId) <= 0)) {
+    errorMessage.value = "Selecciona la categoría a la que pertenece la subcategoría.";
+    return;
+  }
   saving.value = true;
   try {
     const payload =
       catalogKind.value === "category"
-        ? { name: catalogForm.name, description: catalogForm.description }
+        ? { name, description: catalogForm.description.trim() }
         : catalogKind.value === "subcategory"
-          ? { name: catalogForm.name, description: catalogForm.description, categoryId: Number(catalogForm.categoryId) }
-          : { name: catalogForm.name, type: catalogForm.type };
+          ? { name, description: catalogForm.description.trim(), categoryId: Number(catalogForm.categoryId) }
+          : { name, type: catalogForm.type };
     const endpoint = catalogEndpoint(catalogKind.value);
     await (editingId.value ? http.patch(`${endpoint}/${editingId.value}`, payload) : http.post(endpoint, payload));
     const labels: Record<CatalogKind, string> = { category: "Categoría", subcategory: "Subcategoría", unit: "Unidad" };
@@ -356,7 +412,14 @@ function openImageEdit(image: ProductImage) {
 
 function selectImageFile(event: Event) {
   const target = event.target as HTMLInputElement;
-  imageFile.value = target.files?.[0] ?? null;
+  const file = target.files?.[0] ?? null;
+  if (file && (!["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 5_000_000)) {
+    imageFile.value = null;
+    errorMessage.value = "Selecciona una imagen JPG, PNG o WEBP de hasta 5 MB.";
+    target.value = "";
+    return;
+  }
+  imageFile.value = file;
 }
 
 async function saveImage() {
@@ -365,6 +428,10 @@ async function saveImage() {
   const imageId = editingId.value;
   if (!imageFile.value && !path) {
     showError(new Error("Seleccione un archivo o indique una URL"), "Debe indicar una imagen");
+    return;
+  }
+  if (!imageFile.value && !/^(https?:\/\/|data:image\/|\/uploads\/product-images\/[A-Za-z0-9._-]+$)/i.test(path)) {
+    errorMessage.value = "Ingresa una URL http(s) válida o carga una imagen desde tu equipo.";
     return;
   }
   saving.value = true;
@@ -428,6 +495,10 @@ function openSupplier() {
 
 async function saveSupplier() {
   if (!selected.value) return;
+  if (!Number.isInteger(Number(supplierForm.supplierId)) || Number(supplierForm.supplierId) <= 0) {
+    errorMessage.value = "Selecciona un proveedor antes de asociarlo.";
+    return;
+  }
   saving.value = true;
   try {
     await http.post("/product-suppliers", {
@@ -512,7 +583,76 @@ onMounted(load);
     <section v-else class="rounded-lg border border-border bg-surface"><header class="flex flex-wrap items-center justify-between gap-4 border-b border-border px-5 py-4"><div><h2 class="text-base font-semibold text-fg">{{ activeTab === 'categories' ? 'Categorías' : activeTab === 'subcategories' ? 'Subcategorías' : 'Unidades de medida' }}</h2><p class="mt-1 text-sm text-muted-fg">{{ activeTab === 'categories' ? 'Clasificación principal del catálogo.' : activeTab === 'subcategories' ? 'Nivel de detalle dentro de cada categoría.' : 'Unidades separadas para compra y venta.' }}</p></div><AppButton v-if="activeTab === 'categories' && can('categories.create')" @click="openCatalog('category')"><Plus class="h-4 w-4" />Categoría</AppButton><AppButton v-else-if="activeTab === 'subcategories' && can('subcategories.create')" @click="openCatalog('subcategory')"><Plus class="h-4 w-4" />Subcategoría</AppButton><AppButton v-else-if="activeTab === 'units' && can('units.create')" @click="openCatalog('unit')"><Plus class="h-4 w-4" />Unidad</AppButton></header><div class="overflow-x-auto"><table class="w-full min-w-[680px] text-left text-sm"><thead class="border-b border-border bg-surface-secondary text-xs uppercase text-muted-fg"><tr><th class="px-5 py-3">Nombre</th><th class="px-5 py-3">{{ activeTab === 'subcategories' ? 'Categoría padre' : activeTab === 'units' ? 'Uso' : 'Uso en catálogo' }}</th><th class="px-5 py-3">Estado</th><th class="w-28 px-5 py-3"></th></tr></thead><tbody class="divide-y divide-border"><template v-if="activeTab === 'categories'"><tr v-for="row in categories" :key="row.id"><td class="px-5 py-4"><p class="font-medium text-fg">{{ row.name }}</p><p class="mt-0.5 text-xs text-muted-fg">{{ row.description || 'Sin descripción' }}</p></td><td class="px-5 py-4 text-muted-fg">{{ row._count?.subcategories ?? 0 }} subcategorías / {{ row._count?.products ?? 0 }} productos</td><td class="px-5 py-4"><AppBadge :variant="row.isActive ? 'success' : 'neutral'">{{ row.isActive ? 'Activo' : 'Inactivo' }}</AppBadge></td><td class="px-5 py-4"><div class="flex gap-1"><button v-if="can('categories.update')" type="button" class="grid h-8 w-8 place-items-center rounded-md hover:bg-surface-secondary" title="Editar" @click="openCatalog('category', row)"><Pencil class="h-4 w-4" /></button><button v-if="canAny(['categories.activate', 'categories.deactivate'])" type="button" class="grid h-8 w-8 place-items-center rounded-md hover:bg-surface-secondary" title="Cambiar estado" @click="toggleCatalog('category', row)"><Power class="h-4 w-4" /></button></div></td></tr><tr v-if="!categories.length"><td colspan="4" class="px-5 py-10 text-center text-muted-fg">Sin categorías.</td></tr></template><template v-else-if="activeTab === 'subcategories'"><tr v-for="row in subcategories" :key="row.id"><td class="px-5 py-4"><p class="font-medium text-fg">{{ row.name }}</p><p class="mt-0.5 text-xs text-muted-fg">{{ row.description || 'Sin descripción' }}</p></td><td class="px-5 py-4 text-muted-fg">{{ row.category?.name }} / {{ row._count?.products ?? 0 }} productos</td><td class="px-5 py-4"><AppBadge :variant="row.isActive ? 'success' : 'neutral'">{{ row.isActive ? 'Activo' : 'Inactivo' }}</AppBadge></td><td class="px-5 py-4"><div class="flex gap-1"><button v-if="can('subcategories.update')" type="button" class="grid h-8 w-8 place-items-center rounded-md hover:bg-surface-secondary" title="Editar" @click="openCatalog('subcategory', row)"><Pencil class="h-4 w-4" /></button><button v-if="canAny(['subcategories.activate', 'subcategories.deactivate'])" type="button" class="grid h-8 w-8 place-items-center rounded-md hover:bg-surface-secondary" title="Cambiar estado" @click="toggleCatalog('subcategory', row)"><Power class="h-4 w-4" /></button></div></td></tr><tr v-if="!subcategories.length"><td colspan="4" class="px-5 py-10 text-center text-muted-fg">Sin subcategorías.</td></tr></template><template v-else><tr v-for="row in units" :key="row.id"><td class="px-5 py-4 font-medium text-fg">{{ row.name }}</td><td class="px-5 py-4"><AppBadge :variant="row.type === 'purchase' ? 'info' : 'neutral'">{{ row.type === 'purchase' ? 'Compra' : 'Venta' }}</AppBadge></td><td class="px-5 py-4"><AppBadge :variant="row.isActive ? 'success' : 'neutral'">{{ row.isActive ? 'Activo' : 'Inactivo' }}</AppBadge></td><td class="px-5 py-4"><div class="flex gap-1"><button v-if="can('units.update')" type="button" class="grid h-8 w-8 place-items-center rounded-md hover:bg-surface-secondary" title="Editar" @click="openCatalog('unit', row)"><Pencil class="h-4 w-4" /></button><button v-if="canAny(['units.activate', 'units.deactivate'])" type="button" class="grid h-8 w-8 place-items-center rounded-md hover:bg-surface-secondary" title="Cambiar estado" @click="toggleCatalog('unit', row)"><Power class="h-4 w-4" /></button></div></td></tr><tr v-if="!units.length"><td colspan="4" class="px-5 py-10 text-center text-muted-fg">Sin unidades.</td></tr></template></tbody></table></div></section>
 
     <div v-if="editor" class="fixed inset-0 z-50 flex justify-end bg-black/35 backdrop-blur-[2px]" @click.self="closeEditor"><aside class="flex h-full w-full max-w-2xl flex-col bg-surface shadow-2xl"><header class="flex items-start justify-between border-b border-border px-5 py-4 sm:px-6"><div><p class="text-sm font-medium text-accent">{{ editor === 'product' ? (isEditingProduct ? 'Editar producto' : 'Nuevo producto') : editor === 'catalog' ? 'Configuración de catálogo' : editor === 'image' ? (editingId ? 'Cambiar imagen' : 'Nueva imagen') : 'Abastecimiento' }}</p><h2 class="mt-1 text-xl font-semibold text-fg">{{ editor === 'product' ? (isEditingProduct ? productForm.name : 'Registrar producto') : editor === 'catalog' ? (catalogKind === 'category' ? 'Categoría' : catalogKind === 'subcategory' ? 'Subcategoría' : 'Unidad') : editor === 'image' ? `Imagen de ${selected?.name}` : `Proveedor de ${selected?.name}` }}</h2></div><button type="button" class="grid h-9 w-9 place-items-center rounded-lg text-muted-fg hover:bg-surface-secondary" title="Cerrar" @click="closeEditor"><X class="h-5 w-5" /></button></header>
-      <form v-if="editor === 'product'" class="flex min-h-0 flex-1 flex-col" @submit.prevent="saveProduct"><div class="flex-1 space-y-6 overflow-y-auto px-5 py-5 sm:px-6"><section><h3 class="mb-3 text-sm font-semibold text-fg">Identificación</h3><div class="grid gap-4 sm:grid-cols-2"><AppInput v-model="productForm.name" class="sm:col-span-2" label="Nombre del producto" required /><AppInput v-model="productForm.sku" label="SKU" required /><div class="rounded-lg border border-border bg-surface-secondary px-3 py-2.5"><p class="text-xs font-medium text-muted-fg">CÓDIGO INTERNO</p><p class="mt-1 text-sm font-semibold text-fg">{{ isEditingProduct ? productForm.internalCode : 'Se genera automáticamente al guardar' }}</p></div><AppInput v-model="productForm.originalCode" label="Código original" /><AppInput v-model="productForm.presentation" label="Presentación" /><AppInput v-model="productForm.size" label="Tamaño o talla" /><AppInput v-model="productForm.dimensions" label="Dimensiones" /><AppInput v-model="productForm.description" class="sm:col-span-2" label="Descripción" /></div></section><section><h3 class="mb-3 text-sm font-semibold text-fg">Clasificación y unidades</h3><div class="grid gap-4 sm:grid-cols-2"><label class="text-sm font-medium text-fg">Categoría<select v-model="productForm.categoryId" required class="mt-1.5 h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-fg" @change="onProductCategoryChange"><option value="" disabled>Seleccione una categoría</option><option v-for="category in catalogs.categories" :key="category.id" :value="String(category.id)">{{ category.name }}</option></select></label><label class="text-sm font-medium text-fg">Subcategoría<select v-model="productForm.subcategoryId" required :disabled="!productForm.categoryId" class="mt-1.5 h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-fg disabled:cursor-not-allowed disabled:bg-surface-secondary"><option value="" disabled>Seleccione una subcategoría</option><option v-for="subcategory in formSubcategories" :key="subcategory.id" :value="String(subcategory.id)">{{ subcategory.name }}</option></select></label><label class="text-sm font-medium text-fg">Unidad de compra<select v-model="productForm.purchaseUnitId" required class="mt-1.5 h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-fg"><option v-for="unit in catalogs.purchaseUnits" :key="unit.id" :value="String(unit.id)">{{ unit.name }}</option></select></label><label class="text-sm font-medium text-fg">Unidad de venta<select v-model="productForm.saleUnitId" required class="mt-1.5 h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-fg"><option v-for="unit in catalogs.saleUnits" :key="unit.id" :value="String(unit.id)">{{ unit.name }}</option></select></label></div></section><section><h3 class="mb-3 text-sm font-semibold text-fg">Valores de referencia</h3><div class="grid gap-4 sm:grid-cols-2"><AppInput v-model="productForm.unitCost" type="number" label="Costo unitario" min="0" step="0.01" /><AppInput v-model="productForm.salePrice" type="number" label="Precio de venta" min="0" step="0.01" /></div></section></div><footer class="flex justify-end gap-2 border-t border-border px-5 py-4 sm:px-6"><AppButton variant="outline" type="button" @click="closeEditor">Cancelar</AppButton><AppButton type="submit" :disabled="saving">{{ saving ? 'Guardando...' : 'Guardar producto' }}</AppButton></footer></form>
+       <form v-if="editor === 'product'" class="flex min-h-0 flex-1 flex-col" novalidate @submit.prevent="saveProduct">
+         <div class="flex-1 space-y-6 overflow-y-auto px-5 py-5 sm:px-6">
+           <section>
+             <h3 class="mb-3 text-sm font-semibold text-fg">Identificación</h3>
+             <div class="grid gap-4 sm:grid-cols-2">
+               <AppInput v-model="productForm.name" class="sm:col-span-2" label="Nombre del producto" :error="productErrors.name" required :minlength="3" :maxlength="180" />
+               <AppInput v-model="productForm.sku" label="SKU" :error="productErrors.sku" required :minlength="3" :maxlength="80" pattern="[A-Za-z0-9._/-]{3,80}" />
+               <div class="rounded-lg border border-border bg-surface-secondary px-3 py-2.5">
+                 <p class="text-xs font-medium text-muted-fg">CÓDIGO INTERNO</p>
+                 <p class="mt-1 text-sm font-semibold text-fg">{{ isEditingProduct ? productForm.internalCode : 'Se genera automáticamente al guardar' }}</p>
+               </div>
+               <AppInput v-model="productForm.originalCode" label="Código original" :maxlength="100" />
+               <AppInput v-model="productForm.presentation" label="Presentación" :maxlength="150" />
+               <AppInput v-model="productForm.size" label="Tamaño o talla" :maxlength="100" />
+               <AppInput v-model="productForm.dimensions" label="Dimensiones" :maxlength="150" />
+               <AppInput v-model="productForm.description" class="sm:col-span-2" label="Descripción" :maxlength="1000" />
+             </div>
+           </section>
+
+           <section>
+             <h3 class="mb-3 text-sm font-semibold text-fg">Clasificación y unidades</h3>
+             <div class="grid gap-4 sm:grid-cols-2">
+               <label class="text-sm font-medium text-fg">
+                 Categoría
+                 <select v-model="productForm.categoryId" required class="mt-1.5 h-10 w-full rounded-lg border bg-surface px-3 text-sm text-fg outline-none transition focus:ring-4 disabled:cursor-not-allowed disabled:bg-surface-secondary" :class="productErrors.categoryId ? 'border-danger focus:border-danger focus:ring-danger/15' : 'border-border focus:border-accent focus:ring-accent/15'" :aria-invalid="Boolean(productErrors.categoryId)" @change="onProductCategoryChange">
+                   <option value="" disabled>Seleccione una categoría</option>
+                   <option v-for="category in catalogs.categories" :key="category.id" :value="String(category.id)">{{ category.name }}</option>
+                 </select>
+                 <p v-if="productErrors.categoryId" class="mt-1.5 text-xs font-normal text-danger">{{ productErrors.categoryId }}</p>
+               </label>
+               <label class="text-sm font-medium text-fg">
+                 Subcategoría
+                 <select v-model="productForm.subcategoryId" required :disabled="!productForm.categoryId" class="mt-1.5 h-10 w-full rounded-lg border bg-surface px-3 text-sm text-fg outline-none transition focus:ring-4 disabled:cursor-not-allowed disabled:bg-surface-secondary" :class="productErrors.subcategoryId ? 'border-danger focus:border-danger focus:ring-danger/15' : 'border-border focus:border-accent focus:ring-accent/15'" :aria-invalid="Boolean(productErrors.subcategoryId)">
+                   <option value="" disabled>Seleccione una subcategoría</option>
+                   <option v-for="subcategory in formSubcategories" :key="subcategory.id" :value="String(subcategory.id)">{{ subcategory.name }}</option>
+                 </select>
+                 <p v-if="productErrors.subcategoryId" class="mt-1.5 text-xs font-normal text-danger">{{ productErrors.subcategoryId }}</p>
+               </label>
+               <label class="text-sm font-medium text-fg">
+                 Unidad de compra
+                 <select v-model="productForm.purchaseUnitId" required class="mt-1.5 h-10 w-full rounded-lg border bg-surface px-3 text-sm text-fg outline-none transition focus:ring-4" :class="productErrors.purchaseUnitId ? 'border-danger focus:border-danger focus:ring-danger/15' : 'border-border focus:border-accent focus:ring-accent/15'" :aria-invalid="Boolean(productErrors.purchaseUnitId)">
+                   <option value="" disabled>Seleccione una unidad</option>
+                   <option v-for="unit in catalogs.purchaseUnits" :key="unit.id" :value="String(unit.id)">{{ unit.name }}</option>
+                 </select>
+                 <p v-if="productErrors.purchaseUnitId" class="mt-1.5 text-xs font-normal text-danger">{{ productErrors.purchaseUnitId }}</p>
+               </label>
+               <label class="text-sm font-medium text-fg">
+                 Unidad de venta
+                 <select v-model="productForm.saleUnitId" required class="mt-1.5 h-10 w-full rounded-lg border bg-surface px-3 text-sm text-fg outline-none transition focus:ring-4" :class="productErrors.saleUnitId ? 'border-danger focus:border-danger focus:ring-danger/15' : 'border-border focus:border-accent focus:ring-accent/15'" :aria-invalid="Boolean(productErrors.saleUnitId)">
+                   <option value="" disabled>Seleccione una unidad</option>
+                   <option v-for="unit in catalogs.saleUnits" :key="unit.id" :value="String(unit.id)">{{ unit.name }}</option>
+                 </select>
+                 <p v-if="productErrors.saleUnitId" class="mt-1.5 text-xs font-normal text-danger">{{ productErrors.saleUnitId }}</p>
+               </label>
+             </div>
+           </section>
+
+           <section>
+             <h3 class="mb-3 text-sm font-semibold text-fg">Valores de referencia</h3>
+             <div class="grid gap-4 sm:grid-cols-2">
+               <AppInput v-model="productForm.unitCost" type="number" label="Costo unitario" :error="productErrors.unitCost" min="0" step="0.01" inputmode="decimal" />
+               <AppInput v-model="productForm.salePrice" type="number" label="Precio de venta" :error="productErrors.salePrice" min="0" step="0.01" inputmode="decimal" />
+             </div>
+           </section>
+         </div>
+         <footer class="flex justify-end gap-2 border-t border-border px-5 py-4 sm:px-6">
+           <AppButton variant="outline" type="button" @click="closeEditor">Cancelar</AppButton>
+           <AppButton type="submit" :disabled="saving">{{ saving ? 'Guardando...' : 'Guardar producto' }}</AppButton>
+         </footer>
+       </form>
       <form v-else-if="editor === 'catalog'" class="flex min-h-0 flex-1 flex-col" @submit.prevent="saveCatalog"><div class="flex-1 space-y-5 overflow-y-auto px-5 py-5 sm:px-6"><AppInput v-model="catalogForm.name" :label="catalogKind === 'unit' ? 'Nombre de la unidad' : 'Nombre'" required /><label v-if="catalogKind === 'subcategory'" class="block text-sm font-medium text-fg">Categoría padre<select v-model="catalogForm.categoryId" required class="mt-1.5 h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-fg"><option v-for="category in catalogs.categories" :key="category.id" :value="String(category.id)">{{ category.name }}</option></select></label><label v-if="catalogKind === 'unit'" class="block text-sm font-medium text-fg">Uso de la unidad<select v-model="catalogForm.type" class="mt-1.5 h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-fg"><option value="purchase">Compra</option><option value="sale">Venta</option></select></label><AppInput v-if="catalogKind !== 'unit'" v-model="catalogForm.description" label="Descripción" /></div><footer class="flex justify-end gap-2 border-t border-border px-5 py-4 sm:px-6"><AppButton variant="outline" type="button" @click="closeEditor">Cancelar</AppButton><AppButton type="submit" :disabled="saving">{{ saving ? 'Guardando...' : 'Guardar' }}</AppButton></footer></form>
       <form v-else-if="editor === 'image'" class="flex min-h-0 flex-1 flex-col" @submit.prevent="saveImage"><div class="flex-1 space-y-5 overflow-y-auto px-5 py-5 sm:px-6"><div v-if="editingId && imageForm.path" class="overflow-hidden rounded-lg border border-border bg-surface-secondary"><img v-if="!imageErrors[editingId]" :src="imageUrl(imageForm.path)" alt="" class="h-44 w-full object-contain" @error="imageErrors = { ...imageErrors, [editingId]: true }" /><div v-else class="grid h-44 place-items-center text-sm text-muted-fg"><ImageOff class="h-6 w-6" /><span>La imagen actual no está disponible</span></div></div><label class="block text-sm font-medium text-fg">{{ editingId ? 'Nuevo archivo para reemplazar la imagen' : 'Archivo de imagen' }}<input :key="imageInputKey" type="file" accept="image/jpeg,image/png,image/webp" class="mt-1.5 block w-full text-sm text-muted-fg file:mr-3 file:rounded-md file:border-0 file:bg-accent/10 file:px-3 file:py-2 file:font-medium file:text-accent hover:file:bg-accent/20" @change="selectImageFile" /></label><p class="text-sm text-muted-fg">JPG, PNG o WEBP. Máximo 5 MB.</p><div class="flex items-center gap-3"><span class="h-px flex-1 bg-border"></span><span class="text-xs font-medium uppercase text-muted-fg">o</span><span class="h-px flex-1 bg-border"></span></div><AppInput v-model="imageForm.path" label="URL de la imagen" :required="!imageFile" /><p v-if="editingId" class="text-xs text-muted-fg">Puedes subir un archivo nuevo o reemplazar la dirección de la imagen.</p></div><footer class="flex justify-end gap-2 border-t border-border px-5 py-4 sm:px-6"><AppButton variant="outline" type="button" @click="closeEditor">Cancelar</AppButton><AppButton type="submit" :disabled="saving">{{ saving ? 'Guardando...' : (editingId ? 'Actualizar imagen' : 'Guardar imagen') }}</AppButton></footer></form>
       <form v-else class="flex min-h-0 flex-1 flex-col" @submit.prevent="saveSupplier"><div class="flex-1 space-y-5 overflow-y-auto px-5 py-5 sm:px-6"><label class="block text-sm font-medium text-fg">Proveedor<select v-model="supplierForm.supplierId" required class="mt-1.5 h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-fg"><option value="" disabled>Seleccione un proveedor</option><option v-for="supplier in catalogs.suppliers" :key="supplier.id" :value="String(supplier.id)">{{ supplier.name }} / {{ supplier.code }}</option></select></label><AppInput v-model="supplierForm.supplierCode" label="Código del proveedor" /><label class="flex items-center gap-2 text-sm text-fg"><input v-model="supplierForm.isPreferred" type="checkbox" class="h-4 w-4 rounded border-border text-accent focus:ring-accent" />Proveedor preferido</label></div><footer class="flex justify-end gap-2 border-t border-border px-5 py-4 sm:px-6"><AppButton variant="outline" type="button" @click="closeEditor">Cancelar</AppButton><AppButton type="submit" :disabled="saving">{{ saving ? 'Asociando...' : 'Asociar proveedor' }}</AppButton></footer></form>
