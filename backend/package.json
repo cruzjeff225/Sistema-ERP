@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "nest start --watch",
-    "build": "nest build",
+    "build": "nest build && node scripts/copy-runtime-assets.cjs",
     "start": "nest start",
     "seed": "tsx prisma/seed.ts",
     "verify:modules": "tsx scripts/verify-modules.ts",
@@ -12,9 +12,20 @@
     "verify:roles": "tsx scripts/verify-roles-module.ts",
     "verify:purchases": "tsx scripts/verify-purchases-module.ts",
     "verify:purchases-regressions": "tsx scripts/verify-purchase-regressions.ts",
+    "verify:supply": "tsx scripts/verify-supply-workflow.ts",
+    "verify:supply-edges": "tsx scripts/verify-supply-edge-cases.ts",
+    "verify:supply-retained": "tsx scripts/verify-retained-supply.ts",
+    "verify:purchase-approval": "tsx scripts/verify-purchase-approval.ts",
+    "test:supply": "node --import ./node_modules/tsx/dist/loader.mjs --test scripts/order-expense-projection.test.ts scripts/supply-permissions.test.ts scripts/rfq-pdf.test.ts scripts/purchase-comparison.test.ts scripts/product-quantities.test.ts",
+    "test:production": "node --import ./node_modules/tsx/dist/loader.mjs --test scripts/production-policy.test.ts",
+    "verify:production": "tsx scripts/verify-production-readiness.ts",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
-    "start:prod": "node dist/src/main"
+    "start:prod": "node dist/src/main",
+    "verify:trash": "tsx scripts/verify-trash.ts",
+    "demo:supply": "tsx scripts/demo-supply-workflow.ts",
+    "test:trash": "node --import ./node_modules/tsx/dist/loader.mjs --test scripts/trash-purge.test.ts",
+    "verify:trash-purge": "tsx scripts/verify-trash-purge.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.28",
@@ -33,9 +44,10 @@
     "cookie-parser": "^1.4.7",
     "dotenv": "^17.4.2",
     "helmet": "^8.3.0",
-    "multer": "^2.2.0",
+    "multer": "2.4.0",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
+    "pdfkit": "0.20.2",
     "pg": "^8.22.0",
     "prisma": "^7.9.1",
     "reflect-metadata": "^0.2.2",
@@ -49,8 +61,24 @@
     "@types/multer": "^2.2.0",
     "@types/node": "^20.0.0",
     "@types/passport-jwt": "^4.0.1",
+    "@types/pdfkit": "0.17.6",
     "@types/pg": "^8.20.0",
+    "pdfjs-dist": "6.4.299",
     "tsx": "^4.23.1",
     "typescript": "^5.0.0"
+  },
+  "packageManager": "pnpm@11.19.0",
+  "overrides": {
+    "multer": "$multer",
+    "qs": "6.16.0",
+    "proxy-addr": "2.0.8",
+    "fast-uri": "3.1.8",
+    "mysql2": "3.23.1",
+    "@nestjs/swagger": {
+      "js-yaml": "5.4.1"
+    },
+    "@prisma/config": {
+      "deepmerge-ts": "8.0.0"
+    }
   }
 }

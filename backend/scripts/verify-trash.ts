@@ -1,0 +1,113 @@
+import 'dotenv/config';
+import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import * as argon2 from 'argon2';
+import { PrismaService } from '../src/infrastructure/database/prisma/prisma.service';
+import { AuditService } from '../src/modules/audit/application/services/audit.service';
+import { TrashService } from '../src/modules/trash/trash.service';
+import { TrashEntity } from '../src/modules/trash/trash.registry';
+const db = new PrismaService();
+const service = new TrashService(db, new AuditService(db));
+const key = 'QA-TRASH-' + randomUUID().slice(0,8);
+const base = process.env.ERP_TEST_API_URL ?? 'http://localhost:3000/api';
+const owned: { entity: TrashEntity; id: number }[] = [];
+let companyId = 0, actorId = 0, token = '', productId = 0, categoryId = 0, subcategoryId = 0, stockId = 0, locationId = 0, employeeId = 0, userId = 0, roleId = 0, permissionId = 0, moduleId = 0;
+async function api(path: string, method = 'GET', body?: unknown, expected = method === 'POST' ? 201 : 200, access = token) {
+ const response = await fetch(base + path, { method, headers: { 'Content-Type':'application/json', ...(access ? {Authorization:'Bearer '+access}:{}), ...(companyId ? {'X-Company-Id':String(companyId)}:{}) }, ...(body ? {body:JSON.stringify(body)}:{}) });
+ const text = await response.text(); assert.equal(response.status,expected,path+': '+text.slice(0,800));
+ return JSON.parse(text).data;
+}
+async function reject(task: Promise<unknown>, status: number) { await assert.rejects(task,(e:any)=>e.getStatus()===status); }
+async function main() {
+ const login = await api('/auth/login','POST',{email:process.env.ERP_TEST_EMAIL ?? process.env.SEED_ADMIN_EMAIL,password:process.env.ERP_TEST_PASSWORD ?? process.env.SEED_ADMIN_PASSWORD},200);
+ token = login.accessToken; companyId = login.user.companies[0].id; actorId = login.user.id;
+ const config = await db.erpConfiguration.findUniqueOrThrow({where:{id:1},include:{generalWarehouse:true}});
+ const template = await db.product.findFirstOrThrow({where:{companyId,deletedAt:null}});
+ const category = await db.productCategory.create({data:{name:key}}); categoryId=category.id; owned.push({entity:'categories',id:category.id});
+ const subcategory = await db.productSubcategory.create({data:{categoryId,name:key}}); subcategoryId=subcategory.id; owned.push({entity:'subcategories',id:subcategory.id});
+ const product = await db.product.create({data:{companyId,categoryId,subcategoryId,purchaseUnitId:template.purchaseUnitId,saleUnitId:template.saleUnitId,sku:key,internalCode:key,name:key}}); productId=product.id; owned.push({entity:'products',id:product.id});
+ const location = await db.location.create({data:{warehouseId:config.generalWarehouse!.id,code:key,aisle:'QA',rack:'QA',level:'1',position:'1',capacity:100}}); locationId=location.id;
+ const stock = await db.inventoryStock.create({data:{productId,locationId,quantity:17}}); stockId=stock.id;
+ await db.inventoryMovement.create({data:{stockId,key,type:'RECEIPT',quantity:17,balance:17,reason:'QA papelera'}});
+ const [a,b] = await Promise.all([api('/trash/products/'+productId,'DELETE'),api('/trash/products/'+productId,'DELETE')]);
+ assert.equal(a.id,b.id,'El doble clic no duplica la eliminación');
+ const entry = await db.trashEntry.findUniqueOrThrow({where:{id:a.id}});
+ assert.equal(entry.expiresAt.getTime()-entry.deletedAt.getTime(),30*86400000);
+ assert.equal((await db.product.findUniqueOrThrow({where:{id:productId}})).isActive,false);
+ assert((await api('/trash?search='+key)).items.some((r:any)=>r.id===entry.id));
+ assert(!(await api('/trash/records/products?search='+key)).items.some((r:any)=>r.id===productId));
+ assert.equal(Number((await db.inventoryStock.findUniqueOrThrow({where:{id:stockId}})).quantity),17);
+ assert.equal(await db.inventoryMovement.count({where:{stockId}}),1);
+ await reject(service.restore(entry.id,companyId+100000,actorId),404);
+ await reject(service.trash('products',productId,actorId,companyId+100000),404);
+ await api('/trash/'+entry.id+'/restore','POST',{});
+ await api('/trash/'+entry.id+'/restore','POST',{});
+ assert.equal((await db.product.findUniqueOrThrow({where:{id:productId}})).deletedAt,null);
+ assert.equal((await db.product.findUniqueOrThrow({where:{id:productId}})).isActive,true);
+ console.log('PASS papelera HTTP, 30 días exactos, aislamiento, reintentos y recuperación con inventario intacto');
+ const productTrash=await service.trash('products',productId,actorId,companyId);
+ const categoryTrash=await service.trash('categories',categoryId,actorId,companyId);
+ await reject(service.restore(productTrash.id,companyId,actorId),409);
+ await service.restore(categoryTrash.id,companyId,actorId);
+ await service.restore(productTrash.id,companyId,actorId);
+ await db.product.update({where:{id:productId},data:{isActive:false}});
+ const inactive=await service.trash('products',productId,actorId,companyId);await service.restore(inactive.id,companyId,actorId);
+ assert.equal((await db.product.findUniqueOrThrow({where:{id:productId}})).isActive,false);
+ await reject(service.trash('users',actorId,actorId,companyId),409);
+ await reject(service.trash('companies',companyId,actorId,companyId),409);
+ const superRole=await db.role.findUniqueOrThrow({where:{name:'superadmin'}});
+ await reject(service.trash('roles',superRole.id,actorId,companyId),409);
+ const trashPermission=await db.permission.findUniqueOrThrow({where:{action:'trash.restore'}});
+ await reject(service.trash('permissions',trashPermission.id,actorId,companyId),409);
+ console.log('PASS orden de recuperación de relaciones, estado inactivo original y acceso de recuperación protegido');
+ const module=await db.module.create({data:{name:key}});moduleId=module.id;owned.push({entity:'modules',id:moduleId});
+ const permission=await db.permission.create({data:{name:key,action:key+'.view',moduleId}});permissionId=permission.id;owned.push({entity:'permissions',id:permissionId});
+ const role=await db.role.create({data:{name:key,rolePermissions:{create:[{permissionId},{permissionId:trashPermission.id}]}}});roleId=role.id;owned.push({entity:'roles',id:roleId});
+ const employee=await db.employee.create({data:{code:key,fullName:key}});employeeId=employee.id;
+ const password=key+'!Secure123';
+ const user=await db.user.create({data:{username:key,email:key+'@qa.invalid',passwordHash:await argon2.hash(password),employeeId,userCompanies:{create:{companyId}},userRoles:{create:{roleId}}}});userId=user.id;owned.push({entity:'users',id:userId});
+ const limited=await api('/auth/login','POST',{email:user.email,password},200);assert(limited.accessToken);
+ await api('/trash','GET',undefined,403,limited.accessToken);
+ const userTrash=await service.trash('users',userId,actorId,companyId);
+ assert((await db.employee.findUniqueOrThrow({where:{id:employeeId}})).deletedAt);
+ await api('/auth/me','GET',undefined,401,limited.accessToken);
+ await service.restore(userTrash.id,companyId,actorId);
+ assert.equal((await db.employee.findUniqueOrThrow({where:{id:employeeId}})).deletedAt,null);
+ assert.equal((await db.user.findUniqueOrThrow({where:{id:userId}})).sessionVersion,2);
+ const relogin=await api('/auth/login','POST',{email:user.email,password},200);
+ const roleTrash=await service.trash('roles',roleId,actorId,companyId);
+ assert.equal(await db.userRole.count({where:{userId,roleId}}),1);
+ await api('/auth/me','GET',undefined,401,relogin.accessToken);
+ await service.restore(roleTrash.id,companyId,actorId);
+ const permissionTrash=await service.trash('permissions',permissionId,actorId,companyId);
+ assert.equal(await db.rolePermission.count({where:{permissionId,roleId}}),1);
+ await service.restore(permissionTrash.id,companyId,actorId);
+ console.log('PASS permisos HTTP, usuario y empleado recuperados; sesiones revocadas y asignaciones conservadas');
+ const unused=await db.expenseType.create({data:{companyId,name:key}});owned.push({entity:'expense_types',id:unused.id});
+ const unusedTrash=await service.trash('expense_types',unused.id,actorId,companyId);
+ const retainedTrash=await service.trash('products',productId,actorId,companyId);
+ await db.trashEntry.updateMany({where:{id:{in:[unusedTrash.id,retainedTrash.id]}},data:{expiresAt:new Date(Date.now()-1000)}});
+ await reject(service.restore(retainedTrash.id,companyId,actorId),409);
+ await service.cleanup();
+ assert.equal(await db.expenseType.findUnique({where:{id:unused.id}}),null);
+ assert((await db.product.findUniqueOrThrow({where:{id:productId}})).deletedAt);
+ assert.equal((await db.trashEntry.findUniqueOrThrow({where:{id:retainedTrash.id}})).retainedForHistory,true);
+ assert.equal(Number((await db.inventoryStock.findUniqueOrThrow({where:{id:stockId}})).quantity),17);
+ assert.equal(await db.inventoryMovement.count({where:{stockId}}),1);
+ assert(!(await service.list(companyId,key)).items.some(i=>i.id===retainedTrash.id));
+ console.log('PASS vencimiento, depuración sin referencias y conservación de historial e inventario referenciados');
+}
+async function clean() {
+ for(const item of owned) {await db.trashEntry.deleteMany({where:{entity:item.entity,recordId:item.id}});await db.log.deleteMany({where:{controller:item.entity,recordId:item.id}});}
+ if(stockId){await db.inventoryMovement.deleteMany({where:{stockId}});await db.inventoryStock.deleteMany({where:{id:stockId}});}
+ if(locationId)await db.location.deleteMany({where:{id:locationId}});
+ if(productId)await db.product.deleteMany({where:{id:productId}});
+ if(subcategoryId)await db.productSubcategory.deleteMany({where:{id:subcategoryId}});
+ if(categoryId)await db.productCategory.deleteMany({where:{id:categoryId}});
+ if(userId){await db.log.deleteMany({where:{userId}});await db.user.deleteMany({where:{id:userId}});}
+ if(employeeId)await db.employee.deleteMany({where:{id:employeeId}});
+ if(roleId)await db.role.deleteMany({where:{id:roleId}});
+ if(permissionId)await db.permission.deleteMany({where:{id:permissionId}});
+ if(moduleId)await db.module.deleteMany({where:{id:moduleId}});
+}
+main().catch(e=>{console.error(e);process.exitCode=1;}).finally(async()=>{await clean();await db.$disconnect();});

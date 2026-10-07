@@ -1,7 +1,7 @@
 <script setup lang="ts">
 withDefaults(
     defineProps<{
-        variant?: 'primary' | 'outline' | 'ghost';
+        variant?: 'primary' | 'outline' | 'ghost' | 'danger';
         size?: 'sm' | 'md';
         disabled?: boolean;
         type?: 'button' | 'submit';
@@ -21,10 +21,11 @@ withDefaults(
         :class="[
             size === 'sm' ? 'h-8 px-3 text-sm' : 'h-9 px-4 text-sm',
             variant === 'primary' &&
-            'bg-accent text-accent-foreground shadow-sm hover:bg-accent/90 active:scale-[0.98]',
+            'bg-accent text-accent-foreground shadow-sm hover:bg-accent/90 dark:bg-[#c92a2d] dark:text-white dark:hover:bg-[#df3639] active:scale-[0.98]',
             variant === 'outline' &&
             'border border-border bg-surface text-fg hover:bg-surface-secondary active:scale-[0.98]',
             variant === 'ghost' && 'text-fg hover:bg-surface-secondary active:scale-[0.98]',
+            variant === 'danger' && 'bg-danger text-white hover:bg-danger/90 active:scale-[0.98]',
         ]">
         <slot />
     </button>

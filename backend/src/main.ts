@@ -9,7 +9,8 @@ import helmet from "helmet";
 import { AppModule } from "./app.module";
 import { HttpExceptionFilter } from "./common/filters/http-exception.filter";
 import cookieParser from 'cookie-parser';
-import type { Request, Response } from "express";
+import type { NextFunction, Request, Response } from "express";
+import { runtimePolicy } from './config/runtime-policy';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -17,17 +18,12 @@ async function bootstrap() {
   app.enableShutdownHooks();
 
   const port = configService.get<number>("app.port") ?? 3000;
-  const frontendUrl = configService.get<string>("app.frontendUrl");
-  const allowedOrigins = Array.from(
-    new Set([
-      frontendUrl,
-      "http://localhost:5173",
-      "http://127.0.0.1:5173",
-    ].filter((origin): origin is string => Boolean(origin))),
-  );
+  const policy=runtimePolicy(configService.get<string>('app.nodeEnv')!,configService.get<string>('app.frontendUrl')!,configService.get<number>('app.trustProxyHops')??0);
+  app.set('trust proxy',policy.trustProxyHops);
 
   app.use(helmet());
   app.use(cookieParser());
+  app.use('/api',(_request:Request,response:Response,next:NextFunction)=>{response.setHeader('Cache-Control','no-store');next();});
   const uploadDirectory = join(process.cwd(), "uploads");
   mkdirSync(join(uploadDirectory, "product-images"), { recursive: true });
   mkdirSync(join(uploadDirectory, "purchase-expenses"), { recursive: true });
@@ -35,7 +31,7 @@ async function bootstrap() {
   app.useStaticAssets(uploadDirectory, { prefix: "/uploads/" });
 
   app.enableCors({
-    origin: allowedOrigins,
+    origin: policy.allowedOrigins,
     credentials: true,
   });
 
@@ -52,6 +48,7 @@ async function bootstrap() {
 
   app.useGlobalFilters(new HttpExceptionFilter());
 
+  if(policy.swaggerEnabled){
   const swaggerConfig = new DocumentBuilder()
     .setTitle("ERP API")
     .setDescription("API del sistema ERP modular con RBAC")
@@ -61,10 +58,11 @@ async function bootstrap() {
 
   const document = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup("api/docs", app, document);
+  }
 
   await app.listen(port, "0.0.0.0");
   console.log(`Backend corriendo en http://localhost:${port}/api`);
-  console.log(`Swagger disponible en http://localhost:${port}/api/docs`);
+  if(policy.swaggerEnabled) console.log(`Swagger disponible en http://localhost:${port}/api/docs`);
 }
 
 bootstrap().catch((error) => {

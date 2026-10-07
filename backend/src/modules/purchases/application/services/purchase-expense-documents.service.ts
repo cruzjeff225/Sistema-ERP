@@ -1,6 +1,7 @@
 import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../../../../infrastructure/database/prisma/prisma.service";
 import { AuditService } from "../../../audit/application/services/audit.service";
+import { TrashService } from "../../../trash/trash.service";
 import { purchaseTransaction } from "./purchase-transaction";
 
 @Injectable()
@@ -8,6 +9,7 @@ export class PurchaseExpenseDocumentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly trash: TrashService,
   ) {}
 
   async create(
@@ -34,21 +36,11 @@ export class PurchaseExpenseDocumentsService {
   }
 
   async remove(id: number, userId: number, companyId: number) {
-    return purchaseTransaction(this.prisma, companyId, async (tx) => {
-    const document = await tx.purchaseOrderExpenseDocument.findFirst({
-      where: { id, expense: { order: { companyId, deletedAt: null } } },
-      include: { expense: { include: { order: { select: { status: true } } } } },
-    });
-    if (!document) throw new NotFoundException("Documento de gasto no encontrado");
-    if (document.expense.order.status === "cancelled") throw new ConflictException("No se pueden modificar documentos de una orden cancelada");
-      await tx.purchaseOrderExpenseDocument.delete({ where: { id } });
-      await this.audit.record(tx, { controller: "purchase_order_expense_documents", action: "DELETE", recordId: id, originalData: document, modifiedData: null, userId });
-      return document;
-    });
+    return this.trash.trash('purchase_expense_documents', id, userId, companyId);
   }
 
   async findOne(id: number, companyId: number) {
-    const document = await this.prisma.purchaseOrderExpenseDocument.findFirst({ where: { id, expense: { order: { companyId, deletedAt: null } } } });
+    const document = await this.prisma.purchaseOrderExpenseDocument.findFirst({ where: { id, deletedAt: null, expense: { order: { companyId, deletedAt: null } } } });
     if (!document) throw new NotFoundException("Documento de gasto no encontrado");
     return document;
   }

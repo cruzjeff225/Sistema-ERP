@@ -41,12 +41,13 @@ const MODULES = [
   "retaceos",
   "dashboard",
   "inventory",
+  "trash",
+  "customers",
 ] as const;
 
 type ModuleName = (typeof MODULES)[number];
 
 const REMOVED_MODULES = [
-  "customers",
   "quotations",
   "sales",
   "transfers",
@@ -55,7 +56,6 @@ const REMOVED_MODULES = [
 ];
 
 const REMOVED_PERMISSION_ACTIONS = [
-  "customers.view", "customers.create", "customers.update", "customers.activate", "customers.deactivate",
   "inventory.update",
   "quotations.view",
   "quotations.create",
@@ -78,8 +78,17 @@ const PERMISSIONS: Array<{
   module: ModuleName;
   isSystem: boolean;
 }> = [
+  ["trash.view", "Consultar papelera", "Recuperación por 30 días", "trash"],
+  ["trash.delete", "Enviar a papelera", "Retirar registros de gestión", "trash"],
+  ["trash.restore", "Restaurar registros", "Recuperar registros de papelera", "trash"],
+  ["trash.purge", "Eliminar definitivamente de papelera", "Eliminar sin recuperación y conservar referencias históricas", "trash"],
   ["inventory.view", "Consultar inventario", "Existencias y kardex por empresa", "inventory"],
   ["inventory.adjust", "Ajustar inventario", "Entradas y salidas justificadas", "inventory"],
+  ["customers.view", "Consultar clientes", "Directorio comercial de la empresa", "customers"],
+  ["customers.create", "Registrar clientes", "Crear clientes para operaciones de venta", "customers"],
+  ["customers.update", "Actualizar clientes", "Editar contacto y ubicación de clientes", "customers"],
+  ["customers.activate", "Activar clientes", "Habilitar clientes para nuevas operaciones", "customers"],
+  ["customers.deactivate", "Desactivar clientes", "Conservar clientes fuera de la atención activa", "customers"],
   ["users.view", "Ver usuarios", "Permite listar y consultar usuarios", "users"],
   ["users.create", "Crear usuarios", "Permite crear nuevos usuarios", "users"],
   ["users.update", "Actualizar usuarios", "Permite editar usuarios existentes", "users"],

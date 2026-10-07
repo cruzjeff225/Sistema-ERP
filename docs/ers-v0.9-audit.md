@@ -2,6 +2,8 @@
 
 Fecha: 2026-09-24. Fuente: `C:/Users/chica/Desktop/MiniERP ERS v0.9.pdf`, 103 paginas, y lineamientos del usuario. Esta matriz distingue implementacion observada de verificacion integral; no certifica cumplimiento total por existencia de pantallas.
 
+Actualización del 4 de octubre de 2026: a petición del usuario se habilitó nuevamente Clientes dentro de Ventas. La decisión reemplaza la exclusión de Clientes descrita en las etapas históricas de este documento. El alcance y la verificación actuales se documentan en [Ventas y clientes](ventas-clientes.md); las cotizaciones de venta, ventas y devoluciones siguen pendientes.
+
 ## Matriz inicial
 
 | Requerimiento ERS | Existe | Parcial | No existe | Problema / evidencia |

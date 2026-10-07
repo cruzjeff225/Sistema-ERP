@@ -1,3 +1,4 @@
+import { TrashService } from '../../../trash/trash.service';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../../../infrastructure/database/prisma/prisma.service";
@@ -9,6 +10,7 @@ import { UpdateRoleDto } from "../dto/update-role.dto";
 export class RolesService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly trashService: TrashService,
     private readonly auditService: AuditService,
   ) {}
 
@@ -97,22 +99,9 @@ export class RolesService {
       select: { id: true },
     });
 
+    if (deletedRole) throw new ConflictException("El rol está eliminado; restáurelo desde la papelera antes de reutilizar su nombre");
     return this.prisma.$transaction(async (tx) => {
-      const role = deletedRole
-        ? await tx.role.update({
-            where: { id: deletedRole.id },
-            data: {
-              description,
-              isActive: true,
-              deletedAt: null,
-              rolePermissions: {
-                deleteMany: {},
-                create: permissionIds.map((permissionId) => ({ permissionId })),
-              },
-            },
-            select: this.select,
-          })
-        : await tx.role.create({
+      const role = await tx.role.create({
             data: {
               name,
               description,
@@ -125,7 +114,7 @@ export class RolesService {
       const formatted = this.format(role);
       await this.auditService.record(tx, {
         controller: "roles",
-        action: deletedRole ? "RESTORE" : "CREATE",
+        action: "CREATE",
         recordId: role.id,
         modifiedData: formatted,
         userId,
@@ -199,22 +188,7 @@ export class RolesService {
   }
 
   async remove(id: number, userId: number) {
-    const current = await this.assertEditable(id);
-    const usersCount = await this.prisma.userRole.count({ where: { roleId: id, user: { deletedAt: null } } });
-    if (usersCount > 0) throw new BadRequestException("No se puede eliminar un rol que tiene usuarios asignados");
-    await this.prisma.$transaction(async (tx) => {
-      const deletedAt = new Date();
-      await tx.role.update({ where: { id }, data: { deletedAt, isActive: false } });
-      await this.auditService.record(tx, {
-        controller: "roles",
-        action: "DELETE",
-        recordId: id,
-        originalData: current,
-        modifiedData: { ...current, isActive: false, deletedAt },
-        userId,
-      });
-    });
-    return { id };
+    return this.trashService.trash('roles', id, userId, await this.trashService.primaryCompany());
   }
 
   async assignPermissions(id: number, permissionIds: number[], userId: number) {

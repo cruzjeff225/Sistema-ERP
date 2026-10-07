@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import BrandLogo from '../base/BrandLogo.vue';
 import { computed, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ChevronDown, LogOut, Settings2, X, Building2 } from "lucide-vue-next";
+import { ChevronDown, LogOut, Settings2, X } from "lucide-vue-next";
 import { navigationGroups } from "../../config/navigation.config";
 import { usePermissions } from "../../composables/usePermissions";
 import { useAuthStore } from "../../stores/auth.store";
@@ -11,13 +12,13 @@ import type { NavigationItem } from "../../config/navigation.config";
 const router = useRouter();
 const route = useRoute();
 const authStore = useAuthStore();
-const { can, currentUser } = usePermissions();
+const { can, canAny, currentUser } = usePermissions();
 
 defineProps<{ open: boolean }>();
 const emit = defineEmits<{ close: [] }>();
 const expanded = ref<Record<string, boolean>>({});
-const company = computed(() => authStore.user?.companies?.find(item => item.id === activeCompanyId.value)?.commercialName ?? "ERP Software");
-const isActive = (item: NavigationItem) => item.route === route.path || Boolean(item.sections?.some(section => section.route === route.path));
+const company = computed(() => authStore.user?.companies?.find(item => item.id === activeCompanyId.value)?.commercialName ?? "Apex Roofing");
+const isActive = (item: NavigationItem) => item.route === route.path || Boolean(item.activeRoutes?.includes(route.path)) || Boolean(item.sections?.some(section => section.route === route.path));
 const isExpanded = (item: NavigationItem) => expanded.value[item.route] ?? isActive(item);
 watch(() => route.path, () => { expanded.value = {}; });
 
@@ -26,7 +27,7 @@ const visibleGroups = computed(() =>
     .map((group) => ({
       ...group,
       items: group.items.map(item => ({ ...item, sections: item.sections?.filter(section => can(section.permission)) }))
-        .filter(item => item.permission === null || can(item.permission) || item.sections?.length)
+        .filter(item => item.permissionsAny ? canAny([...item.permissionsAny]) : item.permission === null || can(item.permission) || item.sections?.length)
         .map(item => ({ ...item, route: item.sections?.[0]?.route ?? item.route })),
     }))
     .filter((group) => group.items.length > 0),
@@ -51,12 +52,10 @@ async function handleLogout() {
     @keydown.esc="emit('close')"
   >
     <div class="flex h-[68px] shrink-0 items-center gap-3 border-b border-border/70 px-5">
-        <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border bg-surface text-accent">
-          <Building2 class="h-5 w-5" />
-        </div>
+        <BrandLogo compact />
         <div class="min-w-0 flex-1">
-          <p class="truncate text-sm font-semibold leading-tight text-fg" :title="company">{{ company }}</p>
-          <p class="mt-0.5 text-xs text-muted-fg">ERP · Gestión empresarial</p>
+          <p v-if="authStore.user?.companies && authStore.user.companies.length > 1" class="truncate text-sm font-semibold leading-tight text-fg" :title="company">{{ company }}</p>
+          <p class="mt-0.5 text-xs text-muted-fg">Gestión empresarial</p>
         </div>
         <button
           type="button"
@@ -71,7 +70,7 @@ async function handleLogout() {
 
     <nav aria-label="Navegación principal" class="scrollbar-thin min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-3 py-4">
       <div v-for="group in visibleGroups" :key="group.label">
-        <p class="px-3 pb-1.5 text-[11px] font-semibold uppercase text-muted-fg">
+        <p v-if="group.items.length > 1 || group.label !== group.items[0]?.label" class="px-3 pb-1.5 text-[11px] font-semibold uppercase text-muted-fg">
           {{ group.label }}
         </p>
         <div class="space-y-0.5">

@@ -1,3 +1,4 @@
+import { TrashModule } from './modules/trash/trash.module';
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { ThrottlerModule } from "@nestjs/throttler";
@@ -16,11 +17,14 @@ import { DashboardModule } from "./modules/dashboard/dashboard.module";
 import { ProductsModule } from "./modules/products/products.module";
 import { PurchasesModule } from "./modules/purchases/purchases.module";
 import { InventoryModule } from "./modules/inventory/inventory.module";
+import { CustomersModule } from "./modules/customers/customers.module";
 import { JwtAuthGuard } from "./modules/auth/presentation/guards/jwt-auth.guard";
 import { PermissionsGuard } from "./common/guards/permissions.guard";
+import { HealthController } from './health.controller';
 
 // Módulo principal de la aplicación
 @Module({
+  controllers: [HealthController],
   imports: [
     // Carga la configuración global y valida las variables de entorno
     ConfigModule.forRoot({
@@ -51,6 +55,8 @@ import { PermissionsGuard } from "./common/guards/permissions.guard";
     ProductsModule,
     PurchasesModule,
     InventoryModule,
+    CustomersModule,
+    TrashModule,
   ],
   providers: [
     // Aplica la autenticación JWT a todos los endpoints

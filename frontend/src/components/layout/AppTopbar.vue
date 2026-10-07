@@ -26,7 +26,7 @@ const activeCompany = computed(() => companies.value.find((company) => company.i
         <Menu class="h-5 w-5" />
       </button>
       <div class="min-w-0">
-        <p class="hidden text-xs font-medium text-muted-fg sm:block">ERP Software</p>
+
         <p class="truncate text-base font-semibold text-fg">{{ title }}</p>
       </div>
     </div>

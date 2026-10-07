@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { Copy, Edit2, Plus, Power, RefreshCw, Save, Search, ShieldCheck, Trash2, X } from "lucide-vue-next";
 import AdminLayout from "../layouts/AdminLayout.vue";
+import AdministrationNav from "../components/admin/AdministrationNav.vue";
 import AppBadge from "../components/base/AppBadge.vue";
 import AppButton from "../components/base/AppButton.vue";
 import AppInput from "../components/base/AppInput.vue";
@@ -40,8 +41,8 @@ const permissions = ref<Permission[]>([]);
 const formErrors = ref<Record<string, string>>({});
 const form = reactive({ name: "", description: "", permissionIds: [] as number[] });
 
-const canCreateRoles = computed(() => can("roles.create") && can("roles.assign_permissions"));
-const canEditRoles = computed(() => can("roles.update") && can("roles.assign_permissions"));
+const canCreateRoles = computed(() => can("roles.create") && can("roles.assign_permissions") && can("permissions.view"));
+const canEditRoles = computed(() => can("roles.update") && can("roles.assign_permissions") && can("permissions.view"));
 const filteredRoles = computed(() => {
   const term = search.value.trim().toLowerCase();
   return term ? roles.value.filter((role) => `${role.name} ${role.description ?? ""}`.toLowerCase().includes(term)) : roles.value;
@@ -67,6 +68,7 @@ function resetForm() {
 }
 
 function openCreate() {
+  if (!canCreateRoles.value) return;
   resetForm();
   errorMessage.value = "";
   successMessage.value = "";
@@ -124,9 +126,12 @@ async function loadAll() {
   loading.value = true;
   errorMessage.value = "";
   try {
-    const [rolesRes, permissionsRes] = await Promise.all([http.get("/roles"), http.get("/permissions")]);
+    const [rolesRes, permissionsRes] = await Promise.all([
+      http.get("/roles"),
+      can("permissions.view") ? http.get("/permissions") : Promise.resolve(null),
+    ]);
     roles.value = rolesRes.data.data;
-    permissions.value = permissionsRes.data.data;
+    permissions.value = permissionsRes?.data.data ?? [];
   } catch (error) {
     errorMessage.value = getApiErrorMessage(error, "No se pudieron cargar los roles");
   } finally {
@@ -158,6 +163,7 @@ async function editRole(role: Role) {
 }
 
 async function submitRole() {
+  if (editingId.value ? !canEditRoles.value : !canCreateRoles.value) return;
   if (!validateForm()) return;
   saving.value = true;
   errorMessage.value = "";
@@ -230,8 +236,8 @@ async function toggleStatus(role: Role) {
 }
 
 async function removeRole(role: Role) {
-  if (role.isSystem || role.userCount > 0 || !can("roles.delete")) return;
-  if (!window.confirm(`Eliminar el rol ${role.name}? Esta acción no se puede deshacer.`)) return;
+  if (role.isSystem || !can("roles.delete")) return;
+  if (!window.confirm(`Eliminar el rol ${role.name}? Podrá recuperarse desde Administración / Configuración / Papelera durante 30 días.`)) return;
 
   saving.value = true;
   errorMessage.value = "";
@@ -250,7 +256,8 @@ onMounted(loadAll);
 </script>
 
 <template>
-  <AdminLayout title="Roles">
+  <AdminLayout title="Configuración · Roles">
+    <AdministrationNav section="roles" />
     <div class="mb-6 flex flex-wrap items-end justify-between gap-4">
       <div>
         <h1 class="page-title">Roles</h1>
@@ -292,7 +299,7 @@ onMounted(loadAll);
                 <button v-if="canCreateRoles" type="button" class="grid h-8 w-8 place-items-center rounded-lg text-muted-fg hover:bg-surface-secondary hover:text-fg disabled:cursor-not-allowed disabled:opacity-30" :disabled="saving || role.isSystem || !role.isActive" :title="role.isSystem ? 'Los roles del sistema no se duplican' : role.isActive ? 'Duplicar rol' : 'Activa el rol antes de duplicarlo'" @click="duplicateRole(role)"><Copy class="h-4 w-4" /></button>
                 <button v-if="canEditRoles" type="button" class="grid h-8 w-8 place-items-center rounded-lg text-muted-fg hover:bg-surface-secondary hover:text-fg disabled:cursor-not-allowed disabled:opacity-30" title="Editar rol" :disabled="saving || role.isSystem" @click="editRole(role)"><Edit2 class="h-4 w-4" /></button>
                 <button v-if="can('roles.update')" type="button" class="grid h-8 w-8 place-items-center rounded-lg text-muted-fg hover:bg-surface-secondary hover:text-fg disabled:cursor-not-allowed disabled:opacity-30" :title="role.isActive ? 'Desactivar rol' : 'Activar rol'" :disabled="saving || role.isSystem" @click="toggleStatus(role)"><Power class="h-4 w-4" /></button>
-                <button v-if="can('roles.delete')" type="button" class="grid h-8 w-8 place-items-center rounded-lg text-danger hover:bg-danger/10 disabled:cursor-not-allowed disabled:opacity-30" :disabled="saving || role.isSystem || role.userCount > 0" :title="role.userCount > 0 ? 'No se puede eliminar un rol con usuarios asignados' : 'Eliminar rol'" @click="removeRole(role)"><Trash2 class="h-4 w-4" /></button>
+                <button v-if="can('roles.delete')" type="button" class="grid h-8 w-8 place-items-center rounded-lg text-danger hover:bg-danger/10 disabled:cursor-not-allowed disabled:opacity-30" :disabled="saving || role.isSystem" title="Enviar rol a papelera" @click="removeRole(role)"><Trash2 class="h-4 w-4" /></button>
               </div></td>
             </tr>
             <tr v-if="!loading && !filteredRoles.length"><td colspan="5" class="px-4 py-12 text-center text-muted-fg">No hay roles para esta búsqueda.</td></tr>
@@ -307,7 +314,7 @@ onMounted(loadAll);
             <button v-if="canCreateRoles" type="button" class="grid h-8 w-8 place-items-center rounded-lg text-muted-fg hover:bg-surface-secondary disabled:opacity-30" :disabled="saving || role.isSystem || !role.isActive" title="Duplicar rol" @click="duplicateRole(role)"><Copy class="h-4 w-4" /></button>
             <AppButton v-if="canEditRoles" size="sm" variant="ghost" :disabled="saving || role.isSystem" @click="editRole(role)"><Edit2 class="h-4 w-4" />Editar</AppButton>
             <button v-if="can('roles.update')" type="button" class="grid h-8 w-8 place-items-center rounded-lg text-muted-fg hover:bg-surface-secondary disabled:opacity-30" :disabled="saving || role.isSystem" :title="role.isActive ? 'Desactivar' : 'Activar'" @click="toggleStatus(role)"><Power class="h-4 w-4" /></button>
-            <button v-if="can('roles.delete')" type="button" class="grid h-8 w-8 place-items-center rounded-lg text-danger hover:bg-danger/10 disabled:opacity-30" :disabled="saving || role.isSystem || role.userCount > 0" title="Eliminar rol" @click="removeRole(role)"><Trash2 class="h-4 w-4" /></button>
+            <button v-if="can('roles.delete')" type="button" class="grid h-8 w-8 place-items-center rounded-lg text-danger hover:bg-danger/10 disabled:opacity-30" :disabled="saving || role.isSystem" title="Eliminar rol" @click="removeRole(role)"><Trash2 class="h-4 w-4" /></button>
           </div>
         </article>
       </div>

@@ -1,3 +1,4 @@
+import { TrashService } from '../../../trash/trash.service';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../../../../infrastructure/database/prisma/prisma.service";
 import { AuditService } from "../../../audit/application/services/audit.service";
@@ -8,6 +9,7 @@ import { UpdatePermissionDto } from "../dto/update-permission.dto";
 export class PermissionsService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly trashService: TrashService,
     private readonly auditService: AuditService,
   ) {}
 
@@ -90,22 +92,7 @@ export class PermissionsService {
   }
 
   async remove(id: number, userId: number) {
-    const current = await this.assertEditable(id);
-    const rolesCount = await this.prisma.rolePermission.count({ where: { permissionId: id } });
-    if (rolesCount > 0) throw new BadRequestException("No se puede eliminar un permiso asignado a roles");
-    await this.prisma.$transaction(async (tx) => {
-      const deletedAt = new Date();
-      await tx.permission.update({ where: { id }, data: { deletedAt, isActive: false } });
-      await this.auditService.record(tx, {
-        controller: "permissions",
-        action: "DELETE",
-        recordId: id,
-        originalData: current,
-        modifiedData: { ...current, isActive: false, deletedAt },
-        userId,
-      });
-    });
-    return { id };
+    return this.trashService.trash('permissions', id, userId, await this.trashService.primaryCompany());
   }
 
   private async assertActionAvailable(action: string) {

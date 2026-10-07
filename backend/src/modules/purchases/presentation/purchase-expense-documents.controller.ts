@@ -79,11 +79,6 @@ export class PurchaseExpenseDocumentsController {
   @Delete("documents/:id")
   async remove(@Param("id", ParseIntPipe) id: number, @CurrentUser() user: AuthenticatedUser, @Headers("x-company-id") companyHeader?: string) {
     const data = await this.documents.remove(id, user.sub, await this.companyScope.resolve(user, companyHeader));
-    const prefix = "/uploads/purchase-expenses/";
-    if (data.filePath.startsWith(prefix)) {
-      const filename = data.filePath.slice(prefix.length);
-      if (filename && filename === basename(filename)) await unlink(join(documentsDirectory, filename)).catch(() => undefined);
-    }
     return { success: true, message: "Documento eliminado", data };
   }
 }

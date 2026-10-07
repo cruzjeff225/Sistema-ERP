@@ -1,6 +1,16 @@
 packages:
   - .
 
+# Security fixes for runtime transitive dependencies; verified by production audit and regression tests.
+overrides:
+  multer: 2.4.0
+  qs: 6.16.0
+  proxy-addr: 2.0.8
+  fast-uri: 3.1.8
+  mysql2: 3.23.1
+  '@nestjs/swagger>js-yaml': 5.4.1
+  '@prisma/config>deepmerge-ts': 8.0.0
+
 allowBuilds:
   '@prisma/engines': true
   '@scarf/scarf': true

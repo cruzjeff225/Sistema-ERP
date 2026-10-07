@@ -50,8 +50,8 @@ export class PurchaseRequestLineDto {
   productId: number;
 
   @Type(() => Number)
-  @IsNumber({ maxDecimalPlaces: 2 })
-  @Min(0.01)
+  @IsInt({ message: "La cantidad de productos debe ser un número entero" })
+  @Min(1)
   quantity: number;
 
   @Type(() => Number)
@@ -117,20 +117,26 @@ export class QuotationSourceDto {
   requestDetailId: number;
 
   @Type(() => Number)
-  @IsNumber({ maxDecimalPlaces: 2 })
-  @Min(0.01)
+  @IsInt({ message: "La cantidad de productos debe ser un número entero" })
+  @Min(1)
   quantity: number;
 }
 
 export class PurchaseQuotationLineDto {
+  @IsOptional() @IsIn(['available','unavailable','not_quoted'])
+  availabilityStatus?: 'available' | 'unavailable' | 'not_quoted';
+  @IsOptional() @IsString() @MaxLength(100) presentation?: string;
+  @IsOptional() @IsInt({ message: "La cantidad de productos debe ser un número entero" }) @Min(1) unitsPerPack?: number;
+  @IsOptional() @IsNumber({maxDecimalPlaces:4}) @Min(0) presentationPrice?: number;
+  @IsOptional() @IsInt({ message: "La cantidad de productos debe ser un número entero" }) @Min(0) minimumQuantity?: number;
   @Type(() => Number)
   @IsInt()
   @Min(1)
   productId: number;
 
   @Type(() => Number)
-  @IsNumber({ maxDecimalPlaces: 2 })
-  @Min(0.01)
+  @IsInt({ message: "La cantidad de productos debe ser un número entero" })
+  @Min(1)
   quantity: number;
 
   @Type(() => Number)
@@ -163,7 +169,7 @@ export class PurchaseQuotationLineDto {
   deliveryDays?: number;
 
   @Type(() => Number)
-  @IsNumber({ maxDecimalPlaces: 2 })
+  @IsInt({ message: "La cantidad de productos debe ser un número entero" })
   @Min(0)
   availableQuantity: number;
 
@@ -174,7 +180,6 @@ export class PurchaseQuotationLineDto {
   notes?: string;
 
   @IsArray()
-  @ArrayMinSize(1)
   @ArrayUnique((source: QuotationSourceDto) => source.requestDetailId)
   @ValidateNested({ each: true })
   @Type(() => QuotationSourceDto)
@@ -182,6 +187,7 @@ export class PurchaseQuotationLineDto {
 }
 
 export class PurchaseExpenseDto {
+  @IsOptional() @IsIn(['fixed','proportional']) chargeMode?: 'fixed' | 'proportional';
   @Type(() => Number)
   @IsInt()
   @Min(1)
@@ -200,13 +206,20 @@ export class PurchaseExpenseDto {
 }
 
 export class CreatePurchaseQuotationDto {
+  // Buyer review of the offer's additional charges and terms, not supplier internal costs.
+  @IsOptional() @IsBoolean() costsConfirmed?: boolean;
+  @IsOptional() @IsBoolean() conditionsConfirmed?: boolean;
+  @IsOptional() @IsNumber({maxDecimalPlaces:8}) @Min(0.00000001) exchangeRateToUsd?: number;
+  @IsOptional() @IsDateString() exchangeRateDate?: string;
+  @IsOptional() @IsString() @MaxLength(500) providerConfirmation?: string;
+  @IsOptional() @IsInt() @Min(1)
+  rfqId?: number;
   @Type(() => Number)
   @IsInt()
   @Min(1)
   supplierId: number;
 
   @IsArray()
-  @ArrayMinSize(1)
   @ArrayUnique()
   @Type(() => Number)
   @IsInt({ each: true })
@@ -273,8 +286,8 @@ export class PurchaseOrderSelectionDto {
   quotationDetailId: number;
 
   @Type(() => Number)
-  @IsNumber({ maxDecimalPlaces: 2 })
-  @Min(0.01)
+  @IsInt({ message: "La cantidad de productos debe ser un número entero" })
+  @Min(1)
   quantity: number;
 }
 
@@ -307,7 +320,20 @@ export class GeneratePurchaseOrderDto {
   details?: PurchaseOrderSelectionDto[];
 }
 
+export class OrderLineChangeDto {
+  @IsInt() @Min(1) quotationDetailId: number;
+  @IsInt({ message: "La cantidad de productos debe ser un número entero" }) @Min(1) quantity: number;
+  @IsOptional() @IsNumber({maxDecimalPlaces:4}) @Min(0.0001) unitPrice?: number;
+  @IsOptional() @IsNumber({maxDecimalPlaces:2}) @Min(0) discount?: number;
+  @IsOptional() @IsNumber({maxDecimalPlaces:2}) @Min(0) @Max(100) taxRate?: number;
+}
 export class UpdatePurchaseOrderDto {
+  @IsOptional() @IsBoolean() managementReview?: boolean;
+  @IsOptional() @IsInt() @Min(1) quotationId?: number;
+  @IsOptional() @IsBoolean() confirmOfferChanges?: boolean;
+  @IsOptional() @IsString() @MaxLength(500) confirmationReason?: string;
+  @IsOptional() @IsArray() @ArrayMinSize(1) @ArrayUnique((l:OrderLineChangeDto)=>l.quotationDetailId)
+  @ValidateNested({each:true}) @Type(()=>OrderLineChangeDto) details?: OrderLineChangeDto[];
   @ValidateIf((_object, value) => value !== undefined)
   @IsDateString()
   expectedDate?: string;
@@ -352,8 +378,8 @@ export class ReceivePurchaseOrderLineDto {
   locationId?: number;
 
   @Type(() => Number)
-  @IsNumber({ maxDecimalPlaces: 2 })
-  @Min(0.01)
+  @IsInt({ message: "La cantidad de productos debe ser un número entero" })
+  @Min(1)
   quantity: number;
 }
 

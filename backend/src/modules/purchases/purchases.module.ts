@@ -1,4 +1,6 @@
 import { Module } from "@nestjs/common";
+import { SupplyWorkflowService } from './application/services/supply-workflow.service';
+import { SupplyWorkflowController } from './presentation/supply-workflow.controller';
 import { InventoryModule } from "../inventory/inventory.module";
 import { AuditModule } from "../audit/audit.module";
 import { PurchasesService } from "./application/services/purchases.service";
@@ -19,6 +21,7 @@ import {
 @Module({
   imports: [AuditModule, InventoryModule],
   controllers: [
+    SupplyWorkflowController,
     PurchaseCatalogsController,
     PurchaseRequestsController,
     PurchaseQuotationsController,
@@ -28,6 +31,6 @@ import {
     RetaceosController,
     PurchaseReceiptsController,
   ],
-  providers: [PurchasesService, PurchaseExpenseDocumentsService, RetaceosService, PurchaseReceiptsService],
+  providers: [SupplyWorkflowService, PurchasesService, PurchaseExpenseDocumentsService, RetaceosService, PurchaseReceiptsService],
 })
 export class PurchasesModule {}

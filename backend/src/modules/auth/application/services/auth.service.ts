@@ -56,7 +56,7 @@ export class AuthService {
               include: {
                 rolePermissions: {
                   where: {
-                    permission: { isActive: true, deletedAt: null },
+                    permission: { isActive: true, deletedAt: null, module: { isActive: true, deletedAt: null } },
                   },
                   include: { permission: true },
                 },

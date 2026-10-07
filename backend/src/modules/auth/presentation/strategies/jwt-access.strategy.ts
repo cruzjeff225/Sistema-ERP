@@ -46,6 +46,9 @@ export class JwtAccessStrategy extends PassportStrategy(
     if (!user) throw new UnauthorizedException("Sesión no disponible");
     if (!(await this.companyScope.accessibleCompanies({ sub: user.id, roles: payload.roles })).length) throw new UnauthorizedException("Sesion no disponible para la empresa del ERP");
 
+    const assignments = await this.prisma.userRole.findMany({ where: { userId:user.id, role:{isActive:true,deletedAt:null} }, include:{role:{include:{rolePermissions:{where:{permission:{isActive:true,deletedAt:null,module:{isActive:true,deletedAt:null}}},include:{permission:true}}}}} });
+    const roles = assignments.map(a=>a.role.name);
+    const permissions = [...new Set(assignments.flatMap(a=>a.role.rolePermissions.map(p=>p.permission.action)))];
     return {
       sub: payload.sub,
       username: payload.username,

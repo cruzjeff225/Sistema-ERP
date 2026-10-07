@@ -6,6 +6,115 @@ datasource db {
   provider = "postgresql"
 }
 
+model PurchaseConsolidation {
+  quantityReviewStatus String @default("draft") @map("quantity_review_status")
+  quantityRevision Int @default(1) @map("quantity_revision")
+  quantityApprovedRevision Int? @map("quantity_approved_revision")
+  quantityApprovedBy Int? @map("quantity_approved_by")
+  quantityApprovedAt DateTime? @map("quantity_approved_at")
+  quantityReviewNotes String? @map("quantity_review_notes")
+  deletedAt DateTime? @map("deleted_at")
+  id Int @id @default(autoincrement())
+  code String @unique
+  companyId Int @map("company_id")
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  dateFrom DateTime @map("date_from") @db.Date
+  dateTo DateTime @map("date_to") @db.Date
+  status String @default("draft")
+  userId Int @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  lines PurchaseConsolidationLine[]
+  rfqs PurchaseRfq[]
+  orders PurchaseOrder[]
+  @@index([companyId, status])
+  @@map("purchase_consolidations")
+}
+
+model PurchaseConsolidationLine {
+  decidedBy Int? @map("decided_by")
+  decidedAt DateTime? @map("decided_at")
+  id Int @id @default(autoincrement())
+  consolidationId Int @map("consolidation_id")
+  consolidation PurchaseConsolidation @relation(fields: [consolidationId], references: [id], onDelete: Cascade)
+  productId Int @map("product_id")
+  product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+  unitId Int @map("unit_id")
+  unit ProductUnit @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  requestedQuantity Decimal @map("requested_quantity") @db.Decimal(12,2)
+  purchaseQuantity Decimal @map("purchase_quantity") @db.Decimal(12,2)
+  reason String?
+  sources PurchaseConsolidationSource[]
+  rfqLines PurchaseRfqLine[]
+  quotationDetails PurchaseQuotationDetail[]
+  @@unique([consolidationId, productId])
+  @@map("purchase_consolidation_lines")
+}
+
+model PurchaseConsolidationSource {
+  id Int @id @default(autoincrement())
+  lineId Int @map("line_id")
+  line PurchaseConsolidationLine @relation(fields: [lineId], references: [id], onDelete: Cascade)
+  requestDetailId Int @unique @map("request_detail_id")
+  requestDetail PurchaseRequestDetail @relation(fields: [requestDetailId], references: [id], onDelete: Restrict)
+  quantity Decimal @db.Decimal(12,2)
+  @@map("purchase_consolidation_sources")
+}
+
+model PurchaseRfq {
+  deletedAt DateTime? @map("deleted_at")
+  id Int @id @default(autoincrement())
+  code String @unique
+  consolidationId Int @map("consolidation_id")
+  consolidation PurchaseConsolidation @relation(fields: [consolidationId], references: [id], onDelete: Restrict)
+  supplierId Int @map("supplier_id")
+  supplier Supplier @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  createdAt DateTime @default(now()) @map("created_at")
+  lines PurchaseRfqLine[]
+  quotation PurchaseQuotation?
+  @@map("purchase_rfqs")
+}
+
+model PurchaseRfqLine {
+  id Int @id @default(autoincrement())
+  rfqId Int @map("rfq_id")
+  rfq PurchaseRfq @relation(fields: [rfqId], references: [id], onDelete: Cascade)
+  lineId Int @map("line_id")
+  line PurchaseConsolidationLine @relation(fields: [lineId], references: [id], onDelete: Restrict)
+  quantity Decimal @db.Decimal(12,2)
+  @@unique([rfqId, lineId])
+  @@map("purchase_rfq_lines")
+}
+
+model PurchaseActualExpense {
+  deletedAt DateTime? @map("deleted_at")
+  id Int @id @default(autoincrement())
+  purchaseId Int @map("purchase_id")
+  purchase Purchase @relation(fields: [purchaseId], references: [id], onDelete: Restrict)
+  plannedExpenseId Int? @map("planned_expense_id")
+  plannedExpense PurchaseOrderExpense? @relation(fields: [plannedExpenseId], references: [id], onDelete: Restrict)
+  expenseTypeId Int @map("expense_type_id")
+  expenseType ExpenseType @relation(fields: [expenseTypeId], references: [id], onDelete: Restrict)
+  reference String
+  amount Decimal @db.Decimal(14,2)
+  category String
+  capitalizable Boolean @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  allocations PurchaseExpenseAllocation[]
+  @@unique([purchaseId, reference])
+  @@map("purchase_actual_expenses")
+}
+
+model PurchaseExpenseAllocation {
+  id Int @id @default(autoincrement())
+  expenseId Int @unique @map("expense_id")
+  expense PurchaseActualExpense @relation(fields: [expenseId], references: [id], onDelete: Restrict)
+  retaceoId Int @map("retaceo_id")
+  retaceo Retaceo @relation(fields: [retaceoId], references: [id], onDelete: Cascade)
+  amount Decimal @db.Decimal(14,2)
+  @@map("purchase_expense_allocations")
+}
+
 model User {
   id                  Int       @id @default(autoincrement())
   username            String    @unique
@@ -244,6 +353,7 @@ model District {
 }
 
 model Company {
+  consolidations PurchaseConsolidation[]
   erpConfiguration ErpConfiguration?
   id              Int       @id @default(autoincrement()) @map("id_company")
   name            String
@@ -288,6 +398,8 @@ model Company {
 }
 
 model ErpConfiguration {
+  generalWarehouseId Int? @unique @map("general_warehouse_id")
+  generalWarehouse Warehouse? @relation(fields: [generalWarehouseId], references: [id], onDelete: Restrict)
   id Int @id @default(1)
   companyId Int @unique @map("company_id")
   company Company @relation(fields: [companyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -343,6 +455,7 @@ model WarehouseCategory {
 }
 
 model Warehouse {
+  erpConfiguration ErpConfiguration?
   id          Int       @id @default(autoincrement()) @map("id_warehouse")
   branchId    Int       @map("id_branch")
   categoryId  Int       @map("id_warehouse_category")
@@ -441,6 +554,7 @@ model Country {
 }
 
 model Supplier {
+  rfqs PurchaseRfq[]
   id             Int       @id @default(autoincrement()) @map("id_supplier")
   companyId      Int       @map("id_company")
   code           String
@@ -502,6 +616,7 @@ model SupplierContact {
 }
 
 model Product {
+  consolidationLines PurchaseConsolidationLine[]
   id             Int       @id @default(autoincrement()) @map("id_product")
   uuid           String    @unique @default(uuid())
   companyId      Int       @map("id_company")
@@ -586,6 +701,7 @@ model ProductSubcategory {
 }
 
 model ProductUnit {
+  consolidationLines PurchaseConsolidationLine[]
   id        Int       @id @default(autoincrement()) @map("id_unit")
   name      String
   type      String
@@ -680,6 +796,8 @@ model InventoryMovement {
 }
 
 model Purchase {
+  deletedAt DateTime? @map("deleted_at")
+  actualExpenses PurchaseActualExpense[]
   id                    Int       @id @default(autoincrement()) @map("id_purchase")
   uuid                  String    @unique @default(uuid())
   companyId             Int?      @map("id_company")
@@ -724,7 +842,11 @@ model PurchaseItem {
   id                    Int     @id @default(autoincrement()) @map("id_purchase_item")
   purchaseId            Int     @map("id_purchase")
   productId             Int     @map("id_product")
-  locationId            Int     @map("id_location")
+  locationId            Int?     @map("id_location")
+  suggestedLocationId   Int?     @map("suggested_location_id")
+  placedAt              DateTime? @map("placed_at")
+  placedBy              Int?      @map("placed_by")
+  barcodeConfirmed      Boolean   @default(false) @map("barcode_confirmed")
   quantity              Decimal @db.Decimal(12, 2)
   unitCost              Decimal @map("unit_cost") @db.Decimal(14, 4)
   lineTotal             Decimal @map("line_total") @db.Decimal(12, 2)
@@ -740,7 +862,7 @@ model PurchaseItem {
 
   purchase            Purchase             @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
   product             Product              @relation(fields: [productId], references: [id])
-  location            Location             @relation(fields: [locationId], references: [id])
+  location            Location?             @relation(fields: [locationId], references: [id])
   purchaseOrderDetail PurchaseOrderDetail @relation(fields: [purchaseOrderDetailId], references: [id], onDelete: Restrict)
   unit                ProductUnit @relation(fields: [unitId], references: [id], onDelete: Restrict)
   retaceoDetails      RetaceoDetail[]
@@ -825,6 +947,12 @@ model SaleItem {
 }
 
 model Transfer {
+  deletedAt DateTime? @map("deleted_at")
+  uuid String @unique @default(uuid())
+  companyId Int? @map("company_id")
+  dispatchedAt DateTime? @map("dispatched_at")
+  receivedAt DateTime? @map("received_at")
+  userId Int? @map("user_id")
   id              Int      @id @default(autoincrement()) @map("id_transfer")
   documentNumber  String   @unique @map("document_number")
   fromWarehouseId Int      @map("id_from_warehouse")
@@ -840,12 +968,15 @@ model Transfer {
 }
 
 model TransferItem {
+  requestDetailId Int? @map("request_detail_id")
+  requestDetail PurchaseRequestDetail? @relation(fields: [requestDetailId], references: [id], onDelete: Restrict)
+  receivedQuantity Decimal @default(0) @map("received_quantity") @db.Decimal(12, 2)
   id             Int @id @default(autoincrement()) @map("id_transfer_item")
   transferId     Int @map("id_transfer")
   productId      Int @map("id_product")
   fromLocationId Int @map("id_from_location")
   toLocationId   Int @map("id_to_location")
-  quantity       Int
+  quantity       Decimal @db.Decimal(12, 2)
 
   transfer Transfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
   product  Product  @relation(fields: [productId], references: [id])
@@ -923,6 +1054,8 @@ model PurchaseRequest {
 }
 
 model PurchaseRequestDetail {
+  consolidationSources PurchaseConsolidationSource[]
+  transferItems TransferItem[]
   id          Int     @id @default(autoincrement()) @map("id_purchase_request_detail")
   requestId   Int     @map("id_purchase_request")
   productId   Int     @map("id_product")
@@ -943,6 +1076,13 @@ model PurchaseRequestDetail {
 }
 
 model PurchaseQuotation {
+  costsConfirmed Boolean @default(false) @map("costs_confirmed")
+  conditionsConfirmed Boolean @default(false) @map("conditions_confirmed")
+  exchangeRateToUsd Decimal? @map("exchange_rate_to_usd") @db.Decimal(18,8)
+  exchangeRateDate DateTime? @map("exchange_rate_date") @db.Date
+  providerConfirmation String? @map("provider_confirmation")
+  rfqId Int? @unique @map("rfq_id")
+  rfq PurchaseRfq? @relation(fields: [rfqId], references: [id], onDelete: Restrict)
   id                 Int       @id @default(autoincrement()) @map("id_purchase_quotation")
   uuid               String    @unique @default(uuid())
   code               String    @unique @map("purchase_quotation_code")
@@ -980,6 +1120,13 @@ model PurchaseQuotation {
 }
 
 model PurchaseQuotationDetail {
+  availabilityStatus String @default("available") @map("availability_status")
+  presentation String? 
+  unitsPerPack Decimal @default(1) @map("units_per_pack") @db.Decimal(12,4)
+  presentationPrice Decimal? @map("presentation_price") @db.Decimal(14,4)
+  minimumQuantity Decimal @default(0) @map("minimum_quantity") @db.Decimal(12,2)
+  consolidationLineId Int? @map("consolidation_line_id")
+  consolidationLine PurchaseConsolidationLine? @relation(fields: [consolidationLineId], references: [id], onDelete: Restrict)
   id                Int     @id @default(autoincrement()) @map("id_purchase_quotation_detail")
   quotationId       Int     @map("id_purchase_quotation")
   productId         Int     @map("id_product")
@@ -1037,6 +1184,7 @@ model PurchaseQuotationRequestDetail {
 }
 
 model ExpenseType {
+  actualExpenses PurchaseActualExpense[]
   id          Int       @id @default(autoincrement()) @map("id_expense_type")
   companyId   Int       @map("id_company")
   name        String
@@ -1056,6 +1204,7 @@ model ExpenseType {
 }
 
 model PurchaseQuotationExpense {
+  chargeMode String @default("proportional") @map("charge_mode")
   id            Int      @id @default(autoincrement()) @map("id_purchase_quotation_expense")
   quotationId   Int      @map("id_purchase_quotation")
   expenseTypeId Int      @map("id_expense_type")
@@ -1072,6 +1221,16 @@ model PurchaseQuotationExpense {
 }
 
 model PurchaseOrder {
+  revision Int @default(1)
+  submittedAt DateTime? @map("submitted_at")
+  submittedBy Int? @map("submitted_by")
+  approvedAt DateTime? @map("approved_at")
+  approvedBy Int? @map("approved_by")
+  approvedRevision Int? @map("approved_revision")
+  reviewNotes String? @map("review_notes")
+  comparisonSnapshot Json? @map("comparison_snapshot")
+  consolidationId Int? @map("consolidation_id")
+  consolidation PurchaseConsolidation? @relation(fields: [consolidationId], references: [id], onDelete: Restrict)
   id                 Int       @id @default(autoincrement()) @map("id_purchase_order")
   uuid               String    @unique @default(uuid())
   code               String    @unique @map("purchase_order_code")
@@ -1145,6 +1304,7 @@ model PurchaseOrderDetail {
 }
 
 model PurchaseOrderExpense {
+  actualExpenses PurchaseActualExpense[]
   id            Int      @id @default(autoincrement()) @map("id_purchase_order_expense")
   orderId       Int      @map("id_purchase_order")
   expenseTypeId Int      @map("id_expense_type")
@@ -1162,6 +1322,7 @@ model PurchaseOrderExpense {
 }
 
 model PurchaseOrderExpenseDocument {
+  deletedAt DateTime? @map("deleted_at")
   id         Int      @id @default(autoincrement()) @map("id_purchase_order_expense_document")
   expenseId  Int      @map("id_purchase_order_expense")
   fileName   String   @map("file_name")
@@ -1176,6 +1337,7 @@ model PurchaseOrderExpenseDocument {
 }
 
 model Retaceo {
+  expenseAllocations PurchaseExpenseAllocation[]
   id                  Int       @id @default(autoincrement()) @map("id_retaceo")
   uuid                String    @unique @default(uuid())
   code                String    @unique @map("retaceo_code")
@@ -1235,4 +1397,22 @@ model RetaceoDetail {
   @@index([productId])
   @@index([purchaseItemId])
   @@map("retaceo_details")
+}
+
+model TrashEntry {
+  id Int @id @default(autoincrement())
+  companyId Int @map("company_id")
+  entity String
+  recordId Int @map("record_id")
+  label String
+  deletedBy Int @map("deleted_by")
+  deletedAt DateTime @default(now()) @map("deleted_at")
+  expiresAt DateTime @map("expires_at")
+  restoredAt DateTime? @map("restored_at")
+  purgedAt DateTime? @map("purged_at")
+  retainedForHistory Boolean @default(false) @map("retained_for_history")
+  originalState Json @map("original_state")
+  @@index([companyId, expiresAt])
+  @@index([entity, recordId, restoredAt])
+  @@map("trash_entries")
 }

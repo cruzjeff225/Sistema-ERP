@@ -3,7 +3,7 @@ import { onMounted, ref } from "vue";
 import { Check, X } from "lucide-vue-next";
 import AppButton from "./AppButton.vue";
 
-const props = defineProps<{ title: string; description: string; requireReason?: boolean; busy?: boolean; error?: string }>();
+const props = defineProps<{ title: string; description: string; requireReason?: boolean; busy?: boolean; error?: string; confirmLabel?: string; destructive?: boolean }>();
 const emit = defineEmits<{ confirm: [reason: string]; close: [] }>();
 const dialog = ref<HTMLDialogElement | null>(null);
 const reason = ref("");
@@ -18,7 +18,7 @@ onMounted(() => dialog.value?.showModal());
         <p class="mt-3 text-sm leading-6 text-muted-fg">{{ props.description }}</p>
         <label v-if="props.requireReason" class="mt-4 block text-sm font-medium">Motivo<textarea v-model="reason" class="field-control min-h-24 py-2" required maxlength="500" :disabled="props.busy" autofocus /></label>
         <p v-if="props.error" role="alert" class="mt-4 text-sm text-danger">{{ props.error }}</p>
-        <div class="mt-6 flex justify-end gap-2"><AppButton type="button" variant="outline" :disabled="props.busy" @click="emit('close')">Volver</AppButton><AppButton type="submit" :disabled="props.busy || (props.requireReason && !reason.trim())"><Check class="h-4 w-4" />{{ props.busy ? 'Procesando...' : 'Confirmar' }}</AppButton></div>
+        <div class="mt-6 flex justify-end gap-2"><AppButton type="button" variant="outline" :disabled="props.busy" @click="emit('close')">Volver</AppButton><AppButton type="submit" :variant="props.destructive ? 'danger' : 'primary'" :disabled="props.busy || (props.requireReason && !reason.trim())"><Check class="h-4 w-4" />{{ props.busy ? 'Procesando...' : props.confirmLabel || 'Confirmar' }}</AppButton></div>
       </form>
     </dialog>
   </Teleport>

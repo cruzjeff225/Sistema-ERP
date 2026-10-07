@@ -7,7 +7,7 @@ import { InventoryAdjustmentDto, InventoryQueryDto } from "./inventory.dto";
 import { locationMapState } from './location-map';
 
 const stockInclude = {
-  product: { select: { id: true, name: true, sku: true, purchaseUnit: { select: { name: true } } } },
+  product: { select: { id: true, name: true, sku: true, purchaseUnit: { select: { id: true, name: true } } } },
   location: { include: { warehouse: { include: { branch: { select: { id: true, name: true } } } } } },
 } satisfies Prisma.InventoryStockInclude;
 
@@ -18,7 +18,7 @@ export class InventoryService {
   async map(companyId: number, warehouseId: number) {
     const warehouse = await this.prisma.warehouse.findFirst({
       where: { id: warehouseId, branch: { companyId } },
-      select: { id: true, name: true, isActive: true, deletedAt: true, branch: { select: { name: true, isActive: true, deletedAt: true } }, locations: {
+      select: { id: true, name: true, isActive: true, deletedAt: true, branch: { select: { id: true, name: true, isActive: true, deletedAt: true } }, locations: {
         orderBy: { code: 'asc' },
         where: { OR: [{ deletedAt: null }, { stocks: { some: { quantity: { gt: 0 } } } }] },
         select: { id: true, code: true, aisle: true, rack: true, level: true, position: true, capacity: true, isActive: true, deletedAt: true,
@@ -33,14 +33,14 @@ export class InventoryService {
 
   private where(companyId: number, q: InventoryQueryDto): Prisma.InventoryStockWhereInput {
     return { product: { companyId, ...(q.search?.trim() ? { OR: [{ name: { contains: q.search.trim(), mode: 'insensitive' } }, { sku: { contains: q.search.trim(), mode: 'insensitive' } }] } : {}) },
-      location: { warehouse: { branch: { companyId } }, ...(q.warehouseId ? { warehouseId: q.warehouseId } : {}) },
+      location: { warehouse: { branch: { companyId, ...(q.branchId ? { id: q.branchId } : {}) } }, ...(q.warehouseId ? { warehouseId: q.warehouseId } : {}) },
       ...(q.productId ? { productId: q.productId } : {}), ...(q.locationId ? { locationId: q.locationId } : {}) };
   }
 
   async stocks(companyId: number, q: InventoryQueryDto) {
     const where = this.where(companyId, q);
     const [items, total] = await this.prisma.$transaction([
-      this.prisma.inventoryStock.findMany({ where, include: stockInclude, orderBy: { id: 'desc' }, skip: (q.page - 1) * q.limit, take: q.limit }),
+      this.prisma.inventoryStock.findMany({ where, include: stockInclude, orderBy: [{ product: { name: 'asc' } }, { location: { warehouse: { name: 'asc' } } }, { location: { code: 'asc' } }, { id: 'asc' }], skip: (q.page - 1) * q.limit, take: q.limit }),
       this.prisma.inventoryStock.count({ where }),
     ]);
     return { items, total, page: q.page, totalPages: Math.ceil(total / q.limit) };
@@ -58,7 +58,7 @@ export class InventoryService {
       this.prisma.inventoryMovement.findMany({ where, include: { stock: { include: stockInclude }, user: { select: { username: true } }, purchaseItem: { select: {
         unitCost: true, lineTotal: true, quantity: true, unit: { select: { id: true, name: true } },
         purchase: { select: { id: true, documentNumber: true, purchaseDate: true, currency: true } },
-        retaceoDetails: { where: { retaceo: { status: 'closed', deletedAt: null } }, select: { unitCost: true, totalCost: true, retaceo: { select: { id: true, code: true } } } },
+        retaceoDetails: { where: { retaceo: { status: 'closed' } }, select: { unitCost: true, totalCost: true, retaceo: { select: { id: true, code: true } } } },
       } } }, orderBy: { id: 'desc' }, skip: (q.page - 1) * q.limit, take: q.limit }),
       this.prisma.inventoryMovement.count({ where }),
     ]);
@@ -77,18 +77,20 @@ export class InventoryService {
 
   async catalogs(companyId: number) {
     const products = await this.prisma.product.findMany({ where: { companyId, isActive: true, deletedAt: null }, select: { id: true, name: true, sku: true, purchaseUnit: { select: { name: true } } }, orderBy: { name: 'asc' } });
-    const warehouses = await this.prisma.warehouse.findMany({ where: { isActive: true, deletedAt: null, branch: { companyId, isActive: true, deletedAt: null } }, include: { branch: { select: { name: true } }, locations: { where: { isActive: true, deletedAt: null }, select: { id: true, code: true } } }, orderBy: { name: 'asc' } });
-    return { products, warehouses };
+    const warehouses = await this.prisma.warehouse.findMany({ where: { isActive: true, deletedAt: null, branch: { companyId, isActive: true, deletedAt: null } }, include: { branch: { select: { id: true, name: true } }, locations: { where: { isActive: true, deletedAt: null }, select: { id: true, code: true } } }, orderBy: { name: 'asc' } });
+    const config = await this.prisma.erpConfiguration.findFirst({ where: { companyId }, include: { generalWarehouse: { include: { branch: true } } } });
+    return { products, warehouses, generalWarehouse: config?.generalWarehouse ?? null };
   }
 
   adjust(companyId: number, userId: number, dto: InventoryAdjustmentDto) {
-    return purchaseTransaction(this.prisma, companyId, tx => this.post(tx, companyId, userId, { ...dto, key: `adjust:${companyId}:${dto.requestId}`, type: 'ADJUSTMENT' }));
+    return purchaseTransaction(this.prisma, companyId, tx => this.post(tx, companyId, userId, { ...dto, key: `adjust:${companyId}:${dto.requestId.toLowerCase()}`, type: 'ADJUSTMENT' }));
   }
 
   // Called inside the same company-locked transaction as receipt/cancellation.
   async post(tx: Prisma.TransactionClient, companyId: number, userId: number, data: { productId: number; locationId: number; quantity: Prisma.Decimal | number; key: string; type: string; reason: string; purchaseItemId?: number }) {
     const delta = new Prisma.Decimal(data.quantity);
-    const existing = await tx.inventoryMovement.findUnique({ where: { key: data.key }, include: { stock: true } });
+    if (data.type !== 'REVERSAL' && !delta.isInteger()) throw new BadRequestException('La cantidad de productos debe ser un número entero');
+    const existing = await tx.inventoryMovement.findFirst({ where: { key: { equals: data.key, mode: 'insensitive' } }, include: { stock: true } });
     if (existing) {
       if (existing.stock.productId !== data.productId || existing.stock.locationId !== data.locationId || !existing.quantity.eq(delta) || existing.reason !== data.reason) throw new ConflictException('La referencia ya fue usada para otro movimiento');
       return existing;

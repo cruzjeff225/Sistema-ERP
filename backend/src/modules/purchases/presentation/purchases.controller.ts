@@ -42,7 +42,7 @@ export class PurchaseCatalogsController extends ScopedController {
     super(companyScope);
   }
 
-  @RequireAnyPermission(PURCHASE_REQUEST_PERMISSIONS.VIEW, PURCHASE_QUOTATION_PERMISSIONS.VIEW, PURCHASE_ORDER_PERMISSIONS.VIEW)
+  @RequireAnyPermission(PURCHASE_REQUEST_PERMISSIONS.VIEW, PURCHASE_QUOTATION_PERMISSIONS.VIEW, PURCHASE_ORDER_PERMISSIONS.VIEW, 'purchase_orders.approve')
   @Get()
   @ApiOperation({ summary: "Catálogos activos para el proceso de compras" })
   async catalogs(@CurrentUser() user: AuthenticatedUser, @Headers("x-company-id") companyHeader?: string) {
@@ -97,7 +97,7 @@ export class PurchaseRequestsController extends ScopedController {
   @RequirePermissions(PURCHASE_REQUEST_PERMISSIONS.UPDATE)
   @Post(":id/submit")
   async submit(@Param("id", ParseIntPipe) id: number, @CurrentUser() user: AuthenticatedUser, @Headers("x-company-id") companyHeader?: string) {
-    return { success: true, message: "Solicitud enviada a aprobación", data: await this.purchases.submitRequest(id, user.sub, await this.company(user, companyHeader)) };
+    return { success: true, message: "Solicitud enviada a Compras", data: await this.purchases.submitRequest(id, user.sub, await this.company(user, companyHeader)) };
   }
 
   @RequirePermissions(PURCHASE_REQUEST_PERMISSIONS.APPROVE)
@@ -231,6 +231,10 @@ export class PurchaseOrdersController extends ScopedController {
   async send(@Param("id", ParseIntPipe) id: number, @CurrentUser() user: AuthenticatedUser, @Headers("x-company-id") companyHeader?: string) {
     return { success: true, message: "Orden enviada al proveedor", data: await this.purchases.sendOrder(id, user.sub, await this.company(user, companyHeader)) };
   }
+  @RequirePermissions(PURCHASE_ORDER_PERMISSIONS.APPROVE) @Post(':id/reject')
+  async reject(@Param('id',ParseIntPipe) id:number,@Body() dto:WorkflowReasonDto,@CurrentUser() user:AuthenticatedUser,@Headers('x-company-id') header?:string){return{data:await this.purchases.rejectOrder(id,dto.reason,user.sub,await this.company(user,header))};}
+  @RequirePermissions(PURCHASE_ORDER_PERMISSIONS.APPROVE) @Post(':id/return')
+  async returnForChanges(@Param('id',ParseIntPipe) id:number,@Body() dto:WorkflowReasonDto,@CurrentUser() user:AuthenticatedUser,@Headers('x-company-id') header?:string){return{data:await this.purchases.returnOrder(id,dto.reason,user.sub,await this.company(user,header))};}
 
   @RequireAnyPermission(PURCHASE_ORDER_PERMISSIONS.RECEIVE, PURCHASE_PERMISSIONS.CREATE)
   @Post(":id/receive")

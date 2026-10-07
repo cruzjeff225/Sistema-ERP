@@ -39,6 +39,8 @@ const warehouseInclude = {
     select: {
       id: true,
       name: true,
+      isActive: true,
+      deletedAt: true,
       company: { select: { id: true, name: true, commercialName: true } },
     },
   },
@@ -282,6 +284,7 @@ export class OrganizationService {
   async updateBranchStatus(id: number, isActive: boolean, userId?: number, scopedCompanyId?: number) {
     const current = await this.branch(id, scopedCompanyId);
     return companyTransaction(this.prisma, current.companyId, async (tx) => {
+      if (!isActive && await tx.erpConfiguration.count({ where: { generalWarehouse: { branchId: id } } })) throw new ConflictException('La sucursal contiene el centro general configurado; configure otro centro antes de desactivarla');
       if (!isActive && await tx.inventoryStock.count({ where: { location: { warehouse: { branchId: id } }, quantity: { gt: 0 } } })) throw new ConflictException("No se puede desactivar una sucursal con existencias");
       const updated = await tx.branch.update({ where: { id }, data: { isActive }, include: branchInclude });
       await this.auditService.record(tx, {
@@ -443,6 +446,7 @@ export class OrganizationService {
   async updateWarehouseStatus(id: number, isActive: boolean, userId?: number, scopedCompanyId?: number) {
     const current = await this.warehouse(id, scopedCompanyId);
     return companyTransaction(this.prisma, current.branch.company.id, async (tx) => {
+      if (!isActive && await tx.erpConfiguration.count({ where: { generalWarehouseId: id } })) throw new ConflictException('Este es el centro general configurado; configure otro centro antes de desactivarlo');
       if (!isActive && await tx.inventoryStock.count({ where: { location: { warehouseId: id }, quantity: { gt: 0 } } })) throw new ConflictException("No se puede desactivar una ubicacion o almacen con existencias");
       const updated = await tx.warehouse.update({ where: { id }, data: { isActive }, include: warehouseInclude });
       await this.auditService.record(tx, {

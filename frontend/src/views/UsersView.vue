@@ -3,7 +3,9 @@ import { computed, onMounted, reactive, ref, watch } from "vue";
 import { Edit2, KeyRound, LockOpen, Plus, Power, RefreshCw, Save, Search, UserRound, X } from "lucide-vue-next";
 import { useRouter } from "vue-router";
 import AdminLayout from "../layouts/AdminLayout.vue";
+import AdministrationNav from "../components/admin/AdministrationNav.vue";
 import AppBadge from "../components/base/AppBadge.vue";
+import TrashButton from "../components/admin/TrashButton.vue";
 import AppButton from "../components/base/AppButton.vue";
 import AppInput from "../components/base/AppInput.vue";
 import NationalLocationFields from "../components/forms/NationalLocationFields.vue";
@@ -88,6 +90,8 @@ const form = reactive({
 });
 
 const isEditing = computed(() => editingId.value !== null);
+const canCreateUsers = computed(() => can("users.create") && can("roles.view"));
+const canEditUsers = computed(() => can("users.update") && can("roles.view"));
 const isNational = computed(() => countries.value.find((country) => String(country.id) === form.countryId)?.isoCode === "SV");
 const filteredUsers = computed(() => users.value);
 
@@ -198,12 +202,14 @@ watch([newPassword, confirmPassword], () => {
 });
 
 function openCreate() {
+  if (!canCreateUsers.value) return;
   errorMessage.value = "";
   resetForm();
   editorOpen.value = true;
 }
 
 function editUser(user: User) {
+  if (!canEditUsers.value) return;
   errorMessage.value = "";
   editingId.value = user.id;
   Object.assign(form, {
@@ -274,13 +280,13 @@ async function loadAll(page = 1) {
   try {
     const [usersRes, rolesRes, countriesRes, geographyRes] = await Promise.all([
       http.get("/users", { params: userParams(page) }),
-      http.get("/roles"),
+      can("roles.view") ? http.get("/roles") : Promise.resolve(null),
       http.get("/catalogs/countries"),
       http.get("/catalogs/geography"),
     ]);
     users.value = rowsOf(usersRes);
     userMeta.value = usersRes.data.meta;
-    roles.value = rolesRes.data.data;
+    roles.value = rolesRes?.data.data ?? [];
     countries.value = countriesRes.data.data;
     geography.value = geographyRes.data.data;
     companies.value = authStore.user?.companies ?? [];
@@ -292,6 +298,7 @@ async function loadAll(page = 1) {
 }
 
 async function submitUser() {
+  if (isEditing.value ? !canEditUsers.value : !canCreateUsers.value) return;
   if (!validateUserForm()) return;
 
   saving.value = true;
@@ -409,7 +416,8 @@ onMounted(loadAll);
 </script>
 
 <template>
-  <AdminLayout title="Usuarios">
+  <AdminLayout title="Configuración · Usuarios">
+    <AdministrationNav section="users" />
     <div class="mb-6 flex flex-wrap items-end justify-between gap-4">
       <div>
         <h1 class="page-title">Usuarios</h1>
@@ -420,7 +428,7 @@ onMounted(loadAll);
           <RefreshCw class="h-4 w-4" :class="loading && 'animate-spin'" />
           <span class="hidden sm:inline">Actualizar</span>
         </AppButton>
-        <AppButton v-if="can('users.create')" @click="openCreate">
+        <AppButton v-if="canCreateUsers" @click="openCreate">
           <Plus class="h-4 w-4" /> Nuevo usuario
         </AppButton>
       </div>
@@ -458,10 +466,10 @@ onMounted(loadAll);
               <td class="px-4 py-3 text-muted-fg">{{ user.roles.map((role) => role.name).join(", ") || "Sin roles" }}</td>
               <td class="px-4 py-3"><div class="flex flex-wrap gap-1.5"><AppBadge :variant="user.isActive ? 'success' : 'neutral'">{{ user.isActive ? "Activo" : "Inactivo" }}</AppBadge><AppBadge v-if="user.isLocked" variant="danger">Bloqueado</AppBadge></div></td>
               <td class="px-4 py-3"><div class="flex justify-end gap-1">
-                 <button v-if="can('users.update')" type="button" class="grid h-8 w-8 place-items-center rounded-lg text-muted-fg hover:bg-surface-secondary hover:text-fg" title="Editar usuario" @click="editUser(user)"><Edit2 class="h-4 w-4" /></button>
+                 <button v-if="canEditUsers" type="button" class="grid h-8 w-8 place-items-center rounded-lg text-muted-fg hover:bg-surface-secondary hover:text-fg" title="Editar usuario" @click="editUser(user)"><Edit2 class="h-4 w-4" /></button>
                  <button v-if="can('users.change_password')" type="button" class="grid h-8 w-8 place-items-center rounded-lg text-muted-fg hover:bg-surface-secondary hover:text-fg" title="Restablecer contrasena" @click="openPasswordEditor(user)"><KeyRound class="h-4 w-4" /></button>
                  <button v-if="user.isLocked && can('users.update')" type="button" class="grid h-8 w-8 place-items-center rounded-lg text-muted-fg hover:bg-surface-secondary hover:text-fg" title="Desbloquear usuario" @click="unlockUser(user)"><LockOpen class="h-4 w-4" /></button>
-                <button v-if="can('users.update')" type="button" class="grid h-8 w-8 place-items-center rounded-lg text-muted-fg hover:bg-surface-secondary hover:text-fg" :title="user.isActive ? 'Desactivar usuario' : 'Activar usuario'" @click="toggleStatus(user)"><Power class="h-4 w-4" /></button>
+                <button v-if="can('users.update')" type="button" class="grid h-8 w-8 place-items-center rounded-lg text-muted-fg hover:bg-surface-secondary hover:text-fg" :title="user.isActive ? 'Desactivar usuario' : 'Activar usuario'" @click="toggleStatus(user)"><Power class="h-4 w-4" /></button><TrashButton compact entity="users" :record-id="user.id" :label="user.username" :disabled="saving" @deleted="loadAll" />
               </div></td>
             </tr>
             <tr v-if="!loading && !filteredUsers.length"><td colspan="5" class="px-4 py-12 text-center text-muted-fg">No hay usuarios para esta busqueda.</td></tr>
@@ -478,9 +486,9 @@ onMounted(loadAll);
           </div>
           <div class="mt-3 flex justify-end gap-2 border-t border-border pt-3">
              <AppButton v-if="user.isLocked && can('users.update')" size="sm" variant="outline" @click="unlockUser(user)"><LockOpen class="h-4 w-4" />Desbloquear</AppButton>
-             <AppButton v-if="can('users.update')" size="sm" variant="ghost" @click="editUser(user)"><Edit2 class="h-4 w-4" />Editar</AppButton>
+             <AppButton v-if="canEditUsers" size="sm" variant="ghost" @click="editUser(user)"><Edit2 class="h-4 w-4" />Editar</AppButton>
              <button v-if="can('users.change_password')" type="button" class="grid h-8 w-8 place-items-center rounded-lg text-muted-fg hover:bg-surface-secondary" title="Restablecer contrasena" @click="openPasswordEditor(user)"><KeyRound class="h-4 w-4" /></button>
-             <button v-if="can('users.update')" type="button" class="grid h-8 w-8 place-items-center rounded-lg text-muted-fg hover:bg-surface-secondary" :title="user.isActive ? 'Desactivar' : 'Activar'" @click="toggleStatus(user)"><Power class="h-4 w-4" /></button>
+             <button v-if="can('users.update')" type="button" class="grid h-8 w-8 place-items-center rounded-lg text-muted-fg hover:bg-surface-secondary" :title="user.isActive ? 'Desactivar' : 'Activar'" @click="toggleStatus(user)"><Power class="h-4 w-4" /></button><TrashButton compact entity="users" :record-id="user.id" :label="user.username" :disabled="saving" @deleted="loadAll" />
           </div>
         </article>
         <p v-if="!loading && !filteredUsers.length" class="px-4 py-12 text-center text-sm text-muted-fg">No hay usuarios para esta busqueda.</p>

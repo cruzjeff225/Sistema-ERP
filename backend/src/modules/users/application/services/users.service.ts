@@ -1,3 +1,4 @@
+import { TrashService } from '../../../trash/trash.service';
 import {
   BadRequestException,
   ConflictException,
@@ -25,6 +26,7 @@ const SUPERADMIN_ROLE = "superadmin";
 export class UsersService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly trashService: TrashService,
     private readonly auditService: AuditService,
     private readonly organizationService: OrganizationService,
     private readonly companyScope: CompanyScopeService,
@@ -279,23 +281,7 @@ export class UsersService {
   }
 
   async remove(id: number, actorUserId: number) {
-    const current = await this.findOne(id);
-    await this.assertNotLastSuperadmin(id);
-    await this.prisma.$transaction(async (tx) => {
-      const deletedAt = new Date();
-      await tx.user.update({ where: { id }, data: { deletedAt, isActive: false, sessionVersion: { increment: 1 } } });
-      await tx.employee.update({ where: { id: current.employee.id }, data: { deletedAt, isActive: false } });
-      await this.revokeActiveRefreshTokens(tx, id);
-      await this.auditService.record(tx, {
-        controller: "users",
-        action: "DELETE",
-        recordId: id,
-        originalData: current,
-        modifiedData: { ...current, isActive: false, deletedAt },
-        userId: actorUserId,
-      });
-    });
-    return { id };
+    return this.trashService.trash('users', id, actorUserId, await this.trashService.primaryCompany());
   }
 
   async assignRoles(id: number, roleIds: number[], actorUserId: number) {

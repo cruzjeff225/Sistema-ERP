@@ -20,6 +20,16 @@ test('origen sin factura no hereda la factura anterior', () => {
   assert.equal(retaceoSourceFields({ items: [] }).importInvoiceDate, '');
   assert.deepEqual(retaceoSourceFields().details, []);
 });
+test('gastos reales capitalizables alimentan el retaceo sin copiar estimaciones ni IVA', () => {
+  const source = retaceoSourceFields({ items: [{ id: 1, lineTotal: 900 }], actualExpenses: [
+    { category: 'freight', capitalizable: true, amount: '120' },
+    { category: 'expense', capitalizable: true, amount: '30' },
+    { category: 'expense', capitalizable: false, amount: '20' },
+  ] });
+  assert.equal(source.totalFreight, 120); assert.equal(source.totalExpenses, 30); assert.equal(source.totalDai, 0);
+  Object.assign(source, retaceoSourceFields({ items: [] }));
+  assert.equal(source.totalFreight + source.totalExpenses + source.totalDai, 0);
+});
 
 test('comparacion no reemplaza un enlace invalido por otra solicitud', () => {
   const options = [{ id: 2 }, { id: 3 }];

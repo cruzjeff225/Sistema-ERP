@@ -1,6 +1,19 @@
 import { createRouter, createWebHistory } from "vue-router";
 import { useAuthStore } from "../stores/auth.store";
 import { useFeedbackStore } from "../stores/feedback.store";
+import { administrationPermissions, administrationRoute, administrationSections, type AdministrationSectionId } from '../config/administration.config';
+import { operationsPermissions, operationsRoute } from '../config/operations.config';
+import { purchasingPermissions, purchasingRoute } from '../config/purchasing.config';
+import { salesPermissions, salesRoute } from '../config/sales.config';
+
+const administrationViews: Record<AdministrationSectionId, () => Promise<unknown>> = {
+  users: () => import('../views/UsersView.vue'),
+  roles: () => import('../views/RolesView.vue'),
+  permissions: () => import('../views/PermissionsView.vue'),
+  audit: () => import('../views/AuditView.vue'),
+  trash: () => import('../views/TrashView.vue'),
+  warehouse: () => import('../views/WarehouseSettingsView.vue'),
+};
 
 const router = createRouter({
   history: createWebHistory(),
@@ -8,6 +21,25 @@ const router = createRouter({
     return { top: 0 };
   },
   routes: [
+    { path: salesRoute, name: 'sales', component: () => import('../views/SalesView.vue'), meta: { permissionsAny: salesPermissions } },
+    { path: '/sales/customers', name: 'customers', component: () => import('../views/CustomersView.vue'), meta: { permission: 'customers.view' } },
+    { path: '/customers', redirect: to => ({ path: '/sales/customers', query: to.query, hash: to.hash }) },
+    { path: purchasingRoute, name: 'purchasing', component: () => import('../views/PurchasingView.vue'), meta: { permissionsAny: purchasingPermissions } },
+    { path: operationsRoute, name: 'operations', component: () => import('../views/OperationsView.vue'), meta: { permissionsAny: operationsPermissions } },
+    { path: administrationRoute, name: 'settings', component: () => import('../views/SettingsView.vue'), meta: { permissionsAny: administrationPermissions } },
+    ...administrationSections.map(section => ({
+      path: section.route,
+      name: section.id,
+      component: administrationViews[section.id],
+      meta: { permission: section.permission },
+    })),
+    ...administrationSections.map(section => ({
+      path: section.previousRoute,
+      redirect: (to: import('vue-router').RouteLocationGeneric) => ({ path: section.route, query: to.query, hash: to.hash }),
+    })),
+    { path: '/purchases/quotations/manage', name: 'quotation-workspace', component: () => import('../views/QuotationWorkspaceView.vue'), meta: { permissionsAny: ['purchase_quotations.view','purchase_orders.approve'] } },
+    { path: '/purchases/consolidations', redirect: to => ({ path: '/purchases/quotations/manage', query: to.query }) },
+    { path: '/inventory/warehouse', name: 'warehouse-operations', beforeEnter: to => to.query.tab==='configuration' && !to.query.purchaseId && !to.query.requestId ? {path:'/administration/settings/warehouse'} : true, component: () => import('../views/WarehouseOperationsView.vue'), meta: { permission: 'inventory.view' } },
     { path: "/inventory", name: "inventory", component: () => import("../views/InventoryView.vue"), meta: { permission: "inventory.view" } },
     { path: "/purchases/comparison", name: "quotation-comparison", component: () => import("../views/QuotationComparisonView.vue"), meta: { permission: "purchase_quotations.view" } },
     { path: "/purchases/expense-types", name: "expense-types", component: () => import("../views/ExpenseTypesView.vue"), meta: { permission: "expense_types.view" } },
@@ -27,24 +59,6 @@ const router = createRouter({
       path: "/dashboard",
       name: "dashboard",
       component: () => import("../views/DashboardView.vue"),
-    },
-    {
-      path: "/users",
-      name: "users",
-      component: () => import("../views/UsersView.vue"),
-      meta: { permission: "users.view" },
-    },
-    {
-      path: "/roles",
-      name: "roles",
-      component: () => import("../views/RolesView.vue"),
-      meta: { permission: "roles.view" },
-    },
-    {
-      path: "/permissions",
-      name: "permissions",
-      component: () => import("../views/PermissionsView.vue"),
-      meta: { permission: "permissions.view" },
     },
     {
       path: "/organization",
@@ -102,12 +116,6 @@ const router = createRouter({
       component: () => import("../views/RetaceosView.vue"),
       meta: { permission: "retaceos.view" },
     },
-    {
-      path: "/audit",
-      name: "audit",
-      component: () => import("../views/AuditView.vue"),
-      meta: { permission: "logs.view" },
-    },
     { path: "/:pathMatch(.*)*", redirect: "/dashboard" },
   ],
 });
@@ -129,8 +137,12 @@ router.beforeEach((to) => {
   }
 
   const permission = to.meta.permission as string | undefined;
+  const permissionsAny = to.meta.permissionsAny as readonly string[] | undefined;
   const isSuperadmin = authStore.user?.roles.includes("superadmin") ?? false;
   if (permission && !isSuperadmin && !authStore.user?.permissions.includes(permission)) {
+    return { name: "dashboard" };
+  }
+  if (permissionsAny && !isSuperadmin && !permissionsAny.some(item => authStore.user?.permissions.includes(item))) {
     return { name: "dashboard" };
   }
 

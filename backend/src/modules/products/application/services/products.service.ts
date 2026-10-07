@@ -1,3 +1,4 @@
+import { TrashService } from '../../../trash/trash.service';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { randomUUID } from "crypto";
 import { Prisma } from "@prisma/client";
@@ -48,7 +49,7 @@ const productInclude = {
 @Injectable()
 export class ProductsService {
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly prisma: PrismaService, private readonly trashService: TrashService,
     private readonly auditService: AuditService,
   ) {}
 
@@ -351,14 +352,8 @@ export class ProductsService {
 
   async removeImage(id: number, userId: number, companyId: number) {
     const current = await this.image(id, companyId);
-    return this.prisma.$transaction(async (tx) => {
-      const image = await tx.productImage.update({
-        where: { id },
-        data: { isActive: false, deletedAt: new Date() },
-      });
-      await this.record(tx, "product_images", "DELETE", id, current, image, userId);
-      return image;
-    });
+    await this.trashService.trash('product_images', id, userId, companyId);
+    return current;
   }
 
   async supplierLinks(productId: number, companyId: number) {
