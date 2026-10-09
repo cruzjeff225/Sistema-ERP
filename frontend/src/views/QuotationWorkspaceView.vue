@@ -349,7 +349,7 @@ onBeforeUnmount(() => { mounted = false; ++companyEpoch; ++loadVersion; ++openVe
             <div class="flex flex-wrap justify-end gap-3 sm:col-span-2"><AppButton type="button" variant="outline" :disabled="busy" @click="change(() => { editingProduct = false; })">Cancelar</AppButton><AppButton type="submit" :disabled="busy || !lineEdit.productId">Guardar decisión</AppButton></div>
           </form>
           <div class="flex flex-wrap items-center justify-between gap-4 border-t border-border p-5 sm:p-6">
-            <p class="text-xs text-muted-fg">{{ current.rfqs.length ? 'Las cantidades consultadas se conservan. Compras elige las ofertas y Gerencia autoriza el importe final.' : 'Autorice las cantidades antes de preparar los PDF para proveedores.' }}</p>
+            <p class="text-xs text-muted-fg">{{ current.rfqs.length ? 'Las cantidades consultadas se conservan. Compras elige las ofertas y Gerencia autoriza el importe final.' : quantitiesAuthorized ? 'Cantidades autorizadas. Prepare las solicitudes a proveedores.' : 'Autorice las cantidades antes de preparar los PDF para proveedores.' }}</p>
             <AppButton v-if="quantitiesAuthorized && can('purchase_quotations.view')" :disabled="busy" @click="change(() => { workspace = 'suppliers'; })">Continuar con proveedores</AppButton>
           </div>
         </section>

@@ -733,13 +733,18 @@ export class PurchasesService {
           stocks: { select: { productId: true, quantity: true, product: { select: { purchaseUnitId: true } } } } } });
       const productUnits = await tx.product.findMany({ where: { id: { in: current.details.map(line => line.productId) }, companyId }, select: { id: true, purchaseUnitId: true } });
       const resolvedItems = dto.items.map(item => {
-        if (item.locationId !== undefined) {
-          if (!slots.some(slot => slot.id === item.locationId)) throw new BadRequestException('Ubicacion sugerida ajena al almacen');
-          return { ...item, suggestedLocationId: item.locationId };
-        }
         const detail = current.details.find(line => line.id === item.orderDetailId)!;
         const product = productUnits.find(row => row.id === detail.productId);
         if (!product) throw new BadRequestException('Producto no disponible');
+        if (item.locationId !== undefined) {
+          const slot = slots.find(candidate => candidate.id === item.locationId);
+          if (!slot) throw new BadRequestException('Ubicacion sugerida ajena al almacen');
+          // Same rules as the placement confirmation, so a suggestion never fails later.
+          const occupied = slot.stocks.filter(stock => stock.quantity.gt(0));
+          if (occupied.some(stock => stock.product.purchaseUnitId !== product.purchaseUnitId)) throw new ConflictException(`El espacio ${slot.code} contiene productos con otra unidad de compra; elija otro espacio o deje que el sistema lo sugiera`);
+          if (occupied.reduce((sum, stock) => sum.add(stock.quantity), new Prisma.Decimal(0)).add(item.quantity).gt(slot.capacity)) throw new ConflictException(`El espacio ${slot.code} no tiene capacidad suficiente para esta cantidad; elija otro espacio o deje que el sistema lo sugiera`);
+          return { ...item, suggestedLocationId: item.locationId };
+        }
         let suggestedLocationId: number | undefined;
         try { suggestedLocationId = allocateLocation(slots, detail.productId, product.purchaseUnitId, item.quantity); } catch { /* Receipt can wait for physical space. */ }
         return { ...item, suggestedLocationId };

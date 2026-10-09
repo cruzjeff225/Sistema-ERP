@@ -3,9 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "nest start --watch",
+    "dev": "node scripts/copy-runtime-assets.cjs && nest start --watch",
     "build": "nest build && node scripts/copy-runtime-assets.cjs",
-    "start": "nest start",
+    "start": "node scripts/copy-runtime-assets.cjs && nest start",
     "seed": "tsx prisma/seed.ts",
     "verify:modules": "tsx scripts/verify-modules.ts",
     "verify:users-security": "tsx scripts/verify-user-security.ts",

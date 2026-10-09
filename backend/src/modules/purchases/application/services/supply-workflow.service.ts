@@ -66,9 +66,11 @@ export class SupplyWorkflowService {
   }
   async requests(companyId: number) {
     const records = await this.prisma.purchaseRequest.findMany({ where: { companyId, deletedAt: null, status: { notIn: ['draft','rejected','cancelled'] } }, include: { branch: true,
-      details: { include: { product: true, unit: true, consolidationSources: { include: { line: { select: { consolidationId: true } } } }, transferItems: true, quotationLinks: { include: { quotationDetail: { include: { quotation: true } } } } } } }, orderBy: { requestDate: 'desc' } });
+      details: { include: { product: true, unit: true, consolidationSources: { include: { line: { select: { consolidationId: true, quotationDetails: { select: { orderDetails: { select: { receivedQuantity: true } } } } } } } }, transferItems: true, quotationLinks: { include: { quotationDetail: { include: { quotation: true } } } } } } }, orderBy: { requestDate: 'desc' } });
     return records.map(r => ({ ...r, details: r.details.map(d => ({ ...d,
       eligible: ['submitted','approved','in_quotation','partially_ordered','in_procurement'].includes(r.status) && !d.consolidationSources.length && !d.quotationLinks.some(q => !['cancelled','rejected','expired'].includes(q.quotationDetail.quotation.status)),
+      // Stock already received from suppliers for this need, so the UI can point to the branch delivery instead of quoting again.
+      receivedFromPurchases: sum(d.consolidationSources.flatMap(src => src.line.quotationDetails.flatMap(q => q.orderDetails.map(o => o.receivedQuantity)))),
       dispatchedQuantity: sum(d.transferItems.map(t => t.quantity)), distributedQuantity: sum(d.transferItems.map(t => t.receivedQuantity)),
       pendingQuantity: Prisma.Decimal.max(0, d.quantity.sub(sum(d.transferItems.map(t => t.receivedQuantity)))) })) }));
   }
