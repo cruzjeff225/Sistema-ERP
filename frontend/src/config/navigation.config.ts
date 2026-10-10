@@ -63,7 +63,7 @@ export const navigationGroups: NavigationGroup[] = [
         permission: null,
         permissionsAny: purchasingPermissions,
         activeRoutes: purchasingActiveRoutes,
-        activePrefixes: ['/purchases/tracking/'],
+        activePrefixes: ['/purchases/tracking/', '/purchases/requests/'],
       },
     ],
   },

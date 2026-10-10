@@ -10,6 +10,7 @@ import {
   FileSearch,
   FileText,
   Info,
+  Maximize2,
   Package,
   PackageCheck,
   Paperclip,
@@ -47,6 +48,8 @@ import { projectComparisonExpenses } from '../utils/quotation-comparison';
 import { isPendingPurchase, purchaseStage, isCurrentPurchaseWeek } from '../utils/purchase-inbox';
 import { documentAction, needsProcessStep, type ActionSection } from "../utils/purchase-next-action";
 import { formatQuantity, type TrackingStep } from "../utils/purchase-tracking";
+import { isEditableRequest, requestDetailPath } from "../utils/purchase-request";
+import { useFeedbackStore } from "../stores/feedback.store";
 import { receiptProgress, purchasePurposeLabel, onlyOptionId, quotationPendingLines, receiptNextStep, orderNeedsAttention, orderReceiptStage } from "../utils/purchase-workflow";
 
 type Section = "requests" | "quotations" | "orders";
@@ -138,6 +141,10 @@ const filteredRecords = computed(() => {
 // The tracking view understands requests, offers and orders; the other sections have their own link.
 const trackingType = computed(() => ({ requests: 'request', quotations: 'quotation', orders: 'order' } as Record<string, 'request' | 'quotation' | 'order'>)[props.section]);
 // What the main button does is decided in utils/purchase-next-action; this only runs the chosen action.
+const feedback = useFeedbackStore();
+// Set when the edit panel was opened from the detail page: closing it goes back there.
+let returningToDetail = false;
+let editFromDetail = false;
 const processStep = ref<TrackingStep | null>(null);
 // Where the purchase is as a whole, apart from the administrative status of this document.
 const processInfo = ref<{ stage: string; done: number; total: number } | null>(null);
@@ -322,6 +329,14 @@ async function load() {
       if (linked) { if (!requestInTab(linked)) requestAgeTab.value = 'older'; selectedId.value = requested; }
       else { selectedId.value = null; showError(null, 'El documento no está disponible en esta empresa.'); }
     } else if (!filteredRecords.value.some((record) => record.id === selectedId.value)) selectedId.value = filteredRecords.value[0]?.id ?? null;
+    if (route.query.edit === '1' && props.section === 'requests') {
+      const fromDetail = route.query.from === 'detail';
+      const addLine = route.query.addLine === '1';
+      const query = { ...route.query }; delete query.edit; delete query.from; delete query.addLine;
+      void router.replace({ query });
+      if (linked && isEditableRequest(linked.status) && can('purchase_requests.update')) { editFromDetail = fromDetail; editRequest(linked); if (addLine) addRequestLine(); }
+      else if (fromDetail && requested) void router.replace(requestDetailPath(requested));
+    }
     const supplierId = typeof route.query.supplier === 'string' ? route.query.supplier : '';
     if (props.section === 'quotations' && supplierId && supplierId !== handledSupplier.value && can('purchase_quotations.create')) {
       handledSupplier.value = supplierId;
@@ -336,7 +351,7 @@ async function load() {
   }
 }
 
-async function runMutation(operation: (config: { headers: { "X-Company-Id": string } }) => Promise<any>, message: string, destination?: Section) {
+async function runMutation(operation: (config: { headers: { "X-Company-Id": string } }) => Promise<any>, message: string, destination?: Section, openDetail = false) {
   if (saving.value || !activeCompanyId.value) return;
   const companyId = activeCompanyId.value;
   const section = props.section;
@@ -347,6 +362,14 @@ async function runMutation(operation: (config: { headers: { "X-Company-Id": stri
     if (!mounted || companyId !== activeCompanyId.value || section !== props.section) return;
     closeDrawer(true);
     pendingAction.value = null;
+    if (returningToDetail || openDetail) {
+      // The work continues on the detail page of the request, so the confirmation travels as a notice.
+      const wasEditFromDetail = returningToDetail;
+      returningToDetail = false;
+      feedback.success(message);
+      if (openDetail && !wasEditFromDetail) await router.push(requestDetailPath(response.data.data.id));
+      return;
+    }
     showSuccess(message);
     if (destination && destination !== props.section) {
       await router.push({ path: `/purchases/${destination}`, query: { id: response.data.data.id } });
@@ -391,10 +414,13 @@ function closeDrawer(force = false) {
   if (saving.value && !force) return;
   if (!force && drawer.value && initialForm !== formSnapshot()) { discardChanges.value = true; return; }
   discardChanges.value = false;
+  const backTo = drawer.value === 'request' && editFromDetail ? editingId.value : null;
+  editFromDetail = false;
   drawer.value = null;
   editingId.value = null;
   orderQuotation.value = null;
   receiptReview.value = null;
+  if (backTo) { returningToDetail = true; void router.push(requestDetailPath(backTo)).finally(() => { returningToDetail = false; }); }
 }
 
 function addRequestLine() {
@@ -433,7 +459,7 @@ async function saveRequest() {
   if (!requestForm.branchId || !requestForm.details.length) return showError(null, "Seleccione sucursal y al menos un producto");
   if (requestForm.details.some(line => !line.productId || !line.unitId)) return showError(null, 'Seleccione un producto en cada línea');
   const payload = { ...requestForm, requiredDate: requestForm.requiredDate };
-  await runMutation((config) => editingId.value ? http.patch(`/purchase-requests/${editingId.value}`, payload, config) : http.post("/purchase-requests", payload, config), editingId.value ? "Solicitud actualizada" : "Solicitud creada en borrador", "requests");
+  await runMutation((config) => editingId.value ? http.patch(`/purchase-requests/${editingId.value}`, payload, config) : http.post("/purchase-requests", payload, config), editingId.value ? "Solicitud actualizada" : "Solicitud creada en borrador", "requests", !editingId.value);
 }
 
 function newQuotation(request?: any) {
@@ -709,7 +735,7 @@ onMounted(load);
         <section v-if="selected" aria-label="Detalle del documento" class="min-w-0 overflow-hidden rounded-xl border border-border/70 bg-surface">
           <header class="space-y-4 border-b border-border/70 p-5 sm:p-6">
             <div class="flex flex-wrap items-start justify-between gap-4">
-              <div class="min-w-0"><div class="flex flex-wrap items-center gap-2"><h2 class="text-xl font-semibold tracking-tight">{{ selected.code }}</h2><AppBadge :variant="statusVariant(selected.status)">{{ statusLabel(selected.status) }}</AppBadge><TrackingLink v-if="trackingType" :type="trackingType" :id="selected.id" /></div><p class="mt-2 text-sm text-muted-fg">{{ selected.supplier?.name || selected.branch?.name }}</p></div>
+              <div class="min-w-0"><div class="flex flex-wrap items-center gap-2"><h2 class="text-xl font-semibold tracking-tight">{{ selected.code }}</h2><AppBadge :variant="statusVariant(selected.status)">{{ statusLabel(selected.status) }}</AppBadge><TrackingLink v-if="trackingType" :type="trackingType" :id="selected.id" /><RouterLink v-if="props.section === 'requests'" :to="requestDetailPath(selected.id)" class="inline-flex min-h-7 items-center gap-1 rounded-md px-1.5 text-xs font-medium text-muted-fg transition-colors hover:bg-surface-secondary hover:text-accent"><Maximize2 class="h-3.5 w-3.5" aria-hidden="true" />Abrir página</RouterLink></div><p class="mt-2 text-sm text-muted-fg">{{ selected.supplier?.name || selected.branch?.name }}</p></div>
               <fieldset :disabled="saving" class="flex flex-wrap items-center gap-2">
             <AppButton v-if="canEditOrder" variant="outline" @click="editOrder(selected)"><Pencil class="h-4 w-4" />{{ selected.status === 'returned' ? 'Corregir orden' : 'Editar borrador' }}</AppButton>
             <AppButton v-if="nextAction" :disabled="preparingReceipt" @click="nextAction.run()">{{ nextAction.label }}<ChevronRight class="h-4 w-4" /></AppButton>

@@ -15,6 +15,7 @@ function setup(permissions,section='orders'){
   if(spec.endsWith('/company-context'))return {activeCompanyId:vue.ref(3)};
   if(spec.endsWith('/usePermissions'))return {usePermissions:()=>({can:p=>permissions.includes(p)})};
   if(spec.endsWith('/useUnsavedChanges'))return {useUnsavedChanges:()=>({leaving:vue.ref(false),resolveLeave(){}})};
+  if(spec.endsWith('/feedback.store'))return {useFeedbackStore:()=>({success(){},error(){},notify(){}})};
   if(spec.endsWith('/api-error'))return {getApiErrorMessage:(_,fallback)=>fallback};
   if(spec.startsWith('../utils/')||spec.startsWith('./')){const file=path.join(root,'frontend/src/utils',path.basename(spec)+'.ts');if(!cache.has(file)){const exports={};vm.runInNewContext(transpile(fs.readFileSync(file,'utf8')),{exports,require:mock,Intl,Date});cache.set(file,exports);}return cache.get(file);}
   throw Error(spec);
