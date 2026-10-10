@@ -1,7 +1,7 @@
 // The single place that decides which button a request, an offer or an order shows as its main action.
 // The view only executes the descriptor it gets back. When the document alone cannot tell what comes next
 // (the purchase moved on in another screen), the decision comes from the process tracking step instead.
-import { canOpenRoute, stepLocation, type TrackingStep } from './purchase-tracking';
+import { canOpenRoute, stepLocation, stepShortLabel, type TrackingStep } from './purchase-tracking';
 import { nextOrderReceipt, receiptNextStep } from './purchase-workflow';
 
 export type ActionSection = 'requests' | 'quotations' | 'orders';
@@ -14,7 +14,8 @@ type Behavior =
   | { kind: 'receive' }
   | { kind: 'approval-tab' }
   | { kind: 'navigate'; path: string; query?: Record<string, string> };
-export type DocumentAction = { label: string } & Behavior;
+/** `detail` is the full text of the step when the label is a short summary of it. */
+export type DocumentAction = { label: string; detail?: string } & Behavior;
 
 export type ActionContext = {
   can: (permission: string) => boolean;
@@ -40,7 +41,7 @@ export function documentAction(section: ActionSection, record: any, ctx: ActionC
     const step = ctx.processStep;
     if (!step || step.stage === 'requests' || !canOpenRoute(step.route, can)) return null;
     const { path, query } = stepLocation(step);
-    return { label: step.label, kind: 'navigate', path, query };
+    return { label: stepShortLabel(step), detail: step.label, kind: 'navigate', path, query };
   };
 
   if (section === 'requests') {

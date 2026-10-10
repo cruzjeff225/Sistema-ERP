@@ -23,7 +23,7 @@ test('solicitud ya enviada sin información del proceso conserva el acceso a cot
 
 test('solicitud en curso: el siguiente paso de la compra reemplaza al botón desactualizado', () => {
   const action = documentAction('requests', { id: 3, status: 'in_procurement' }, ctx({ processStep: step() }));
-  assert.deepEqual(action, { label: 'Despachar los productos recibidos a la sucursal', kind: 'navigate', path: '/inventory/warehouse', query: { requestId: '3' } });
+  assert.deepEqual(action, { label: 'Continuar en bodega', detail: 'Despachar los productos recibidos a la sucursal', kind: 'navigate', path: '/inventory/warehouse', query: { requestId: '3' } });
 });
 
 test('un paso de otra solicitud o sin acceso a su pantalla no se ofrece como acción de esta', () => {
@@ -81,7 +81,9 @@ test('orden con recepciones abiertas: ubicar, verificar, retacear o cerrar segú
 test('orden recibida con todas las recepciones cerradas: lo que sigue lo marca el proceso', () => {
   const closed = { id: 2, status: 'received', purchases: [{ id: 7, status: 'CLOSED', purchaseDate: '2026-10-01', items: [{ locationId: 5 }] }] };
   assert.equal(documentAction('orders', closed, ctx()), null, 'sin información del proceso no hay botón');
-  assert.equal(documentAction('orders', closed, ctx({ processStep: step() }))?.label, 'Despachar los productos recibidos a la sucursal');
+  const fromProcess = documentAction('orders', closed, ctx({ processStep: step() }));
+  assert.equal(fromProcess?.label, 'Continuar en bodega');
+  assert.equal(fromProcess?.detail, 'Despachar los productos recibidos a la sucursal');
 });
 
 test('solo se consulta el proceso cuando el documento no basta para decidir', () => {
@@ -91,4 +93,10 @@ test('solo se consulta el proceso cuando el documento no basta para decidir', ()
   assert.equal(needsProcessStep('orders', { status: 'draft' }), false);
   assert.equal(needsProcessStep('quotations', { status: 'received' }), false);
   assert.equal(needsProcessStep('requests', null), false);
+});
+
+test('el botón de una solicitud usa un texto corto y deja el paso exacto como referencia', () => {
+  const place = documentAction('requests', { id: 3, status: 'in_procurement' }, ctx({ processStep: step({ stage: 'reception', label: 'Ubicar los productos de RC-00011', route: '/inventory/warehouse', query: { purchaseId: '11' } }) }));
+  assert.equal(place?.label, 'Continuar en bodega');
+  assert.equal(place?.detail, 'Ubicar los productos de RC-00011');
 });

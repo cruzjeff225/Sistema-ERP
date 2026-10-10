@@ -105,3 +105,17 @@ test('el seguimiento aparece en Compras para quien puede ver compras y se mantie
   assert.equal(purchasingSectionRoute('/purchases/orders'), '/purchases/orders');
   assert.ok(purchasingGroups.some(group => group.id === 'overview'), 'la sección nueva tiene un grupo que la contiene');
 });
+
+import { stepShortLabel } from '../src/utils/purchase-tracking';
+
+test('cada etapa tiene un texto corto para el botón principal', () => {
+  const label = (stage: string) => stepShortLabel({ stage, label: 'Texto largo del paso' });
+  assert.equal(label('quantities'), 'Continuar en Cotizaciones');
+  assert.equal(label('quotation'), 'Continuar en Cotizaciones');
+  assert.equal(label('order'), 'Continuar en Órdenes');
+  assert.equal(label('reception'), 'Continuar en bodega');
+  assert.equal(label('distribution'), 'Continuar en bodega');
+  assert.equal(label('costs'), 'Continuar en Retaceo');
+  assert.equal(label('delivery'), 'Recibir en sucursal');
+  assert.equal(label('otra'), 'Texto largo del paso', 'una etapa desconocida conserva el texto completo');
+});

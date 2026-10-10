@@ -141,3 +141,15 @@ export function relativeTime(iso: string, now = Date.now()) {
   if (days < 30) return `hace ${days} días`;
   return new Date(iso).toLocaleDateString('es-SV', { day: '2-digit', month: 'short', year: 'numeric' });
 }
+
+/** Short wording for the button of a document header; the full step text goes next to it as a secondary reference. */
+export function stepShortLabel(step: { stage: string; label: string }) {
+  switch (step.stage) {
+    case 'quantities': case 'quotation': return 'Continuar en Cotizaciones';
+    case 'order': return 'Continuar en Órdenes';
+    case 'reception': case 'distribution': return 'Continuar en bodega';
+    case 'costs': return 'Continuar en Retaceo';
+    case 'delivery': return 'Recibir en sucursal';
+    default: return step.label;
+  }
+}
