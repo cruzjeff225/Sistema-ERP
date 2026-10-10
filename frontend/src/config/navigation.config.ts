@@ -18,6 +18,8 @@ export interface NavigationItem {
   permission: string | null;
   permissionsAny?: readonly string[];
   activeRoutes?: readonly string[];
+  /** Dynamic screens (with route params) that belong to this item. */
+  activePrefixes?: readonly string[];
   sections?: { label: string; route: string; permission: string }[];
 }
 
@@ -61,6 +63,7 @@ export const navigationGroups: NavigationGroup[] = [
         permission: null,
         permissionsAny: purchasingPermissions,
         activeRoutes: purchasingActiveRoutes,
+        activePrefixes: ['/purchases/tracking/'],
       },
     ],
   },

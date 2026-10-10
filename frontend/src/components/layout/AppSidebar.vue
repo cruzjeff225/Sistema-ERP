@@ -18,7 +18,7 @@ defineProps<{ open: boolean }>();
 const emit = defineEmits<{ close: [] }>();
 const expanded = ref<Record<string, boolean>>({});
 const company = computed(() => authStore.user?.companies?.find(item => item.id === activeCompanyId.value)?.commercialName ?? "Apex Roofing");
-const isActive = (item: NavigationItem) => item.route === route.path || Boolean(item.activeRoutes?.includes(route.path)) || Boolean(item.sections?.some(section => section.route === route.path));
+const isActive = (item: NavigationItem) => item.route === route.path || Boolean(item.activeRoutes?.includes(route.path)) || Boolean(item.activePrefixes?.some(prefix => route.path.startsWith(prefix))) || Boolean(item.sections?.some(section => section.route === route.path));
 const isExpanded = (item: NavigationItem) => expanded.value[item.route] ?? isActive(item);
 watch(() => route.path, () => { expanded.value = {}; });
 

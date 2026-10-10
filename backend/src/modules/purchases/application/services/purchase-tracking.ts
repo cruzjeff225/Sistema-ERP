@@ -172,7 +172,7 @@ export function computeTracking(snapshot: TrackingSnapshot): TrackingResult {
     for (const r of receipts) {
       if (r.status === 'CLOSED' || r.status === 'RECEIVED' || r.pendingPlacement) continue;
       const q = { purchaseId: String(r.id) };
-      if (r.retaceoArchived && r.retaceoStatus !== 'closed') steps.push(step('costs', 'Compras', `Restaurar el retaceo de ${r.code} desde la papelera`, '/trash'));
+      if (r.retaceoArchived && r.retaceoStatus !== 'closed') steps.push(step('costs', 'Compras', `Restaurar el retaceo de ${r.code} desde la papelera`, '/administration/trash'));
       else if (r.retaceoStatus === 'closed' || r.status === 'COSTED') steps.push(step('costs', 'Compras', `Cerrar la recepción ${r.code}`, '/purchases/receipts', { id: String(r.id) }));
       else steps.push(step('costs', 'Compras', r.retaceoStatus ? `Terminar el retaceo de ${r.code}` : `Hacer el retaceo de ${r.code}`, '/purchases/retaceos', q));
     }

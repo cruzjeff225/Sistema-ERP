@@ -37,6 +37,7 @@ const router = createRouter({
       path: section.previousRoute,
       redirect: (to: import('vue-router').RouteLocationGeneric) => ({ path: section.route, query: to.query, hash: to.hash }),
     })),
+    { path: '/purchases/tracking/:type/:id', name: 'purchase-tracking', component: () => import('../views/PurchaseTrackingView.vue'), meta: { permission: 'purchases.view' } },
     { path: '/purchases/quotations/manage', name: 'quotation-workspace', component: () => import('../views/QuotationWorkspaceView.vue'), meta: { permissionsAny: ['purchase_quotations.view','purchase_orders.approve'] } },
     { path: '/purchases/consolidations', redirect: to => ({ path: '/purchases/quotations/manage', query: to.query }) },
     { path: '/inventory/warehouse', name: 'warehouse-operations', beforeEnter: to => to.query.tab==='configuration' && !to.query.purchaseId && !to.query.requestId ? {path:'/administration/settings/warehouse'} : true, component: () => import('../views/WarehouseOperationsView.vue'), meta: { permission: 'inventory.view' } },
