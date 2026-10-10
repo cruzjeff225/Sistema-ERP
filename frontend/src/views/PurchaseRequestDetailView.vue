@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
-import { ArrowLeft, ArrowRight, Building2, CalendarDays, ChevronDown, ChevronRight, CircleAlert, CircleCheck, CircleX, EllipsisVertical, FilePenLine, FileText, ListChecks, Package, Pencil, PlusCircle, RefreshCw, Send, StickyNote, Tag, Truck } from 'lucide-vue-next';
+import { ArrowLeft, ArrowRight, Building2, CalendarDays, ChevronDown, Check, ChevronRight, CircleAlert, CircleCheck, CircleX, EllipsisVertical, FilePenLine, FileText, ListChecks, Package, Pencil, PlusCircle, RefreshCw, Send, StickyNote, Tag, Truck } from 'lucide-vue-next';
 import type { Component } from 'vue';
 import AdminLayout from '../layouts/AdminLayout.vue';
 import AppBadge from '../components/base/AppBadge.vue';
@@ -18,7 +18,7 @@ import { getApiErrorMessage } from '../utils/api-error';
 import { purchaseStage } from '../utils/purchase-inbox';
 import { documentAction, needsProcessStep } from '../utils/purchase-next-action';
 import { purchasePurposeLabel } from '../utils/purchase-workflow';
-import { canCancelRequest, deliveredQuantity, hasBranchDeliveries, isEditableRequest, processSnapshot, quotationEntryLocation, requestEditLocation, requestListLocation, requestNextStep, requestStatusIcon, type RequestStatusIcon } from '../utils/purchase-request';
+import { canCancelRequest, deliveredQuantity, hasBranchDeliveries, isAwaitingPurchasing, isEditableRequest, processSnapshot, quotationEntryLocation, requestEditLocation, requestLifecycle, requestListLocation, requestNextStep, requestStatusIcon, type RequestStatusIcon } from '../utils/purchase-request';
 import { documentStatusLabel, documentStatusVariant, formatQuantity, type TrackingStep } from '../utils/purchase-tracking';
 
 const route = useRoute();
@@ -122,6 +122,14 @@ const callout = computed(() => {
   if (record.status === 'cancelled') return { tone: 'neutral' as const, title: 'Solicitud cancelada', description: 'Esta solicitud ya no sigue en el proceso de compra.', icon: CircleX };
   return { tone: 'neutral' as const, title: stageText.value, description: progress, icon: ListChecks };
 });
+const lifecycle = computed(() => request.value ? requestLifecycle(request.value.status) : null);
+const lifecycleIcons: Record<string, Component> = { draft: FilePenLine, sent: Send, process: Truck, done: CircleCheck };
+// The only real date we hold for the steps is when the draft was created.
+const stepDate = (key: string) => key === 'draft' && request.value?.createdAt ? shortDate(request.value.createdAt.slice(0, 10)) : '';
+// A request that already left the branch says so, and Purchasing gets the way in to its quotation.
+const awaitingPurchasing = computed(() => !!request.value && isAwaitingPurchasing(request.value.status));
+const bannerAction = computed(() => awaitingPurchasing.value ? mainAction.value : null);
+const headerAction = computed(() => bannerAction.value ? null : mainAction.value);
 const stageText = computed(() => request.value ? purchaseStage('requests', request.value.status) : '');
 
 const goEdit = (options: { addLine?: boolean } = {}) => void router.push(requestEditLocation(request.value.id, options));
@@ -161,20 +169,31 @@ watch([() => route.params.id, activeCompanyId], () => { tab.value = 'products'; 
               <TrackingLink type="request" :id="request.id" />
             </div>
             <p class="mt-1.5 text-muted-fg">{{ request.branch?.name }}</p>
+            <p class="mt-3 flex flex-wrap items-center gap-3 text-sm text-muted-fg"><AppBadge :variant="documentStatusVariant(request.status)">{{ documentStatusLabel(request.status) }}</AppBadge><span v-if="request.createdAt">Creada el {{ dateTime(request.createdAt) }}</span></p>
           </div>
-          <fieldset :disabled="busy" class="flex flex-wrap items-center gap-2">
-            <AppBadge :variant="documentStatusVariant(request.status)">{{ documentStatusLabel(request.status) }}</AppBadge>
-            <AppButton v-if="mainAction" @click="mainAction.run()"><Send v-if="mainAction.kind === 'workflow'" class="h-4 w-4" aria-hidden="true" />{{ mainAction.label }}<ChevronRight v-if="mainAction.kind !== 'workflow'" class="h-4 w-4" aria-hidden="true" /></AppButton>
-            <details v-if="hasMenu" class="relative">
-              <summary class="inline-flex min-h-9 cursor-pointer list-none items-center gap-2 rounded-lg border border-border bg-surface px-3 text-sm font-medium text-fg transition-colors hover:bg-surface-secondary [&::-webkit-details-marker]:hidden"><EllipsisVertical class="h-4 w-4 text-muted-fg" aria-hidden="true" />Más acciones<ChevronDown class="h-4 w-4 text-muted-fg" aria-hidden="true" /></summary>
-              <div class="absolute right-0 z-30 mt-2 flex min-w-56 flex-col gap-2 rounded-xl border border-border bg-surface p-3 shadow-subtle">
-                <RouterLink v-if="showDeliveriesLink" :to="{ path: '/inventory/warehouse', query: { requestId: String(request.id) } }" class="rounded-lg border border-border px-3 py-2 text-center text-sm hover:bg-surface-secondary">Ver entregas a sucursal</RouterLink>
-                <AppButton v-if="canCancel" variant="outline" @click="cancelling = true">Cancelar solicitud</AppButton>
-                <TrashButton v-if="can('trash.delete')" entity="purchase_requests" :record-id="request.id" :label="request.code" :disabled="busy" @deleted="afterRemoved" />
-              </div>
-            </details>
-            <AppButton variant="ghost" :disabled="loading" title="Actualizar" aria-label="Actualizar" @click="load"><RefreshCw class="h-4 w-4" :class="loading && 'animate-spin'" aria-hidden="true" /></AppButton>
-          </fieldset>
+          <div class="flex min-w-0 max-w-full flex-col gap-5 lg:items-end">
+            <fieldset :disabled="busy" class="flex flex-wrap items-center gap-2">
+              <AppButton v-if="headerAction" @click="headerAction.run()"><Send v-if="headerAction.kind === 'workflow'" class="h-4 w-4" aria-hidden="true" />{{ headerAction.label }}<ChevronRight v-if="headerAction.kind !== 'workflow'" class="h-4 w-4" aria-hidden="true" /></AppButton>
+              <details v-if="hasMenu" class="relative">
+                <summary class="inline-flex min-h-9 cursor-pointer list-none items-center gap-2 rounded-lg border border-border bg-surface px-3 text-sm font-medium text-fg transition-colors hover:bg-surface-secondary [&::-webkit-details-marker]:hidden"><EllipsisVertical class="h-4 w-4 text-muted-fg" aria-hidden="true" />Más acciones<ChevronDown class="h-4 w-4 text-muted-fg" aria-hidden="true" /></summary>
+                <div class="absolute right-0 z-30 mt-2 flex min-w-56 flex-col gap-2 rounded-xl border border-border bg-surface p-3 shadow-subtle">
+                  <RouterLink v-if="showDeliveriesLink" :to="{ path: '/inventory/warehouse', query: { requestId: String(request.id) } }" class="rounded-lg border border-border px-3 py-2 text-center text-sm hover:bg-surface-secondary">Ver entregas a sucursal</RouterLink>
+                  <AppButton v-if="canCancel" variant="outline" @click="cancelling = true">Cancelar solicitud</AppButton>
+                  <TrashButton v-if="can('trash.delete')" entity="purchase_requests" :record-id="request.id" :label="request.code" :disabled="busy" @deleted="afterRemoved" />
+                </div>
+              </details>
+              <AppButton variant="ghost" :disabled="loading" title="Actualizar" aria-label="Actualizar" @click="load"><RefreshCw class="h-4 w-4" :class="loading && 'animate-spin'" aria-hidden="true" /></AppButton>
+            </fieldset>
+            <!-- Where the request is in its life: draft, sent, in process, completed -->
+            <ol v-if="lifecycle" class="grid w-full grid-cols-4 gap-2 sm:w-[28rem]" aria-label="Avance de la solicitud">
+              <li v-for="(step, index) in lifecycle" :key="step.key" class="relative flex flex-col items-center text-center" :aria-current="step.state === 'current' || step.state === 'attention' ? 'step' : undefined">
+                <span v-if="index > 0" class="absolute right-1/2 top-5 h-0.5 w-full" :class="step.state === 'pending' ? 'bg-border' : 'bg-success'" aria-hidden="true" />
+                <span class="relative grid h-10 w-10 place-items-center rounded-full border-2" :class="{ 'border-success bg-success text-white': step.state === 'done', 'border-warning bg-warning/20 text-warning': step.state === 'current', 'border-danger bg-danger/10 text-danger': step.state === 'attention', 'border-border bg-surface text-muted-fg': step.state === 'pending' }"><Check v-if="step.state === 'done'" class="h-5 w-5" aria-hidden="true" /><component :is="lifecycleIcons[step.key]" v-else class="h-4 w-4" aria-hidden="true" /></span>
+                <span class="mt-2 text-xs leading-tight" :class="step.state === 'pending' ? 'text-muted-fg' : 'font-semibold text-fg'">{{ step.label }}</span>
+                <span v-if="stepDate(step.key)" class="mt-0.5 whitespace-nowrap text-[11px] leading-tight text-muted-fg">{{ stepDate(step.key) }}</span>
+              </li>
+            </ol>
+          </div>
         </header>
 
         <!-- Next step: what comes next and why, in a soft block that is hard to miss -->
@@ -231,6 +250,16 @@ watch([() => route.params.id, activeCompanyId], () => { tab.value = 'products'; 
             <h2 id="detail-notes" class="flex items-center gap-2 text-sm font-semibold text-fg"><StickyNote class="h-4 w-4 text-muted-fg" aria-hidden="true" />Observaciones <span class="font-normal text-muted-fg">(opcional)</span></h2>
             <div class="mt-2 min-h-14 whitespace-pre-wrap rounded-lg border border-border bg-surface px-3 py-2.5 text-sm leading-6" :class="request.notes ? 'text-fg' : 'text-muted-fg'">{{ request.notes || 'Sin observaciones' }}</div>
           </section>
+
+          <div v-if="awaitingPurchasing" class="p-5">
+            <div class="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-success/40 bg-success/10 px-5 py-4">
+              <div class="flex min-w-0 items-start gap-3">
+                <CircleCheck class="mt-0.5 h-6 w-6 shrink-0 text-success" aria-hidden="true" />
+                <div><p class="font-semibold text-success">Solicitud enviada a Compras</p><p class="mt-0.5 text-sm text-muted-fg">Esta solicitud ya fue enviada y está disponible para su revisión en el área de Compras.</p></div>
+              </div>
+              <AppButton v-if="bannerAction" variant="outline" :disabled="busy" @click="bannerAction.run()"><FileText class="h-4 w-4" aria-hidden="true" />Ver en gestión de cotización</AppButton>
+            </div>
+          </div>
         </div>
 
         <!-- Entregas -->

@@ -52,3 +52,23 @@ export function requestStatusIcon(status: string): RequestStatusIcon {
   if (['submitted', 'approved'].includes(status)) return 'sent';
   return 'progress';
 }
+
+export type LifecycleState = 'done' | 'current' | 'pending' | 'attention';
+export type LifecycleKey = 'draft' | 'sent' | 'process' | 'done';
+export type LifecycleStep = { key: LifecycleKey; label: string; state: LifecycleState };
+const LIFECYCLE: { key: LifecycleKey; label: string }[] = [
+  { key: 'draft', label: 'Borrador' }, { key: 'sent', label: 'Enviada a Compras' }, { key: 'process', label: 'En proceso' }, { key: 'done', label: 'Completada' },
+];
+
+/**
+ * Where the request is in its administrative life: draft, sent to Purchasing, in process and completed.
+ * A cancelled request has no line to follow, and a returned one goes back to the first step needing attention.
+ */
+export function requestLifecycle(status: string): LifecycleStep[] | null {
+  if (status === 'cancelled') return null;
+  const current = status === 'draft' || status === 'rejected' ? 0 : ['submitted', 'approved'].includes(status) ? 1 : status === 'fulfilled' ? LIFECYCLE.length : 2;
+  return LIFECYCLE.map((step, index) => ({ ...step, state: index < current ? 'done' : index === current ? (status === 'rejected' ? 'attention' : 'current') : 'pending' }));
+}
+
+/** The request already left the branch and waits for Purchasing to take it. */
+export const isAwaitingPurchasing = (status: string) => ['submitted', 'approved'].includes(status);

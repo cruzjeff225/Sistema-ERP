@@ -71,3 +71,23 @@ test('cada estado de la solicitud tiene un ícono que lo distingue', () => {
   for (const status of ['submitted', 'approved']) assert.equal(requestStatusIcon(status), 'sent', status);
   for (const status of ['in_quotation', 'partially_ordered', 'in_procurement', 'partially_distributed', 'completed']) assert.equal(requestStatusIcon(status), 'progress', status);
 });
+
+import { isAwaitingPurchasing, requestLifecycle } from '../src/utils/purchase-request';
+
+test('la línea de tiempo muestra el paso actual según el estado de la solicitud', () => {
+  const states = (status: string) => requestLifecycle(status)?.map(step => step.state);
+  assert.deepEqual(states('draft'), ['current', 'pending', 'pending', 'pending']);
+  assert.deepEqual(states('rejected'), ['attention', 'pending', 'pending', 'pending']);
+  assert.deepEqual(states('submitted'), ['done', 'current', 'pending', 'pending']);
+  assert.deepEqual(states('approved'), ['done', 'current', 'pending', 'pending']);
+  for (const status of ['in_quotation', 'partially_ordered', 'in_procurement', 'partially_distributed', 'completed']) assert.deepEqual(states(status), ['done', 'done', 'current', 'pending'], status);
+  assert.deepEqual(states('fulfilled'), ['done', 'done', 'done', 'done']);
+  assert.equal(requestLifecycle('cancelled'), null, 'una solicitud cancelada ya no sigue la línea');
+  assert.deepEqual(requestLifecycle('draft')?.map(step => step.label), ['Borrador', 'Enviada a Compras', 'En proceso', 'Completada']);
+});
+
+test('solo está esperando a Compras mientras no la tome una gestión', () => {
+  assert.equal(isAwaitingPurchasing('submitted'), true);
+  assert.equal(isAwaitingPurchasing('approved'), true);
+  for (const status of ['draft', 'in_procurement', 'fulfilled', 'cancelled']) assert.equal(isAwaitingPurchasing(status), false, status);
+});
