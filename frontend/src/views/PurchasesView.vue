@@ -35,7 +35,9 @@ import { http } from "../services/http.service";
 import { getApiErrorMessage } from "../utils/api-error";
 import { projectComparisonExpenses } from '../utils/quotation-comparison';
 import { isPendingPurchase, purchaseStage, isCurrentPurchaseWeek } from '../utils/purchase-inbox';
-import { receiptProgress, purchasePurposeLabel, onlyOptionId, quotationPendingLines, nextOrderReceipt, receiptNextStep, orderNeedsAttention, orderReceiptStage } from "../utils/purchase-workflow";
+import { documentAction, needsProcessStep, type ActionSection } from "../utils/purchase-next-action";
+import type { TrackingStep } from "../utils/purchase-tracking";
+import { receiptProgress, purchasePurposeLabel, onlyOptionId, quotationPendingLines, receiptNextStep, orderNeedsAttention, orderReceiptStage } from "../utils/purchase-workflow";
 
 type Section = "requests" | "quotations" | "orders";
 type Catalogs = {
@@ -125,38 +127,39 @@ const filteredRecords = computed(() => {
 });
 // The tracking view understands requests, offers and orders; the other sections have their own link.
 const trackingType = computed(() => ({ requests: 'request', quotations: 'quotation', orders: 'order' } as Record<string, 'request' | 'quotation' | 'order'>)[props.section]);
+// What the main button does is decided in utils/purchase-next-action; this only runs the chosen action.
+const processStep = ref<TrackingStep | null>(null);
+let processStepVersion = 0;
+async function loadProcessStep() {
+  const record = selected.value;
+  const version = ++processStepVersion;
+  processStep.value = null;
+  const type = trackingType.value;
+  const companyId = activeCompanyId.value;
+  if (!record || !type || !companyId || !needsProcessStep(props.section as ActionSection, record) || !can('purchases.view')) return;
+  try {
+    const response = await http.get(`/purchases/tracking/${type}/${record.id}`, { headers: { 'X-Company-Id': String(companyId) } });
+    if (version === processStepVersion && companyId === activeCompanyId.value) processStep.value = response.data.data.nextStep;
+  } catch { /* Without the process the document-level action still applies. */ }
+}
+watch(() => [props.section, selected.value?.id, selected.value?.status, activeCompanyId.value], () => { void loadProcessStep(); }, { immediate: true });
 const nextAction = computed(() => {
-  const r = selected.value;
-  if (!r || ['cancelled','expired','closed','fulfilled'].includes(r.status) || r.status === 'rejected' && props.section !== 'requests') return null;
-  const action = (label: string, permission: string, run: () => void) => can(permission) ? { label, run } : null;
-  if (props.section === 'requests') {
-    if (r.status === 'rejected') return action('Corregir solicitud', 'purchase_requests.update', () => editRequest(r));
-    if (r.status === 'draft') return action(r.purpose ? 'Enviar a Compras' : 'Completar solicitud', 'purchase_requests.update', () => r.purpose ? void workflow('/purchase-requests/' + r.id + '/submit', 'Solicitud enviada a Compras') : editRequest(r));
-    if (r.status === 'in_procurement' && (r.details ?? []).some((d: any) => Number(d.receivedFromPurchases) > 0 && Number(d.dispatchedQuantity) < Number(d.quantity))) return action('Entregar a sucursal', 'inventory.view', () => { void router.push({ path: '/inventory/warehouse', query: { requestId: String(r.id) } }); });
-    if (['submitted','approved','in_quotation','partially_ordered','in_procurement'].includes(r.status)) return action('Continuar en Cotizaciones', 'purchase_quotations.view', () => newQuotation(r));
-    return action('Ver entregas a sucursal', 'inventory.view', () => { void router.push({ path: '/inventory/warehouse', query: { requestId: String(r.id) } }); });
-  }
-  if (props.section === 'quotations') {
-    if (r.rfq) return action(r.status === 'draft' ? 'Completar oferta' : 'Comparar y elegir productos', r.status === 'draft' ? 'purchase_quotations.update' : 'purchase_quotations.view', () => { void router.push({ path: r.status === 'draft' ? '/purchases/quotations/manage' : '/purchases/comparison', query: { id: String(r.rfq.consolidationId), ...(r.status === 'draft' ? { rfqId: String(r.rfq.id) } : {}) } }); });
-    if (r.status === 'draft') return action('Confirmar oferta recibida', 'purchase_quotations.update', () => { void workflow('/purchase-quotations/' + r.id + '/receive', 'Oferta recibida'); });
-    if (['received','under_review'].includes(r.status) && !quoteExpired.value) return action('Elegir oferta', 'purchase_quotations.select', () => { void workflow('/purchase-quotations/' + r.id + '/select', 'Oferta seleccionada'); });
-    if (r.status === 'selected' && pendingOrderLines.value.length && !quoteExpired.value) return action('Crear orden de compra', 'purchase_orders.create', () => newOrder(r));
-  }
-  if (props.section === 'orders') {
-    if (r.status === 'returned') return action('Revisar observaciones', 'purchase_orders.update', () => { detailView.value='approval'; });
-    if (r.status === 'draft') return action('Enviar a Gerencia', 'purchase_orders.update', () => { void workflow('/purchase-orders/' + r.id + '/submit', 'Orden enviada a aprobación'); });
-    if (r.status === 'pending_approval') return action('Revisar para aprobar', 'purchase_orders.approve', () => { detailView.value='approval'; });
-    if (r.status === 'approved') return action('Marcar enviada al proveedor', 'purchase_orders.send', () => { void workflow('/purchase-orders/' + r.id + '/send', 'Orden enviada'); });
-    const receipt = nextOrderReceipt(r.purchases);
-    if (['partially_received', 'received'].includes(r.status) && receipt) {
-      const step = receiptNextStep(receipt).step;
-      if (step === 'placement' && can('inventory.view') && can('purchases.view')) return action('Ubicar productos', 'inventory.view', () => { void router.push({ path: '/inventory/warehouse', query: { purchaseId: String(receipt.id) } }); });
-      if (step === 'cost' && can('retaceos.view')) return action('Continuar en Retaceo', 'retaceos.view', () => { void router.push({ path: '/purchases/retaceos', query: { purchaseId: String(receipt.id) } }); });
-      return action(step === 'verify' ? 'Verificar recepción' : step === 'close' ? 'Cerrar recepción' : 'Ver recepción pendiente', 'purchases.view', () => { void router.push('/purchases/receipts?id=' + receipt.id); });
+  if (props.section !== 'requests' && props.section !== 'quotations' && props.section !== 'orders') return null;
+  const chosen = documentAction(props.section, selected.value, { can, quoteExpired: quoteExpired.value, hasPendingOrderLines: pendingOrderLines.value.length > 0, processStep: processStep.value });
+  if (!chosen) return null;
+  const record = selected.value;
+  const run = () => {
+    switch (chosen.kind) {
+      case 'edit-request': return editRequest(record);
+      case 'workflow': return void workflow(chosen.path, chosen.message);
+      case 'new-quotation': return newQuotation(record);
+      case 'new-order': return newOrder(record);
+      case 'receive': return void openReceive(record);
+      case 'approval-tab': detailView.value = 'approval'; return;
+      case 'navigate': return void router.push({ path: chosen.path, query: chosen.query ?? {} });
     }
-    if (['sent','partially_received'].includes(r.status)) return action('Registrar recepción', can('purchase_orders.receive') ? 'purchase_orders.receive' : 'purchases.create', () => { void openReceive(r); });
-  }
-  return null;
+  };
+  return { label: chosen.label, run };
 });
 const secondaryActions = computed(() => {
  const r = selected.value; if (!r) return false; if(can('trash.delete')) return true;
