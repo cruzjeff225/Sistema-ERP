@@ -10,6 +10,8 @@ import { PurchaseExpenseDocumentsController } from "./presentation/purchase-expe
 import { RetaceosController } from "./presentation/retaceos.controller";
 import { PurchaseReceiptsController } from "./presentation/purchase-receipts.controller";
 import { PurchaseReceiptsService } from "./application/services/purchase-receipts.service";
+import { PurchaseTrackingService } from "./application/services/purchase-tracking.service";
+import { PurchaseTrackingController } from "./presentation/purchase-tracking.controller";
 import {
   ExpenseTypesController,
   PurchaseCatalogsController,
@@ -30,7 +32,8 @@ import {
     PurchaseExpenseDocumentsController,
     RetaceosController,
     PurchaseReceiptsController,
+    PurchaseTrackingController,
   ],
-  providers: [SupplyWorkflowService, PurchasesService, PurchaseExpenseDocumentsService, RetaceosService, PurchaseReceiptsService],
+  providers: [SupplyWorkflowService, PurchasesService, PurchaseExpenseDocumentsService, RetaceosService, PurchaseReceiptsService, PurchaseTrackingService],
 })
 export class PurchasesModule {}
