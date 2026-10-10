@@ -127,7 +127,7 @@ async function main() {
   for (const id of c.orders.map((o:any)=>o.id)) {
     let o=await api(`/purchase-orders/${id}`);
     if(o.supplierId===supplierIds[0]) o=await api(`/purchase-orders/${id}`,'PATCH',{expenses:[{expenseTypeId,amount:100,description:'Flete previsto'}]});
-    await api(`/purchase-orders/${id}/submit`,'POST'); await api(`/purchase-orders/${id}/approve`,'POST');
+    await api(`/purchase-orders/${id}/submit`,'POST'); await api(`/purchase-orders/${id}/approve`,'POST'); await api(`/purchase-orders/${id}/send`,'POST');
     const d=o.details[0]; const amount=d.productId===productIds[0]?450:10;
     const payload={requestId:randomUUID(),items:[{orderDetailId:d.id,quantity:amount}]};
     const results=await Promise.all([api(`/purchase-orders/${id}/receive`,'POST',payload),api(`/purchase-orders/${id}/receive`,'POST',payload)]);
@@ -135,7 +135,7 @@ async function main() {
     await db.purchase.update({where:{id:purchases[0].id},data:{uuid:payload.requestId.toUpperCase()}});
     await api(`/purchase-orders/${id}/receive`,'POST',{...payload,requestId:payload.requestId.toUpperCase()});
     await api(`/purchase-orders/${id}/receive`,'POST',payload);
-    await api(`/purchase-orders/${id}/receive`,'POST',{...payload,items:[{...payload.items[0],quantity:amount-.01}]},409);
+    await api(`/purchase-orders/${id}/receive`,'POST',{...payload,items:[{...payload.items[0],quantity:amount-.01}]},400);
     assert.equal(await db.purchase.count({where:{purchaseOrderId:id}}),1,'Los reintentos UUID de recepción no deben crear otra compra');
     assert.equal(purchases[0].items[0].locationId,null); assert.equal(await db.inventoryStock.count({where:{productId:d.productId}}),0);
     await api(`/purchases/${purchases[0].id}/verify`,'POST',undefined,409);
