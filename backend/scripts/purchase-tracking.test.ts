@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { computeTracking, TrackingSnapshot } from '../src/modules/purchases/application/services/purchase-tracking';
+import { computeTracking, groupLinked, summarizeTracking, TrackingSnapshot } from '../src/modules/purchases/application/services/purchase-tracking';
 
 const line = (o: Partial<TrackingSnapshot['lines'][number]> = {}) => { const row = { productId: 1, name: 'Lámina', unit: 'Pieza', requested: 100, decided: 120, purchased: 0, received: 0, placed: o.received ?? 0, dispatched: 0, delivered: 0, ...o }; return row; };
 const base = (o: Partial<TrackingSnapshot> = {}): TrackingSnapshot => ({
@@ -149,4 +149,34 @@ test('mercadería recibida pero sin ubicar no se ofrece para despacho', () => {
   assert.ok(!r.alsoAvailable.some(s => s.stage === 'distribution'));
   const placed = computeTracking(base({ orders: [order('received')], lines: [line({ purchased: 120, received: 120, placed: 70 })], receipts: [receipt({ status: 'VERIFIED' })] }));
   assert.ok(placed.alsoAvailable.some(s => s.stage === 'distribution'), 'lo ubicado sí puede despacharse');
+});
+
+test('los documentos enlazados forman un solo proceso y los aislados uno cada uno', () => {
+  const groups = groupLinked(['r:1', 'r:2', 'c:1', 'q:1', 'o:1', 'p:1', 'r:3'], [['c:1', 'r:1'], ['c:1', 'r:2'], ['q:1', 'c:1'], ['o:1', 'q:1'], ['p:1', 'o:1']]);
+  assert.equal(groups.length, 2);
+  const big = groups.find(g => g.length > 1)!;
+  assert.deepEqual([...big].sort(), ['c:1', 'o:1', 'p:1', 'q:1', 'r:1', 'r:2']);
+  assert.deepEqual(groups.find(g => g.length === 1), ['r:3']);
+});
+
+test('un enlace hacia un documento que no existe no une procesos ajenos', () => {
+  const groups = groupLinked(['r:1', 'r:2'], [['r:1', 'c:99'], ['r:2', 'c:99']]);
+  assert.equal(groups.length, 2);
+});
+
+test('dos solicitudes que comparten una orden quedan en el mismo proceso aunque se enlacen en orden distinto', () => {
+  const groups = groupLinked(['r:1', 'r:2', 'o:1'], [['o:1', 'r:2'], ['o:1', 'r:1']]);
+  assert.equal(groups.length, 1);
+});
+
+test('el resumen cuenta solo etapas aplicables y señala la etapa actual', () => {
+  const r = computeTracking(base({ consolidations: [], quotations: [{ id: 9, code: 'COT-9', status: 'selected' }], lines: [line({ decided: null })] }));
+  const summary = summarizeTracking(r);
+  assert.equal(summary.stagesTotal, 7, 'cantidades se omite');
+  assert.equal(summary.stagesDone, 1);
+  assert.equal(summary.currentStage?.id, 'quotation');
+  const done = summarizeTracking(computeTracking(base({ orders: [order('received')], receipts: [receipt({ status: 'CLOSED', retaceoStatus: 'closed' })],
+    lines: [line({ purchased: 120, received: 120, dispatched: 100, delivered: 100 })], requests: [{ id: 3, code: 'PR-00003', status: 'fulfilled', requested: 100, dispatched: 100, delivered: 100 }] })));
+  assert.equal(done.currentStage, null);
+  assert.equal(done.stagesDone, done.stagesTotal);
 });

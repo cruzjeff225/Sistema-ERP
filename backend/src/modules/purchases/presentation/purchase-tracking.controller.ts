@@ -1,4 +1,4 @@
-import { BadRequestException, Controller, Get, Headers, Param, ParseIntPipe } from "@nestjs/common";
+import { BadRequestException, Controller, Get, Headers, Param, ParseIntPipe, Query } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import { RequirePermissions } from "../../../common/decorators/permissions.decorator";
 import { CompanyScopeService } from "../../../common/services/company-scope.service";
@@ -10,6 +10,16 @@ import { PurchaseTrackingService, TRACKING_ANCHORS, TrackingAnchor } from "../ap
 @Controller("purchases/tracking")
 export class PurchaseTrackingController {
   constructor(private readonly tracking: PurchaseTrackingService, private readonly scope: CompanyScopeService) {}
+
+  /** Purchase processes, one row each, with their current stage and next step. */
+  @RequirePermissions("purchases.view") @Get("processes")
+  async processes(@Query("scope") scope: string | undefined, @Query("search") search: string | undefined, @Query("limit") limit: string | undefined, @CurrentUser() user: AuthenticatedUser, @Headers("x-company-id") company?: string) {
+    const normalizedScope = scope ?? "open";
+    if (!["open", "done", "all"].includes(normalizedScope)) throw new BadRequestException("El filtro debe ser open, done o all");
+    const parsed = Number(limit ?? 30);
+    if (!Number.isInteger(parsed) || parsed < 1 || parsed > 100) throw new BadRequestException("El límite debe ser un entero entre 1 y 100");
+    return { success: true, data: await this.tracking.list(await this.scope.resolve(user, company), { scope: normalizedScope as "open" | "done" | "all", search: search?.slice(0, 60), limit: parsed }) };
+  }
 
   /** Stage timeline and next step for the purchase process that contains the given document. */
   @RequirePermissions("purchases.view") @Get(":type/:id")

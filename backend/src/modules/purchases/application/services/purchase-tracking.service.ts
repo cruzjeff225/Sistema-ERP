@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../../../infrastructure/database/prisma/prisma.service';
-import { computeTracking, TrackingLine, TrackingSnapshot } from './purchase-tracking';
+import { computeTracking, groupLinked, summarizeTracking, TrackingLine, TrackingSnapshot } from './purchase-tracking';
 import { withReceiptLifecycle } from './receipt-lifecycle';
 
 export const TRACKING_ANCHORS = ['request', 'quotation', 'order', 'receipt', 'retaceo', 'consolidation'] as const;
@@ -18,8 +18,84 @@ export class PurchaseTrackingService {
 
   async track(type: TrackingAnchor, id: number, companyId: number) {
     const ids = await this.resolve(type, id, companyId);
-    const snapshot = await this.load(ids, companyId);
-    return { anchor: { type, id }, ...computeTracking(snapshot.snapshot), documents: snapshot.documents, lines: snapshot.snapshot.lines };
+    const raw = await this.fetchRaw(ids, companyId);
+    const built = await this.build(raw, ids);
+    return { anchor: { type, id }, ...computeTracking(built.snapshot), documents: built.documents, lines: built.snapshot.lines };
+  }
+
+  /** One row per purchase process, newest activity first. `open` hides finished processes, `done` shows only them. */
+  async list(companyId: number, options: { scope: 'open' | 'done' | 'all'; search?: string; limit: number }) {
+    const p = this.prisma;
+    const alive = { deletedAt: null };
+    const [requests, consolidations, quotations, orders, receipts] = await Promise.all([
+      p.purchaseRequest.findMany({ where: { companyId, ...alive, status: { not: 'cancelled' } }, select: { id: true, code: true, updatedAt: true } }),
+      p.purchaseConsolidation.findMany({ where: { companyId, ...alive }, select: { id: true, code: true, updatedAt: true } }),
+      p.purchaseQuotation.findMany({ where: { companyId, ...alive }, select: { id: true, code: true, updatedAt: true } }),
+      p.purchaseOrder.findMany({ where: { companyId, ...alive, status: { notIn: ['cancelled', 'rejected'] } }, select: { id: true, code: true, updatedAt: true, quotationId: true, consolidationId: true } }),
+      p.purchase.findMany({ where: { companyId, ...alive, status: { not: 'CANCELLED' } }, select: { id: true, documentNumber: true, updatedAt: true, purchaseOrderId: true } }),
+    ]);
+    const [sources, requestLinks, rfqs] = await Promise.all([
+      p.purchaseConsolidationSource.findMany({ select: { line: { select: { consolidationId: true } }, requestDetail: { select: { requestId: true } } } }),
+      p.purchaseQuotationRequest.findMany({ select: { quotationId: true, requestId: true } }),
+      p.purchaseRfq.findMany({ where: alive, select: { consolidationId: true, quotation: { select: { id: true } } } }),
+    ]);
+
+    const meta = new Map<string, { code: string; updatedAt: Date }>();
+    requests.forEach(r => meta.set(`r:${r.id}`, { code: r.code, updatedAt: r.updatedAt }));
+    consolidations.forEach(c => meta.set(`c:${c.id}`, { code: c.code, updatedAt: c.updatedAt }));
+    quotations.forEach(q => meta.set(`q:${q.id}`, { code: q.code, updatedAt: q.updatedAt }));
+    orders.forEach(o => meta.set(`o:${o.id}`, { code: o.code, updatedAt: o.updatedAt }));
+    receipts.forEach(r => meta.set(`p:${r.id}`, { code: r.documentNumber, updatedAt: r.updatedAt }));
+    const links: [string, string][] = [
+      ...sources.map(s => [`c:${s.line.consolidationId}`, `r:${s.requestDetail.requestId}`] as [string, string]),
+      ...requestLinks.map(l => [`q:${l.quotationId}`, `r:${l.requestId}`] as [string, string]),
+      ...rfqs.flatMap(r => r.quotation ? [[`c:${r.consolidationId}`, `q:${r.quotation.id}`] as [string, string]] : []),
+      ...orders.flatMap(o => [[`o:${o.id}`, `q:${o.quotationId}`] as [string, string], ...(o.consolidationId ? [[`o:${o.id}`, `c:${o.consolidationId}`] as [string, string]] : [])]),
+      ...receipts.map(r => [`p:${r.id}`, `o:${r.purchaseOrderId}`] as [string, string]),
+    ];
+
+    const term = options.search?.trim().toLowerCase();
+    const groups = groupLinked([...meta.keys()], links)
+      .map(keys => ({ keys, updatedAt: Math.max(...keys.map(k => meta.get(k)!.updatedAt.getTime())), codes: keys.map(k => meta.get(k)!.code) }))
+      .filter(group => !term || group.codes.some(code => code.toLowerCase().includes(term)))
+      .sort((a, b) => b.updatedAt - a.updatedAt);
+
+    const rows: unknown[] = [];
+    const SCAN_LIMIT = 200, CHUNK = 20;
+    for (let start = 0; start < Math.min(groups.length, SCAN_LIMIT) && rows.length < options.limit; start += CHUNK) {
+      const chunk = groups.slice(start, start + CHUNK).map(group => ({ group, ids: this.idsFromKeys(group.keys) }));
+      const union: Ids = { requests: new Set(), consolidations: new Set(), quotations: new Set(), orders: new Set(), receipts: new Set() };
+      for (const { ids } of chunk) for (const key of Object.keys(union) as (keyof Ids)[]) ids[key].forEach(id => union[key].add(id));
+      const raw = await this.fetchRaw(union, companyId);
+      for (const { group, ids } of chunk) {
+        const built = await this.build(raw, ids);
+        const result = computeTracking(built.snapshot);
+        if ((options.scope === 'open' && result.completed) || (options.scope === 'done' && !result.completed)) continue;
+        rows.push({
+          anchor: this.anchorOf(ids), documents: built.documents, nextStep: result.nextStep, blockers: result.blockers.length,
+          completed: result.completed, ...summarizeTracking(result), updatedAt: new Date(group.updatedAt).toISOString(),
+        });
+        if (rows.length >= options.limit) break;
+      }
+    }
+    return { items: rows, total: groups.length, truncated: groups.length > SCAN_LIMIT };
+  }
+
+  private idsFromKeys(keys: string[]): Ids {
+    const ids: Ids = { requests: new Set(), consolidations: new Set(), quotations: new Set(), orders: new Set(), receipts: new Set() };
+    const target: Record<string, Set<number>> = { r: ids.requests, c: ids.consolidations, q: ids.quotations, o: ids.orders, p: ids.receipts };
+    for (const key of keys) target[key[0]!]!.add(Number(key.slice(2)));
+    return ids;
+  }
+
+  /** Opening a process from a list uses its earliest document in the chain. */
+  private anchorOf(ids: Ids): { type: TrackingAnchor; id: number } {
+    const first = (set: Set<number>) => Math.min(...set);
+    if (ids.requests.size) return { type: 'request', id: first(ids.requests) };
+    if (ids.consolidations.size) return { type: 'consolidation', id: first(ids.consolidations) };
+    if (ids.quotations.size) return { type: 'quotation', id: first(ids.quotations) };
+    if (ids.orders.size) return { type: 'order', id: first(ids.orders) };
+    return { type: 'receipt', id: first(ids.receipts) };
   }
 
   private async resolve(type: TrackingAnchor, id: number, companyId: number): Promise<Ids> {
@@ -78,7 +154,7 @@ export class PurchaseTrackingService {
     return ids;
   }
 
-  private async load(ids: Ids, companyId: number) {
+  private async fetchRaw(ids: Ids, companyId: number) {
     const p = this.prisma;
     const alive = { deletedAt: null };
     const [requests, consolidations, rfqs, quotations, orders, receipts, config] = await Promise.all([
@@ -96,6 +172,20 @@ export class PurchaseTrackingService {
           retaceos: { select: { id: true, code: true, status: true, deletedAt: true } } } }),
       p.erpConfiguration.findFirst({ select: { generalWarehouseId: true } }),
     ]);
+
+    return { requests, consolidations, rfqs, quotations, orders, receipts, config };
+  }
+
+  private async build(raw: Awaited<ReturnType<PurchaseTrackingService['fetchRaw']>>, ids: Ids) {
+    // The raw data can cover several processes; keep only the documents of this one.
+    const requests = raw.requests.filter(r => ids.requests.has(r.id));
+    const consolidations = raw.consolidations.filter(c => ids.consolidations.has(c.id));
+    const rfqs = raw.rfqs.filter(r => ids.consolidations.has(r.consolidationId));
+    const quotations = raw.quotations.filter(q => ids.quotations.has(q.id));
+    const orders = raw.orders.filter(o => ids.orders.has(o.id));
+    const receipts = raw.receipts.filter(r => ids.receipts.has(r.id));
+    const config = raw.config;
+    const p = this.prisma;
 
     // Per-product quantities: requested / decided / purchased / received / dispatched / delivered.
     const lines = new Map<number, TrackingLine>();

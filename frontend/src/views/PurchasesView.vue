@@ -27,6 +27,7 @@ import PurchaseTabs from "../components/purchases/PurchaseTabs.vue";
 import AppBadge from "../components/base/AppBadge.vue";
 import TrashButton from "../components/admin/TrashButton.vue";
 import AppButton from "../components/base/AppButton.vue";
+import TrackingLink from "../components/purchases/TrackingLink.vue";
 import AppInput from "../components/base/AppInput.vue";
 import { usePermissions } from "../composables/usePermissions";
 import { useUnsavedChanges } from "../composables/useUnsavedChanges";
@@ -122,6 +123,8 @@ const filteredRecords = computed(() => {
     return (requestAgeTab.value === 'older' || requestInTab(record)) && (requestAgeTab.value !== 'older' || ((!historyFrom.value || documentDate(record) >= historyFrom.value) && (!historyTo.value || documentDate(record) <= historyTo.value))) && (!term || text.includes(term)) && (!statusFilter.value || record.status === statusFilter.value) && (!pendingOnly.value || pending);
   });
 });
+// The tracking view understands requests, offers and orders; the other sections have their own link.
+const trackingType = computed(() => ({ requests: 'request', quotations: 'quotation', orders: 'order' } as Record<string, 'request' | 'quotation' | 'order'>)[props.section]);
 const nextAction = computed(() => {
   const r = selected.value;
   if (!r || ['cancelled','expired','closed','fulfilled'].includes(r.status) || r.status === 'rejected' && props.section !== 'requests') return null;
@@ -682,7 +685,7 @@ onMounted(load);
         <section v-if="selected" aria-label="Detalle del documento" class="min-h-[560px] min-w-0 overflow-hidden rounded-2xl border border-border/70 bg-surface">
           <header class="space-y-4 border-b border-border/70 p-5 sm:p-6">
             <div class="flex flex-wrap items-start justify-between gap-4">
-              <div class="min-w-0"><div class="flex flex-wrap items-center gap-2"><h2 class="text-xl font-semibold tracking-tight">{{ selected.code }}</h2><AppBadge :variant="statusVariant(selected.status)">{{ statusLabel(selected.status) }}</AppBadge></div><p class="mt-2 text-sm text-muted-fg">{{ selected.supplier?.name || selected.branch?.name }}</p></div>
+              <div class="min-w-0"><div class="flex flex-wrap items-center gap-2"><h2 class="text-xl font-semibold tracking-tight">{{ selected.code }}</h2><AppBadge :variant="statusVariant(selected.status)">{{ statusLabel(selected.status) }}</AppBadge><TrackingLink v-if="trackingType" :type="trackingType" :id="selected.id" /></div><p class="mt-2 text-sm text-muted-fg">{{ selected.supplier?.name || selected.branch?.name }}</p></div>
               <fieldset :disabled="saving" class="flex flex-wrap items-center gap-2">
             <AppButton v-if="canEditOrder" variant="outline" @click="editOrder(selected)"><Pencil class="h-4 w-4" />{{ selected.status === 'returned' ? 'Corregir orden' : 'Editar borrador' }}</AppButton>
             <AppButton v-if="nextAction" :disabled="preparingReceipt" @click="nextAction.run()">{{ nextAction.label }}<ChevronRight class="h-4 w-4" /></AppButton>

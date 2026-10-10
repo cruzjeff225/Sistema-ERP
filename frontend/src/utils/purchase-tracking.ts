@@ -114,3 +114,30 @@ export function processSummary(documents: TrackingDocuments) {
   if (codes.length <= 4) return codes.join(' · ');
   return `${codes.slice(0, 4).join(' · ')} y ${codes.length - 4} más`;
 }
+
+export type ProcessRow = {
+  anchor: { type: TrackingType; id: number };
+  documents: TrackingDocuments;
+  nextStep: TrackingStep | null;
+  blockers: number;
+  completed: boolean;
+  stagesDone: number;
+  stagesTotal: number;
+  currentStage: { id: string; label: string } | null;
+  updatedAt: string;
+};
+export type ProcessScope = 'open' | 'done' | 'all';
+export const PROCESS_SCOPES: { id: ProcessScope; label: string }[] = [{ id: 'open', label: 'En curso' }, { id: 'done', label: 'Completadas' }, { id: 'all', label: 'Todas' }];
+
+/** "hace 5 min", "hace 3 h", "ayer"... Dates in the future (clock drift) read as "ahora". */
+export function relativeTime(iso: string, now = Date.now()) {
+  const minutes = Math.floor((now - new Date(iso).getTime()) / 60000);
+  if (!Number.isFinite(minutes) || minutes < 1) return 'ahora';
+  if (minutes < 60) return `hace ${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `hace ${hours} h`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return 'ayer';
+  if (days < 30) return `hace ${days} días`;
+  return new Date(iso).toLocaleDateString('es-SV', { day: '2-digit', month: 'short', year: 'numeric' });
+}

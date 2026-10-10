@@ -11,6 +11,7 @@ import PurchaseTabs from "../components/purchases/PurchaseTabs.vue";
 import AppBadge from "../components/base/AppBadge.vue";
 import TrashButton from "../components/admin/TrashButton.vue";
 import AppButton from "../components/base/AppButton.vue";
+import TrackingLink from '../components/purchases/TrackingLink.vue';
 import AppInput from "../components/base/AppInput.vue";
 import { usePermissions } from "../composables/usePermissions";
 import { useUnsavedChanges } from "../composables/useUnsavedChanges";
@@ -403,7 +404,7 @@ onMounted(load);
       <section aria-label="Detalle de retaceo" v-if="selected" class="min-w-0 overflow-hidden rounded-2xl border border-border bg-surface">
         <header class="border-b border-border p-5">
           <div class="flex flex-wrap items-start justify-between gap-4">
-            <div><div class="flex items-center gap-2"><h2 class="text-xl font-semibold text-fg">{{ selected.code }}</h2><AppBadge :variant="statusVariant(selected.status)">{{ statusLabel(selected.status) }}</AppBadge></div><p class="mt-1 text-sm text-muted-fg">{{ selected.supplier.name }} · Recepción {{ selected.purchase.documentNumber }}</p></div>
+            <div><div class="flex items-center gap-2"><h2 class="text-xl font-semibold text-fg">{{ selected.code }}</h2><AppBadge :variant="statusVariant(selected.status)">{{ statusLabel(selected.status) }}</AppBadge><TrackingLink type="retaceo" :id="selected.id" /></div><p class="mt-1 text-sm text-muted-fg">{{ selected.supplier.name }} · Recepción {{ selected.purchase.documentNumber }}</p></div>
             <fieldset :disabled="saving" class="flex flex-wrap gap-2">
               <AppButton v-if="selected.status === 'draft' && can('retaceos.calculate')" @click="workflow('calculate','Retaceo calculado')"><Calculator class="h-4 w-4" />Distribuir gastos</AppButton>
               <AppButton v-if="selected.status === 'calculated' && can('retaceos.verify')" @click="workflow('verify','Retaceo verificado')"><ShieldCheck class="h-4 w-4" />Confirmar revisión</AppButton>

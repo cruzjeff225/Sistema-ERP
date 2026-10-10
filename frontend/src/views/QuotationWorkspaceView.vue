@@ -7,6 +7,7 @@ import PurchaseSectionHeader from '../components/purchases/PurchaseSectionHeader
 import PurchaseTabs from '../components/purchases/PurchaseTabs.vue';
 import TrashButton from '../components/admin/TrashButton.vue';
 import AppButton from '../components/base/AppButton.vue';
+import TrackingLink from '../components/purchases/TrackingLink.vue';
 import PurchaseActionDialog from '../components/base/PurchaseActionDialog.vue';
 import { http } from '../services/http.service';
 import { activeCompanyId } from '../services/company-context';
@@ -289,7 +290,7 @@ onBeforeUnmount(() => { mounted = false; ++companyEpoch; ++loadVersion; ++openVe
       <template v-if="current && !showNew && !opening && visibleDocuments.some(d => d.id === current.id)">
         <section v-if="!offer" class="rounded-2xl border border-border bg-surface p-5 sm:p-6">
           <div class="flex flex-wrap items-center justify-between gap-4">
-            <div class="max-w-2xl"><p class="mb-1 text-xs font-medium text-muted-fg">Siguiente paso</p><h2 class="text-lg font-semibold">{{ nextStep.title }}</h2><p class="mt-1 text-sm text-muted-fg">{{ nextStep.description }}</p></div>
+            <div class="max-w-2xl"><p class="mb-1 text-xs font-medium text-muted-fg">Siguiente paso</p><h2 class="text-lg font-semibold">{{ nextStep.title }}</h2><p class="mt-1 text-sm text-muted-fg">{{ nextStep.description }}</p><TrackingLink class="-ml-2 mt-2" type="consolidation" :id="current.id" /></div>
             <div class="flex flex-wrap gap-2">
               <AppButton v-if="['draft','returned'].includes(quantityStatus) && can('purchase_quotations.update')" :disabled="busy || changed" @click="quantityDecision='submit'">Enviar cantidades a Gerencia</AppButton>
               <template v-if="quantityStatus==='pending_review' && can('purchase_orders.approve')">

@@ -77,3 +77,31 @@ test('solo se aceptan los tipos de documento que conoce el servidor', () => {
   assert.equal(isTrackingType('bogus'), false);
   assert.equal(isTrackingType(undefined), false);
 });
+
+import { relativeTime, PROCESS_SCOPES } from '../src/utils/purchase-tracking';
+import { purchasingSectionRoute, visiblePurchasingSections, purchasingGroups } from '../src/config/purchasing.config';
+
+test('la antigüedad de un proceso se expresa en lenguaje natural', () => {
+  const now = Date.parse('2026-10-10T12:00:00Z');
+  assert.equal(relativeTime('2026-10-10T11:59:40Z', now), 'ahora');
+  assert.equal(relativeTime('2026-10-10T11:55:00Z', now), 'hace 5 min');
+  assert.equal(relativeTime('2026-10-10T09:00:00Z', now), 'hace 3 h');
+  assert.equal(relativeTime('2026-10-09T09:00:00Z', now), 'ayer');
+  assert.equal(relativeTime('2026-10-05T12:00:00Z', now), 'hace 5 días');
+  assert.equal(relativeTime('2026-10-10T12:05:00Z', now), 'ahora', 'una hora futura no produce textos negativos');
+  assert.equal(relativeTime('no-es-fecha', now), 'ahora');
+});
+
+test('los filtros del listado coinciden con los que acepta el servidor', () => {
+  assert.deepEqual(PROCESS_SCOPES.map(scope => scope.id), ['open', 'done', 'all']);
+});
+
+test('el seguimiento aparece en Compras para quien puede ver compras y se mantiene seleccionado en el detalle', () => {
+  const sections = visiblePurchasingSections(permission => permission === 'purchases.view');
+  assert.ok(sections.some(section => section.id === 'tracking' && section.route === '/purchases/tracking'));
+  assert.equal(visiblePurchasingSections(() => false).some(section => section.id === 'tracking'), false);
+  assert.equal(purchasingSectionRoute('/purchases/tracking/request/12'), '/purchases/tracking');
+  assert.equal(purchasingSectionRoute('/purchases/tracking'), '/purchases/tracking');
+  assert.equal(purchasingSectionRoute('/purchases/orders'), '/purchases/orders');
+  assert.ok(purchasingGroups.some(group => group.id === 'overview'), 'la sección nueva tiene un grupo que la contiene');
+});

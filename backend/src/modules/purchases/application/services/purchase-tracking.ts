@@ -215,3 +215,32 @@ export function computeTracking(snapshot: TrackingSnapshot): TrackingResult {
 function ownerOf(id: StageId, outcome: StageOutcome): Owner {
   return outcome.steps[0]?.owner ?? STAGE_META[id].owner;
 }
+
+export type ProcessSummary = { stagesDone: number; stagesTotal: number; currentStage: { id: StageId; label: string } | null };
+
+/** Compact progress for lists: how many applicable stages are complete and which one is current. */
+export function summarizeTracking(result: TrackingResult): ProcessSummary {
+  const applicable = result.stages.filter(stage => stage.state !== 'skipped');
+  const done = applicable.filter(stage => stage.state === 'complete').length;
+  const current = result.completed ? null : result.stages.find(stage => stage.id === result.nextStep?.stage) ?? result.stages.find(stage => stage.state === 'in_progress' || stage.state === 'pending') ?? null;
+  return { stagesDone: done, stagesTotal: applicable.length, currentStage: current ? { id: current.id, label: current.label } : null };
+}
+
+/** Group documents into processes: every pair of linked keys ends up in the same group (union-find). */
+export function groupLinked(keys: string[], links: [string, string][]): string[][] {
+  const parent = new Map<string, string>(keys.map(key => [key, key]));
+  const find = (key: string): string => {
+    let root = key;
+    while (parent.get(root) !== root) root = parent.get(root)!;
+    for (let node = key; node !== root;) { const next = parent.get(node)!; parent.set(node, root); node = next; }
+    return root;
+  };
+  for (const [a, b] of links) {
+    if (!parent.has(a) || !parent.has(b)) continue; // a link to a deleted or foreign document does not join anything
+    const rootA = find(a), rootB = find(b);
+    if (rootA !== rootB) parent.set(rootA, rootB);
+  }
+  const groups = new Map<string, string[]>();
+  for (const key of keys) { const root = find(key); groups.set(root, [...(groups.get(root) ?? []), key]); }
+  return [...groups.values()];
+}

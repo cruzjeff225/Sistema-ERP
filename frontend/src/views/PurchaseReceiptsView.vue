@@ -8,6 +8,7 @@ import PurchaseSectionHeader from "../components/purchases/PurchaseSectionHeader
 import PurchaseTabs from "../components/purchases/PurchaseTabs.vue";
 import TrashButton from "../components/admin/TrashButton.vue";
 import AppButton from "../components/base/AppButton.vue";
+import TrackingLink from "../components/purchases/TrackingLink.vue";
 import AppInput from "../components/base/AppInput.vue";
 import PurchaseActionDialog from "../components/base/PurchaseActionDialog.vue";
 import { http } from "../services/http.service";
@@ -196,7 +197,7 @@ async function mutate(reason?: string) {
       </aside>
       <section aria-label="Detalle de recepción" v-if="selected && !loading" class="min-w-0 overflow-hidden rounded-2xl border border-border bg-surface">
         <header class="flex flex-wrap items-start justify-between gap-4 border-b border-border p-5">
-          <div><div class="flex flex-wrap items-center gap-3"><h2 class="text-xl font-semibold">{{ selected.documentNumber }}</h2><span class="rounded-full bg-surface-secondary px-2.5 py-1 text-xs text-muted-fg">{{ labels[selected.status] }}</span></div><p class="mt-1 text-sm text-muted-fg">{{ selected.supplier.name }}</p><p class="mt-2 text-sm font-medium" :class="nextStep?.step === 'complete' ? 'text-success' : 'text-accent'">{{ nextStep?.label }}</p></div>
+          <div><div class="flex flex-wrap items-center gap-3"><h2 class="text-xl font-semibold">{{ selected.documentNumber }}</h2><span class="rounded-full bg-surface-secondary px-2.5 py-1 text-xs text-muted-fg">{{ labels[selected.status] }}</span><TrackingLink type="receipt" :id="selected.id" /></div><p class="mt-1 text-sm text-muted-fg">{{ selected.supplier.name }}</p><p class="mt-2 text-sm font-medium" :class="nextStep?.step === 'complete' ? 'text-success' : 'text-accent'">{{ nextStep?.label }}</p></div>
           <fieldset :disabled="busy || editing" class="flex flex-wrap items-center gap-2">
             <RouterLink v-if="nextStep?.step === 'placement' && can('inventory.view') && !editing" :to="placementPath" class="inline-flex items-center rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-foreground">Viñetear y ubicar</RouterLink>
             <AppButton v-else-if="nextStep?.step === 'verify' && can('purchases.update')" @click="action = 'verify'; error = ''">Verificar recepción</AppButton>

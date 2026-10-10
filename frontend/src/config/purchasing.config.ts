@@ -1,11 +1,13 @@
 export const purchasingRoute = '/purchases';
 
 export const purchasingGroups = [
+  { id: 'overview', label: 'Visión general', description: 'Ve en qué etapa va cada compra y qué sigue.' },
   { id: 'preparation', label: 'Solicitudes y cotizaciones', description: 'Prepara lo que necesitas y elige la mejor oferta.' },
   { id: 'fulfillment', label: 'Órdenes y recepción', description: 'Formaliza la compra, recibe los productos y determina su costo.' },
 ] as const;
 
 export const purchasingSections = [
+  { id: 'tracking', label: 'Seguimiento', description: 'Ve en qué etapa va cada compra y quién debe actuar.', permission: 'purchases.view', group: 'overview', route: '/purchases/tracking' },
   { id: 'requests', label: 'Solicitudes', description: 'Crea y envía las necesidades de cada sucursal.', permission: 'purchase_requests.view', group: 'preparation', route: '/purchases/requests' },
   { id: 'quotations', label: 'Cotizaciones', description: 'Consulta a proveedores y registra sus ofertas.', permission: 'purchase_quotations.view', group: 'preparation', route: '/purchases/quotations' },
   { id: 'comparison', label: 'Comparar ofertas', description: 'Revisa precios y elige un proveedor por producto.', permission: 'purchase_quotations.view', group: 'preparation', route: '/purchases/comparison' },
@@ -23,6 +25,7 @@ export function visiblePurchasingSections(can: (permission: string) => boolean) 
 }
 
 export function purchasingSectionRoute(path: string) {
+  if (path.startsWith('/purchases/tracking')) return '/purchases/tracking';
   if (path === '/purchases/quotations/manage') return '/purchases/quotations';
   if (path === '/purchases/expense-types') return '/purchases/retaceos';
   return path;
