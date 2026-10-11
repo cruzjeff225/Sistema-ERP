@@ -15,6 +15,7 @@ function harness(permissions) {
   function requireMock(spec) {
     if (spec === 'vue') return { ...vue, onBeforeUnmount: fn => hooks.push(fn) };
     if (spec === 'vue-router') return { RouterLink: {}, useRoute: () => route, useRouter: () => ({ replace: async value => { route.query = value.query; await vue.nextTick(); } }) };
+    if (spec === 'lucide-vue-next') return new Proxy({}, { get: () => ({}) });
     if (spec.endsWith('.vue')) return { default: {} };
     if (spec.endsWith('/http.service')) return { http: wire };
     if (spec.endsWith('/company-context')) return { activeCompanyId: company };
@@ -99,36 +100,24 @@ test('offer reference is optional for unchanged quantities and required only to 
  }finally{h.finish();}
 });
 
-test('quantity review allows management changes before RFQs and locks quoted quantities',async()=>{
- const manager=harness(['purchase_orders.approve']);manager.initialize();await settle();
- try{
-  manager.state.current.value={id:7,quantityReviewStatus:'draft',quantityRevision:2,quantityApprovedRevision:null,rfqs:[],orders:[],lines:[]};
-  assert.equal(manager.state.canAdjustProposal.value,false);
-  manager.state.current.value.quantityReviewStatus='pending_review';assert.equal(manager.state.canAdjustProposal.value,true);
-  manager.state.selectWorkspace('suppliers');assert.match(manager.state.error.value,/autorizar/);assert.equal(manager.state.workspace.value,'products');
-  manager.state.current.value.quantityReviewStatus='approved';manager.state.current.value.quantityApprovedRevision=2;assert.equal(manager.state.quantitiesAuthorized.value,true);assert.equal(manager.state.canAdjustProposal.value,false);
-  manager.state.current.value.quantityRevision=3;assert.equal(manager.state.quantitiesAuthorized.value,false,'Una autorización de otra versión no habilita cotizaciones');
-  manager.state.current.value.quantityReviewStatus='pending_review';manager.state.current.value.rfqs=[{id:1}];assert.equal(manager.state.canAdjustProposal.value,false);
- }finally{manager.finish()}
+test('Compras ajusta las cantidades hasta consultar proveedores y Gerencia ya no interviene',async()=>{
  const buyer=harness(['purchase_quotations.update','purchase_quotations.view']);buyer.initialize();await settle();
- try{buyer.state.current.value={quantityReviewStatus:'draft',rfqs:[],orders:[]};assert.equal(buyer.state.canAdjustProposal.value,true);buyer.state.current.value.quantityReviewStatus='pending_review';assert.equal(buyer.state.canAdjustProposal.value,false);}finally{buyer.finish()}
-});
-
-test('quantity approval sends the reviewed revision once and preserves company scope',async()=>{
- const qa=harness(['purchase_orders.approve']);qa.initialize();await settle();
- try{qa.state.selectedId.value=7;qa.state.current.value={id:7,quantityReviewStatus:'pending_review',quantityRevision:4,rfqs:[],orders:[],lines:[]};qa.state.quantityDecision.value='approve';
-  qa.state.reviewQuantities();const call=qa.calls.at(-1);assert.equal(call.url,'/supply/consolidations/7/quantities/approve');assert.equal(call.body.expectedRevision,4);assert.equal(call.config.headers['X-Company-Id'],'3');
-  const count=qa.calls.length;qa.state.reviewQuantities();assert.equal(qa.calls.length,count);call.reject(Error('QA done'));await settle();assert.equal(qa.state.busy.value,false);
- }finally{qa.finish()}
+ try{
+  buyer.state.current.value={id:7,quantityRevision:2,rfqs:[],orders:[],lines:[]};
+  assert.equal(buyer.state.canAdjustProposal.value,true,'sin autorización previa: Compras ajusta de inmediato');
+  buyer.state.selectWorkspace('suppliers');assert.equal(buyer.state.error.value,'');assert.equal(buyer.state.workspace.value,'suppliers','ya no se exige autorización para consultar proveedores');
+  buyer.state.current.value.rfqs=[{id:1}];assert.equal(buyer.state.canAdjustProposal.value,false,'con proveedores consultados las cantidades quedan fijas');
+  buyer.state.current.value.rfqs=[];buyer.state.current.value.orders=[{id:1}];assert.equal(buyer.state.canAdjustProposal.value,false);
+ }finally{buyer.finish()}
+ const manager=harness(['purchase_orders.approve']);manager.initialize();await settle();
+ try{manager.state.current.value={id:7,quantityRevision:2,rfqs:[],orders:[],lines:[]};assert.equal(manager.state.canAdjustProposal.value,false,'Gerencia no modifica cantidades');assert.equal(manager.state.quantityDecision,undefined);}finally{manager.finish()}
 });
 
 test('workspace guides the current task and distinguishes incomplete responses from received offers', async () => {
  const h=harness();h.initialize();await settle();
  try {
-  const process={id:7,quantityReviewStatus:'draft',quantityRevision:2,quantityApprovedRevision:null,rfqs:[],orders:[],lines:[{id:1,purchaseQuantity:10,purchasedQuantity:0}]};
-  h.state.current.value=process;assert.equal(h.state.nextStep.value.action,'quantities');
-  h.state.current.value.quantityReviewStatus='returned';h.state.current.value.quantityReviewNotes='Comprar 12';assert.match(h.state.nextStep.value.description,/observaciones/);
-  Object.assign(h.state.current.value,{quantityReviewStatus:'approved',quantityApprovedRevision:2});assert.equal(h.state.nextStep.value.action,'suppliers');
+  const process={id:7,quantityRevision:2,rfqs:[],orders:[],lines:[{id:1,purchaseQuantity:10,purchasedQuantity:0}]};
+  h.state.current.value=process;assert.equal(h.state.nextStep.value.action,'suppliers','Compras pasa directo a consultar proveedores');
   h.state.current.value.rfqs=[{id:49,quotation:{status:'draft',orders:[]}}];assert.equal(h.state.nextStep.value.action,'offer');assert.equal(h.state.receivedQuotes.value.length,0);
   h.state.current.value.rfqs[0].quotation.status='received';assert.equal(h.state.nextStep.value.action,'compare');assert.equal(h.state.receivedQuotes.value.length,1);
   h.state.current.value.rfqs[0].quotation.status='under_review';assert.equal(h.state.receivedQuotes.value.length,1,'Offers under review remain valid comparison inputs');
@@ -171,4 +160,15 @@ test('a provider already consulted is excluded from new RFQs in the same purchas
   assert.deepEqual(Array.from(h.state.availableSuppliers.value,supplier=>supplier.id),[103]);
   h.state.current.value.rfqs.push({id:50,supplierId:103});assert.equal(h.state.availableSuppliers.value.length,0);
  } finally {h.finish();}
+});
+
+test('con varios proveedores esperando oferta no se escoge uno por el usuario',async()=>{
+ const h=harness(['purchase_quotations.create','purchase_quotations.update','purchase_quotations.view']);h.initialize();await settle();
+ try{
+  h.state.current.value={id:7,quantityRevision:1,orders:[],lines:[{id:1,purchaseQuantity:10,purchasedQuantity:0}],rfqs:[{id:1,supplier:{name:'Diana'},quotation:null}]};
+  assert.equal(h.state.severalPending.value,false);assert.match(h.state.nextStep.value.description,/oferta de Diana/);
+  h.state.current.value.rfqs.push({id:2,supplier:{name:'Calvo'},quotation:null});
+  assert.equal(h.state.severalPending.value,true);assert.match(h.state.nextStep.value.title,/respuestas de los proveedores/);assert.match(h.state.nextStep.value.description,/2 proveedores esperan/);assert.equal(h.state.nextStep.value.action,'offer');
+  h.state.current.value.rfqs.splice(0,1);assert.equal(h.state.severalPending.value,false,'al quedar uno solo vuelve a indicar cuál');assert.match(h.state.nextStep.value.description,/Calvo/);
+ }finally{h.finish()}
 });

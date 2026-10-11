@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
+import { Building2, CalendarDays, ChevronLeft, ChevronRight, FileText, Search, ShoppingCart, Tag, Trash2, ArrowRight, Check } from 'lucide-vue-next';
 import AdminLayout from '../layouts/AdminLayout.vue';
 import PurchasesNav from '../components/purchases/PurchasesNav.vue';
 import PurchaseSectionHeader from '../components/purchases/PurchaseSectionHeader.vue';
@@ -8,6 +9,7 @@ import PurchaseTabs from '../components/purchases/PurchaseTabs.vue';
 import TrashButton from '../components/admin/TrashButton.vue';
 import AppButton from '../components/base/AppButton.vue';
 import TrackingLink from '../components/purchases/TrackingLink.vue';
+import QuotationComparison from './QuotationComparisonView.vue';
 import PurchaseActionDialog from '../components/base/PurchaseActionDialog.vue';
 import { http } from '../services/http.service';
 import { activeCompanyId } from '../services/company-context';
@@ -15,6 +17,9 @@ import { usePermissions } from '../composables/usePermissions';
 import { isCurrentPurchaseWeek } from '../utils/purchase-inbox';
 import { filterQuotationProcesses, quotationProcessDay } from '../utils/quotation-process-inbox';
 import { getApiErrorMessage } from '../utils/api-error';
+import { documentStatusLabel, documentStatusVariant } from '../utils/purchase-tracking';
+import { purchasePurposeLabel } from '../utils/purchase-workflow';
+import AppBadge from '../components/base/AppBadge.vue';
 import { useUnsavedChanges } from '../composables/useUnsavedChanges';
 import { quotationExpenseCapabilities, quotationExpenseUpdate, type QuotationOfferExpense } from '../utils/quotation-offer-expenses';
 
@@ -31,11 +36,8 @@ const error = ref(''), success = ref(''), busy = ref(false), loading = ref(false
 const date = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/El_Salvador' }).format(new Date());
 const from = ref(''), to = ref(date()), selectedRequests = ref<number[]>([]);
 const selectedId = ref(0), supplierId = ref(0), rfqLineIds = ref<number[]>([]);
-const quantityStatus = computed(() => current.value?.quantityReviewStatus ?? 'draft');
-const quantitiesAuthorized = computed(() => quantityStatus.value === 'approved' && current.value?.quantityApprovedRevision === current.value?.quantityRevision);
-const canAdjustProposal = computed(() => !!current.value && !current.value.rfqs.length && !current.value.orders.length && (quantityStatus.value === 'pending_review' ? can('purchase_orders.approve') : ['draft','returned'].includes(quantityStatus.value) && can('purchase_quotations.update')));
-const quantityStatusLabel = computed(() => ({ draft: 'Preparar cantidades', pending_review: 'Gerencia revisa las cantidades', approved: 'Cantidades autorizadas para cotizar', returned: 'Cantidades devueltas a Compras' } as Record<string,string>)[quantityStatus.value]);
-const quantityDecision = ref<'submit'|'approve'|'return'|null>(null);
+// Purchasing decides the quantities on its own while no provider has been consulted.
+const canAdjustProposal = computed(() => !!current.value && !current.value.rfqs.length && !current.value.orders.length && can('purchase_quotations.update'));
 const lineEdit = reactive({ productId: 0, purchaseQuantity: 0, reason: '' });
 const offer = ref<any>(null), offerForm = reactive({ quotationDate: date(), validUntil: date(), currency: 'USD', paymentTerms: '', deliveryDays: 0, costsConfirmed:false,conditionsConfirmed:false,exchangeRateToUsd:undefined as number|undefined,exchangeRateDate:'',providerConfirmation:'',details: [] as any[], expenses: [] as QuotationOfferExpense[] });
 const offerQuantityChanged = computed(() => !!offer.value && offerForm.details.some(detail => {
@@ -60,6 +62,7 @@ const workspace = ref<'products' | 'suppliers' | 'compare' | 'orders'>('products
 const workspaceTabs = computed(() => [
   { value: 'products', label: 'Productos', count: current.value?.lines.length ?? 0 },
   { value: 'suppliers', label: 'Proveedores', count: current.value?.rfqs.length ?? 0 },
+  ...(receivedQuotes.value.length || workspace.value === 'compare' ? [{ value: 'compare', label: 'Comparar', count: receivedQuotes.value.length }] : []),
   ...(current.value?.orders.length ? [{ value: 'orders', label: 'Órdenes', count: current.value.orders.length }] : []),
 ]);
 const showNew = ref(false), editingProduct = ref(false), addingSupplier = ref(false);
@@ -71,27 +74,72 @@ let pendingChange: (() => void) | undefined;
 const requestAgeTab = ref<'recent' | 'older'>('recent');
 const allEligible = computed(() => requests.value.filter(r => r.details.every((d: any) => d.eligible) && (!from.value || localDate(r.requestDate) >= from.value) && (!to.value || localDate(r.requestDate) <= to.value)));
 const eligible = computed(() => allEligible.value.filter(r => requestAgeTab.value === 'older' || isCurrentPurchaseWeek(r.requestDate)));
+// Request picker: search and filters narrow the list, pages keep it short; the selection survives them.
+const PAGE_SIZE = 5;
+const requestSearch = ref(''), requestBranch = ref(0), requestPurpose = ref(''), requestPage = ref(1);
+const branchOptions = computed(() => [...new Map(eligible.value.map(r => [r.branch.id, r.branch.name])).entries()].map(([id, name]) => ({ id, name })));
+const purposeOptions = computed(() => [...new Set(eligible.value.map(r => r.purpose).filter(Boolean))].map(value => ({ value, label: purchasePurposeLabel(value) })));
+const pickerRequests = computed(() => {
+  const term = requestSearch.value.trim().toLowerCase();
+  return eligible.value.filter(r => (!requestBranch.value || r.branch.id === requestBranch.value) && (!requestPurpose.value || r.purpose === requestPurpose.value)
+    && (!term || [r.code, r.branch.name, r.justification].some(text => String(text ?? '').toLowerCase().includes(term))));
+});
+const pickerPages = computed(() => Math.max(1, Math.ceil(pickerRequests.value.length / PAGE_SIZE)));
+const pickerPage = computed(() => pickerRequests.value.slice((requestPage.value - 1) * PAGE_SIZE, requestPage.value * PAGE_SIZE));
+const pageAllSelected = computed(() => pickerPage.value.length > 0 && pickerPage.value.every(r => selectedRequests.value.includes(r.id)));
+function togglePage() {
+  const ids = pickerPage.value.map(r => r.id);
+  selectedRequests.value = pageAllSelected.value ? selectedRequests.value.filter(id => !ids.includes(id)) : [...new Set([...selectedRequests.value, ...ids])];
+}
+watch([requestSearch, requestBranch, requestPurpose, requestAgeTab, from, to], () => { requestPage.value = 1; });
+watch(pickerPages, pages => { if (requestPage.value > pages) requestPage.value = pages; });
+const chosenRequests = computed(() => requests.value.filter(r => selectedRequests.value.includes(r.id)));
+const chosenSummary = computed(() => ({
+  requests: chosenRequests.value.length,
+  products: chosenRequests.value.reduce((sum, r) => sum + r.details.length, 0),
+  branches: new Set(chosenRequests.value.map(r => r.branch.id)).size,
+  purposes: new Set(chosenRequests.value.map(r => r.purpose).filter(Boolean)).size,
+}));
+const pickerDate = (value: string) => new Date(value).toLocaleDateString('es-SV', { day: '2-digit', month: 'short', year: 'numeric' });
+// The four steps of the process; the picker is the first one and the open management moves through the rest.
+const processSteps = [
+  { title: 'Seleccionar solicitudes', hint: 'Elija una o varias solicitudes para cotizar' },
+  { title: 'Revisar productos', hint: 'Verifique los productos e insumos' },
+  { title: 'Seleccionar proveedores', hint: 'Envíe la solicitud de cotización' },
+  { title: 'Seguimiento', hint: 'Revise las respuestas y genere la orden de compra' },
+];
+// Step 2 (review the products) is part of opening the management, so the indicator follows what comes next.
+const processStepIndex = computed(() => offer.value ? 3 : showNew.value || !current.value ? 1 : ({ suppliers: 3, offer: 3, compare: 4, orders: 4 } as Record<string, number>)[nextStep.value.action] ?? 3);
 const quotes = computed(() => current.value?.rfqs.filter((r: any) => r.quotation) ?? []);
 const receivedQuotes = computed(() => quotes.value.filter((r: any) => ['received', 'under_review', 'selected'].includes(r.quotation.status)));
 const availableSuppliers = computed(() => catalogs.value.suppliers.filter((supplier: any) => !current.value?.rfqs.some((rfq: any) => rfq.supplierId === supplier.id)));
 const activeOrders = computed(() => current.value?.orders.filter((order: any) => !['cancelled', 'rejected'].includes(order.status)) ?? []);
-const pendingResponse = computed(() => current.value?.rfqs.find((rfq: any) => !rfq.quotation || rfq.quotation.status === 'draft'));
+const pendingResponses = computed<any[]>(() => current.value?.rfqs.filter((rfq: any) => !rfq.quotation || rfq.quotation.status === 'draft') ?? []);
+const pendingResponse = computed(() => pendingResponses.value[0]);
+// With several providers waiting, the screen cannot guess whose offer is being registered: the user picks it from the list.
+const severalPending = computed(() => pendingResponses.value.length > 1);
 const remainingProducts = computed(() => current.value?.lines.filter((line: any) => Number(line.purchaseQuantity) > Number(line.purchasedQuantity ?? 0)).length ?? 0);
 const nextStep = computed(() => {
-  if (!quantitiesAuthorized.value) return { title: quantityStatusLabel.value, description: quantityStatus.value === 'returned' ? 'Revise las observaciones y ajuste los productos antes de volver a enviar.' : quantityStatus.value === 'pending_review' ? 'Gerencia puede ajustar qué y cuánto comprar antes de autorizar la consulta de precios.' : 'Revise lo solicitado por las sucursales y proponga cuánto comprar.', action: 'quantities' };
   if (activeOrders.value.length && !remainingProducts.value) return { title: 'Continuar con las órdenes', description: 'Los productos ya fueron asignados. Abra las órdenes para continuar con la aprobación y recepción.', action: 'orders' };
   if (receivedQuotes.value.length) return { title: 'Elegir la compra', description: `${receivedQuotes.value.length} ${receivedQuotes.value.length === 1 ? 'oferta recibida' : 'ofertas recibidas'}. Compare el costo y elija un proveedor o combine productos.`, action: 'compare' };
-  if (pendingResponse.value) return { title: 'Registrar la respuesta del proveedor', description: 'Descargue el PDF para solicitar precios y registre la oferta cuando la reciba.', action: 'offer' };
-  return { title: 'Consultar proveedores', description: 'Las cantidades están autorizadas. Seleccione un proveedor y los productos que desea cotizar.', action: 'suppliers' };
+  if (pendingResponse.value) return severalPending.value
+    ? { title: 'Registrar las respuestas de los proveedores', description: `${pendingResponses.value.length} proveedores esperan su oferta. Elija de cuál va a registrar la respuesta.`, action: 'offer' }
+    : { title: 'Registrar la respuesta del proveedor', description: `Descargue el PDF para solicitar precios y registre la oferta de ${pendingResponse.value.supplier?.name ?? 'el proveedor'} cuando la reciba.`, action: 'offer' };
+  return { title: 'Consultar proveedores', description: 'Revise los productos, ajuste las cantidades si lo necesita y seleccione un proveedor y los productos que desea cotizar.', action: 'suppliers' };
 });
 const canRegisterResponse = (rfq: any) => !!rfq && (!rfq.quotation ? can('purchase_quotations.create') : ['draft', 'received', 'selected', 'under_review'].includes(rfq.quotation.status) && !rfq.quotation.orders.some((order: any) => !['cancelled', 'rejected'].includes(order.status)) && can('purchase_quotations.update'));
 const orderStatusLabel = (status: string) => ({ draft: 'Borrador', pending_approval: 'Pendiente de Gerencia', returned: 'Devuelta con observaciones', approved: 'Aprobada', sent: 'Enviada al proveedor', partially_received: 'Recepción parcial', received: 'Recibida', rejected: 'Rechazada', cancelled: 'Cancelada' } as Record<string, string>)[status] ?? status;
 const localDate = (value: string) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/El_Salvador' }).format(new Date(value));
 const shortDate = (value: string) => new Date(`${value.slice(0, 10)}T12:00:00`).toLocaleDateString('es-SV', { day: 'numeric', month: 'short', year: 'numeric' });
+const switching = ref(false);
+watch(selectedId, () => { switching.value = false; });
+// The requests this management gathers, so the line above says what it is about without opening anything.
+const originCodes = computed<string[]>(() => [...new Set<string>((current.value?.lines ?? []).flatMap((line: any) => (line.sources ?? []).map((source: any) => source.requestDetail?.request?.code)).filter(Boolean))]);
 const processLabel = (d: any) => `Gestión #${d.id} · ${shortDate(d.dateFrom)}${d.dateFrom.slice(0, 10) === d.dateTo.slice(0, 10) ? '' : ' – ' + shortDate(d.dateTo)}`;
 const headers = (company = activeCompanyId.value) => ({ headers: { 'X-Company-Id': String(company) } });
 function clearFilters() { documentSearch.value = ''; historyFrom.value = ''; historyTo.value = ''; }
-function resetEditing() { quantityDecision.value = null; awardReference = null; offer.value = null; editingProduct.value = false; addingSupplier.value = false; selectedRequests.value = []; lineEdit.reason = ''; Object.keys(awards).forEach(k => delete awards[Number(k)]); }
+async function afterAward() { if (!selectedId.value) return; await open(selectedId.value); await load(); workspace.value = 'orders'; }
+function resetEditing() { awardReference = null; offer.value = null; editingProduct.value = false; addingSupplier.value = false; selectedRequests.value = []; lineEdit.reason = ''; Object.keys(awards).forEach(k => delete awards[Number(k)]); }
 function change(work: () => void) {
   if (busy.value || opening.value || loading.value) return;
   if (changed.value) { pendingChange = work; discardChanges.value = true; return; }
@@ -104,7 +152,7 @@ function resolveDiscard(allow: boolean) {
 }
 function selectDocument(id: number) { if (!id || id === selectedId.value && !showNew.value) return; change(() => { void open(id); }); }
 function selectDocumentFromEvent(event: Event) { const select = event.target as HTMLSelectElement, id = Number(select.value); select.value = String(selectedId.value); selectDocument(id); }
-function selectWorkspace(value: string) { if (!workspaceTabs.value.some(tab => tab.value === value) || value === workspace.value) return; if(value==='suppliers'&&!quantitiesAuthorized.value){error.value='Gerencia debe autorizar las cantidades antes de consultar proveedores.';return;} change(() => { workspace.value = value as typeof workspace.value; }); }
+function selectWorkspace(value: string) { if (!workspaceTabs.value.some(tab => tab.value === value) || value === workspace.value) return; change(() => { workspace.value = value as typeof workspace.value; }); }
 function selectDocumentPeriod(value: string) { if (value === 'week' || value === 'all') selectTab(value); }
 function selectRequestPeriod(value: string) { if (value === 'recent' || value === 'older') requestAgeTab.value = value; }
 function selectTab(period: 'week' | 'all') { if (documentTab.value !== period) change(() => { documentTab.value = period; }); }
@@ -160,13 +208,13 @@ async function open(id: number) {
     await router.replace({ query: { ...route.query, id: String(id), requestId: undefined, rfqId: undefined } });
     if (!mounted || version !== openVersion || company !== activeCompanyId.value) return;
     if (canRegisterResponse(linked)) startOffer(linked);
+    else if (route.query.tab === 'compare' && receivedQuotes.value.length) workspace.value = 'compare';
   } catch (e) { if (mounted && version === openVersion && company === activeCompanyId.value) error.value = getApiErrorMessage(e, 'No se pudo abrir la gestión de cotizaciones'); } finally { if (version === openVersion) opening.value = false; }
 }
 async function run(work: (scope: MutationScope) => Promise<void>) { if (busy.value || !activeCompanyId.value) return; const scope = { companyId: activeCompanyId.value, epoch: companyEpoch }; busy.value = true; error.value = ''; success.value = ''; try { await work(scope); } catch (e) { if (validScope(scope)) error.value = getApiErrorMessage(e, 'No se pudo guardar'); } finally { if (validScope(scope)) busy.value = false; } }
-function create() { void run(async scope => { const r = await http.post('/supply/consolidations', { dateFrom: from.value || requests.value.filter(r => selectedRequests.value.includes(r.id)).map(r => localDate(r.requestDate)).sort()[0], dateTo: to.value || date(), requestIds: selectedRequests.value }, headers(scope.companyId)); if (!validScope(scope)) return; selectedRequests.value = []; selectedId.value = r.data.data.id; showNew.value = false; clearFilters(); documentTab.value = 'week'; await open(selectedId.value); if (!validScope(scope)) return; await load(); if (validScope(scope)) success.value = 'Productos cargados. Prepare las cantidades y envíelas a Gerencia antes de cotizar.'; }); }
+function create() { void run(async scope => { const r = await http.post('/supply/consolidations', { dateFrom: from.value || requests.value.filter(r => selectedRequests.value.includes(r.id)).map(r => localDate(r.requestDate)).sort()[0], dateTo: to.value || date(), requestIds: selectedRequests.value }, headers(scope.companyId)); if (!validScope(scope)) return; selectedRequests.value = []; selectedId.value = r.data.data.id; showNew.value = false; clearFilters(); documentTab.value = 'week'; await open(selectedId.value); if (!validScope(scope)) return; await load(); if (validScope(scope)) success.value = 'Gestión creada. Revise los productos y consulte a los proveedores.'; }); }
 function edit(line: any) { change(() => { editingProduct.value = true; Object.assign(lineEdit, { productId: line.productId, purchaseQuantity: Number(line.purchaseQuantity), reason: line.reason ?? '' }); initialProduct = JSON.stringify(lineEdit); }); }
 function saveLine() { void run(async scope => { await http.patch(`/supply/consolidations/${selectedId.value}/lines`, {...lineEdit,expectedRevision:current.value?.quantityRevision}, headers(scope.companyId)); if (!validScope(scope)) return; await open(selectedId.value); if (validScope(scope)) success.value = 'Decisión registrada. La cantidad solicitada se conserva.'; }); }
-function reviewQuantities(notes = '') { const action=quantityDecision.value,id=selectedId.value,revision=current.value?.quantityRevision;if(!action||!revision)return;void run(async scope => {await http.post(`/supply/consolidations/${id}/quantities/${action}`,{expectedRevision:revision,notes},headers(scope.companyId));if(!validScope(scope))return;quantityDecision.value=null;await open(id);if(!validScope(scope))return;await load();if(validScope(scope))success.value=action==='approve'?'Cantidades autorizadas. Compras puede consultar proveedores.':action==='submit'?'Cantidades enviadas a revisión de Gerencia.':'Propuesta devuelta con observaciones.';}); }
 function requestQuote() { void run(async scope => { await http.post(`/supply/consolidations/${selectedId.value}/rfqs`, { supplierId: supplierId.value, lineIds: rfqLineIds.value }, headers(scope.companyId)); if (!validScope(scope)) return; await open(selectedId.value); if (validScope(scope)) success.value = 'Solicitud de cotización preparada. Descargue su PDF para el proveedor.'; }); }
 function startOffer(rfq: any) {
   offer.value = rfq;
@@ -227,21 +275,31 @@ onBeforeUnmount(() => { mounted = false; ++companyEpoch; ++loadVersion; ++openVe
   <AdminLayout title="Gestionar cotizaciones">
     <div class="mx-auto max-w-[1440px] space-y-6">
       <PurchasesNav />
-      <PurchaseSectionHeader :title="offer ? 'Registrar oferta' : 'Gestionar cotizaciones'" :description="offer ? 'Complete la respuesta del proveedor para poder compararla.' : 'Revise los productos y consulte a los proveedores desde una misma compra.'">
+      <PurchaseSectionHeader :title="offer ? 'Registrar oferta' : 'Cotizaciones'" :description="offer ? 'Complete la respuesta del proveedor para poder compararla.' : 'Reúna solicitudes, consulte a los proveedores y compare sus ofertas en un mismo lugar.'">
         <template #actions>
-          <RouterLink v-if="can('purchase_orders.view') && can('purchase_orders.approve')" to="/purchases/orders" class="text-sm font-medium text-accent">Volver a revisión de Gerencia</RouterLink>
-          <RouterLink v-if="can('purchase_quotations.view')" to="/purchases/quotations" class="text-sm font-medium text-accent">Volver a cotizaciones</RouterLink>
           <template v-if="!offer">
             <AppButton variant="outline" :disabled="loading || opening || busy || changed" @click="load">Actualizar</AppButton>
-            <AppButton v-if="can('purchase_quotations.create') && can('purchase_requests.view')" :variant="showNew ? 'outline' : 'primary'" :disabled="busy || loading || opening" @click="toggleNew">{{ showNew ? 'Cerrar nueva cotización' : 'Nueva cotización' }}</AppButton>
+            <AppButton v-if="can('purchase_quotations.create') && can('purchase_requests.view')" :variant="!current && !showNew ? 'primary' : 'outline'" :disabled="busy || loading || opening" @click="toggleNew">{{ showNew ? 'Volver a la gestión' : 'Nueva gestión' }}</AppButton>
           </template>
         </template>
       </PurchaseSectionHeader>
 
+      <ol class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" aria-label="Pasos de la gestión de cotización">
+        <li v-for="(step, index) in processSteps" :key="step.title" class="flex items-start gap-3" :aria-current="processStepIndex === index + 1 ? 'step' : undefined">
+          <span class="grid h-9 w-9 shrink-0 place-items-center rounded-full text-sm font-semibold" :class="processStepIndex > index + 1 ? 'bg-success text-white' : processStepIndex === index + 1 ? 'bg-accent text-accent-foreground' : 'bg-surface-secondary text-muted-fg'"><Check v-if="processStepIndex > index + 1" class="h-4 w-4" aria-hidden="true" /><template v-else>{{ index + 1 }}</template></span>
+          <span class="min-w-0"><span class="block text-sm" :class="processStepIndex === index + 1 ? 'font-semibold text-fg' : 'font-medium text-fg/80'">{{ step.title }}</span><span class="mt-0.5 block text-xs leading-5 text-muted-fg">{{ step.hint }}</span></span>
+        </li>
+      </ol>
+
       <p v-if="error" role="alert" class="rounded-xl bg-danger/10 p-4 text-sm text-danger">{{ error }}</p>
       <p v-if="success" role="status" class="rounded-xl bg-success/10 p-4 text-sm text-success">{{ success }}</p>
 
-      <section v-if="!offer && !showNew" class="rounded-2xl border border-border bg-surface p-5 sm:p-6">
+      <section v-if="current && !showNew && !offer && !opening" aria-label="Gestión abierta" class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-surface px-5 py-3">
+        <div class="min-w-0"><p class="text-xs text-muted-fg">Gestión abierta</p><p class="font-semibold text-fg">{{ processLabel(current) }}<span v-if="originCodes.length" class="ml-2 text-sm font-normal text-muted-fg">· {{ originCodes.join(', ') }}</span></p></div>
+        <AppButton variant="ghost" size="sm" :disabled="busy || loading" @click="switching = !switching">{{ switching ? 'Cerrar' : 'Cambiar de gestión' }}</AppButton>
+      </section>
+
+      <section v-if="!offer && !showNew && (!current || switching)" class="rounded-2xl border border-border bg-surface p-5 sm:p-6">
         <div class="flex flex-wrap items-center justify-between gap-4">
           <PurchaseTabs :model-value="documentTab" :items="[{ value: 'week', label: 'Esta semana' }, { value: 'all', label: 'Anteriores' }]" label="Antigüedad de las gestiones" :disabled="busy || loading || opening" @update:model-value="selectDocumentPeriod" />
           <details class="relative">
@@ -264,61 +322,103 @@ onBeforeUnmount(() => { mounted = false; ++companyEpoch; ++loadVersion; ++openVe
         <p v-if="loading || opening" role="status" class="mt-4 text-sm text-muted-fg">Cargando cotizaciones…</p>
       </section>
 
-      <section v-if="can('purchase_quotations.create') && can('purchase_requests.view') && !offer && !opening && (showNew || !contextUnavailable && !documents.length && !loading)" class="rounded-2xl border border-border bg-surface p-5 sm:p-6">
-        <div class="flex flex-wrap items-start justify-between gap-4">
-          <div><h2 class="text-lg font-semibold">Solicitudes para cotizar</h2><p class="mt-1 text-sm text-muted-fg">Seleccione las solicitudes que atenderá en esta compra.</p></div>
-          <details class="max-w-full">
-            <summary class="cursor-pointer text-sm font-medium text-muted-fg">Filtrar por fechas</summary>
-            <div class="mt-3 flex flex-wrap gap-3"><label class="text-sm">Desde<input v-model="from" type="date" class="field-control" /></label><label class="text-sm">Hasta<input v-model="to" type="date" class="field-control" /></label></div>
-          </details>
-        </div>
-        <div class="my-5 flex flex-wrap items-center justify-between gap-3">
-          <PurchaseTabs :model-value="requestAgeTab" :items="[{ value: 'recent', label: 'Esta semana' }, { value: 'older', label: 'Anteriores' }]" label="Antigüedad de las solicitudes" :disabled="busy" @update:model-value="selectRequestPeriod" />
-          <span class="text-sm text-muted-fg">{{ selectedRequests.length }} seleccionadas</span>
-        </div>
-        <div class="max-h-80 divide-y divide-border overflow-auto rounded-xl border border-border">
-          <label v-for="r in eligible" :key="r.id" class="flex cursor-pointer items-center gap-4 p-4 transition-colors hover:bg-surface-secondary" :class="selectedRequests.includes(r.id) ? 'bg-accent-soft' : ''">
-            <input v-model="selectedRequests" type="checkbox" :value="r.id" :disabled="busy" class="h-4 w-4 shrink-0" />
-            <span class="min-w-0 flex-1"><strong class="block text-sm">{{ r.code }} · {{ r.branch.name }}</strong><span class="mt-1 block text-xs text-muted-fg">{{ shortDate(r.requestDate) }}</span></span>
-            <span class="shrink-0 text-xs text-muted-fg">{{ r.details.length }} productos</span>
-          </label>
-          <p v-if="!eligible.length" class="p-6 text-center text-sm text-muted-fg">No hay solicitudes pendientes para estas fechas.</p>
-        </div>
-        <div class="mt-5 flex justify-end"><AppButton v-if="can('purchase_quotations.create')" :disabled="!selectedRequests.length || busy" @click="create">Continuar con los productos</AppButton></div>
-      </section>
+      <div v-if="can('purchase_quotations.create') && can('purchase_requests.view') && !offer && !opening && (showNew || !contextUnavailable && !documents.length && !loading)" class="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_20rem]">
+        <section aria-labelledby="picker-title" class="min-w-0 rounded-2xl border border-border bg-surface p-5 sm:p-6">
+          <div class="flex flex-wrap items-start justify-between gap-4">
+            <div class="flex items-start gap-3">
+              <span class="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-accent-soft text-accent"><FileText class="h-4 w-4" aria-hidden="true" /></span>
+              <div><h2 id="picker-title" class="text-lg font-semibold">Solicitudes para cotizar</h2><p class="mt-1 text-sm text-muted-fg">Seleccione las solicitudes que formarán parte de esta gestión de cotización.</p></div>
+            </div>
+            <details class="relative max-w-full">
+              <summary class="inline-flex cursor-pointer list-none items-center gap-2 text-sm font-medium text-muted-fg [&::-webkit-details-marker]:hidden"><CalendarDays class="h-4 w-4" aria-hidden="true" />Filtrar por fechas</summary>
+              <div class="absolute right-0 z-20 mt-3 flex flex-wrap gap-3 rounded-xl border border-border bg-surface p-4 shadow-subtle"><label class="text-sm">Desde<input v-model="from" type="date" class="field-control" /></label><label class="text-sm">Hasta<input v-model="to" type="date" class="field-control" /></label></div>
+            </details>
+          </div>
+          <div class="mt-5"><PurchaseTabs variant="pill" :model-value="requestAgeTab" :items="[{ value: 'recent', label: 'Esta semana' }, { value: 'older', label: 'Anteriores' }]" label="Antigüedad de las solicitudes" :disabled="busy" @update:model-value="selectRequestPeriod" /></div>
+          <div class="mt-4 grid gap-3 md:grid-cols-[minmax(0,1.4fr)_1fr_1fr]">
+            <label class="relative block"><span class="sr-only">Buscar solicitud</span><Search class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-fg" aria-hidden="true" /><input v-model="requestSearch" type="search" class="field-control !pl-9" placeholder="Buscar por código, sucursal o motivo…" /></label>
+            <label class="relative block"><span class="sr-only">Sucursal</span><Building2 class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-fg" aria-hidden="true" /><select v-model.number="requestBranch" class="field-control !pl-9"><option :value="0">Todas las sucursales</option><option v-for="branch in branchOptions" :key="branch.id" :value="branch.id">{{ branch.name }}</option></select></label>
+            <label class="relative block"><span class="sr-only">Finalidad</span><Tag class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-fg" aria-hidden="true" /><select v-model="requestPurpose" class="field-control !pl-9"><option value="">Todas las finalidades</option><option v-for="purpose in purposeOptions" :key="purpose.value" :value="purpose.value">{{ purpose.label }}</option></select></label>
+          </div>
+          <div class="mt-4 overflow-x-auto rounded-xl border border-border/70">
+            <table class="w-full min-w-[720px] text-left text-sm">
+              <thead class="bg-surface-secondary text-xs text-muted-fg"><tr>
+                <th class="w-10 px-4 py-3"><input type="checkbox" class="h-4 w-4" aria-label="Seleccionar las solicitudes de esta página" :checked="pageAllSelected" :disabled="busy || !pickerPage.length" @change="togglePage" /></th>
+                <th class="px-3 py-3 font-medium">Código</th><th class="px-3 py-3 font-medium">Sucursal</th><th class="px-3 py-3 font-medium">Fecha</th><th class="px-3 py-3 font-medium">Finalidad de la compra</th><th class="px-3 py-3 font-medium">Productos</th><th class="px-3 py-3 font-medium">Estado</th>
+              </tr></thead>
+              <tbody class="divide-y divide-border/70">
+                <tr v-for="r in pickerPage" :key="r.id" class="cursor-pointer transition-colors hover:bg-surface-secondary" :class="selectedRequests.includes(r.id) ? 'bg-accent-soft' : ''" @click="!busy && (selectedRequests.includes(r.id) ? selectedRequests.splice(selectedRequests.indexOf(r.id), 1) : selectedRequests.push(r.id))">
+                  <td class="px-4 py-3" @click.stop><input v-model="selectedRequests" type="checkbox" :value="r.id" :disabled="busy" class="h-4 w-4" :aria-label="'Seleccionar ' + r.code" /></td>
+                  <td class="whitespace-nowrap px-3 py-3 font-semibold text-fg">{{ r.code }}</td>
+                  <td class="px-3 py-3 text-muted-fg">{{ r.branch.name }}</td>
+                  <td class="whitespace-nowrap px-3 py-3 text-muted-fg">{{ pickerDate(r.requestDate) }}</td>
+                  <td class="px-3 py-3 text-muted-fg">{{ purchasePurposeLabel(r.purpose) }}</td>
+                  <td class="px-3 py-3 text-muted-fg">{{ r.details.length }}</td>
+                  <td class="whitespace-nowrap px-3 py-3"><AppBadge :variant="documentStatusVariant(r.status)">{{ documentStatusLabel(r.status) }}</AppBadge></td>
+                </tr>
+                <tr v-if="!pickerPage.length"><td colspan="7" class="p-6 text-center text-sm text-muted-fg">{{ eligible.length ? 'Ninguna solicitud coincide con la búsqueda.' : 'No hay solicitudes pendientes para estas fechas.' }}</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-muted-fg">
+            <span class="font-medium text-fg">{{ selectedRequests.length }} {{ selectedRequests.length === 1 ? 'solicitud seleccionada' : 'solicitudes seleccionadas' }}</span>
+            <div class="flex items-center gap-3"><span>Mostrando {{ pickerPage.length }} de {{ pickerRequests.length }} solicitudes</span>
+              <nav v-if="pickerPages > 1" class="flex items-center gap-1" aria-label="Páginas de solicitudes">
+                <button type="button" class="icon-button" aria-label="Página anterior" :disabled="requestPage === 1" @click="requestPage--"><ChevronLeft class="h-4 w-4" aria-hidden="true" /></button>
+                <button v-for="n in pickerPages" :key="n" type="button" class="grid h-9 min-w-9 place-items-center rounded-lg border px-2 text-sm" :class="n === requestPage ? 'border-accent/30 bg-accent-soft font-semibold text-accent' : 'border-border hover:bg-surface-secondary'" :aria-current="n === requestPage ? 'page' : undefined" @click="requestPage = n">{{ n }}</button>
+                <button type="button" class="icon-button" aria-label="Página siguiente" :disabled="requestPage === pickerPages" @click="requestPage++"><ChevronRight class="h-4 w-4" aria-hidden="true" /></button>
+              </nav>
+            </div>
+          </div>
+        </section>
+
+        <aside aria-labelledby="summary-title" class="rounded-2xl border border-border bg-surface p-5 xl:sticky xl:top-24">
+          <h2 id="summary-title" class="flex items-center gap-3 text-lg font-semibold"><ShoppingCart class="h-5 w-5 text-accent" aria-hidden="true" />Resumen de la cotización</h2>
+          <dl class="mt-4 grid grid-cols-2 gap-px overflow-hidden rounded-xl bg-border/70 text-sm">
+            <div class="bg-surface-secondary p-3"><dt class="text-xs text-muted-fg">Solicitudes seleccionadas</dt><dd class="mt-1 text-2xl font-semibold">{{ chosenSummary.requests }}</dd></div>
+            <div class="bg-surface-secondary p-3"><dt class="text-xs text-muted-fg">Productos totales</dt><dd class="mt-1 text-2xl font-semibold">{{ chosenSummary.products }}</dd></div>
+            <div class="bg-surface-secondary p-3"><dt class="text-xs text-muted-fg">Sucursales</dt><dd class="mt-1 text-2xl font-semibold">{{ chosenSummary.branches }}</dd></div>
+            <div class="bg-surface-secondary p-3"><dt class="text-xs text-muted-fg">Finalidades</dt><dd class="mt-1 text-2xl font-semibold">{{ chosenSummary.purposes }}</dd></div>
+          </dl>
+          <h3 class="mt-5 text-sm font-semibold">Solicitudes incluidas ({{ chosenSummary.requests }})</h3>
+          <ul v-if="chosenRequests.length" class="mt-3 max-h-64 space-y-2 overflow-auto">
+            <li v-for="r in chosenRequests" :key="r.id" class="rounded-xl border border-accent/20 bg-accent-soft p-3 text-sm">
+              <div class="flex items-center justify-between gap-2"><strong>{{ r.code }}</strong><button type="button" class="icon-button text-danger" :aria-label="'Quitar ' + r.code" :disabled="busy" @click="selectedRequests = selectedRequests.filter(id => id !== r.id)"><Trash2 class="h-4 w-4" aria-hidden="true" /></button></div>
+              <p class="mt-1 text-xs text-muted-fg">{{ r.branch.name }}</p>
+              <p class="mt-1 flex justify-between text-xs text-muted-fg"><span>{{ pickerDate(r.requestDate) }}</span><span>{{ r.details.length }} {{ r.details.length === 1 ? 'producto' : 'productos' }}</span></p>
+            </li>
+          </ul>
+          <p v-else class="mt-3 rounded-xl border border-dashed border-border p-4 text-center text-sm text-muted-fg">Aún no ha seleccionado solicitudes.</p>
+          <AppButton v-if="can('purchase_quotations.create')" class="mt-5 w-full" :disabled="!selectedRequests.length || busy" @click="create">Continuar con los productos<ArrowRight class="h-4 w-4" aria-hidden="true" /></AppButton>
+        </aside>
+      </div>
 
       <template v-if="current && !showNew && !opening && visibleDocuments.some(d => d.id === current.id)">
         <section v-if="!offer" class="rounded-2xl border border-border bg-surface p-5 sm:p-6">
           <div class="flex flex-wrap items-center justify-between gap-4">
             <div class="max-w-2xl"><p class="mb-1 text-xs font-medium text-muted-fg">Siguiente paso</p><h2 class="text-lg font-semibold">{{ nextStep.title }}</h2><p class="mt-1 text-sm text-muted-fg">{{ nextStep.description }}</p><TrackingLink class="-ml-2 mt-2" type="consolidation" :id="current.id" /></div>
             <div class="flex flex-wrap gap-2">
-              <AppButton v-if="['draft','returned'].includes(quantityStatus) && can('purchase_quotations.update')" :disabled="busy || changed" @click="quantityDecision='submit'">Enviar cantidades a Gerencia</AppButton>
-              <template v-if="quantityStatus==='pending_review' && can('purchase_orders.approve')">
-                <AppButton variant="outline" :disabled="busy || changed" @click="quantityDecision='return'">Devolver con observaciones</AppButton>
-                <AppButton :disabled="busy || changed" @click="quantityDecision='approve'">Autorizar cantidades para cotizar</AppButton>
-              </template>
-              <AppButton v-if="quantitiesAuthorized && !current.rfqs.length && can('purchase_orders.approve')" variant="outline" :disabled="busy || changed" @click="quantityDecision='return'">Devolver cantidades</AppButton>
               <AppButton v-if="nextStep.action === 'suppliers' && can('purchase_quotations.create')" :disabled="busy || changed" @click="change(() => { workspace = 'suppliers'; })">Preparar solicitud al proveedor</AppButton>
-              <AppButton v-if="nextStep.action === 'offer' && canRegisterResponse(pendingResponse)" :disabled="busy || changed" @click="change(() => { workspace = 'suppliers'; startOffer(pendingResponse); })">{{ pendingResponse.quotation ? 'Completar oferta' : 'Registrar oferta' }}</AppButton>
-              <RouterLink v-if="nextStep.action === 'compare' && can('purchase_quotations.view')" :to="'/purchases/comparison?id=' + selectedId" class="rounded-xl bg-accent px-4 py-2.5 text-sm font-medium text-accent-foreground">Comparar y elegir ofertas</RouterLink>
+              <AppButton v-if="nextStep.action === 'offer' && !severalPending && canRegisterResponse(pendingResponse)" :disabled="busy || changed" @click="change(() => { workspace = 'suppliers'; startOffer(pendingResponse); })">{{ pendingResponse.quotation ? 'Completar oferta' : 'Registrar oferta' }}</AppButton>
+              <AppButton v-if="nextStep.action === 'offer' && severalPending && workspace !== 'suppliers'" :disabled="busy || changed" @click="change(() => { workspace = 'suppliers'; })">Elegir proveedor</AppButton>
+              <AppButton v-if="nextStep.action === 'compare' && can('purchase_quotations.view')" :disabled="busy || changed" @click="change(() => { workspace = 'compare'; })">Comparar y elegir ofertas</AppButton>
               <AppButton v-if="nextStep.action === 'orders' && can('purchase_orders.view') && workspace !== 'orders'" :disabled="busy || changed" @click="change(() => { workspace = 'orders'; })">Ver órdenes</AppButton>
             </div>
           </div>
-          <p v-if="current.quantityReviewNotes && !quantitiesAuthorized" class="mt-3 rounded-lg bg-surface-secondary p-3 text-sm"><strong class="font-medium">Observaciones de Gerencia:</strong> {{ current.quantityReviewNotes }}</p>
         </section>
         <div v-if="!offer" class="flex flex-wrap items-center justify-between gap-4">
           <PurchaseTabs :model-value="workspace" :items="workspaceTabs" label="Secciones de la gestión" :disabled="busy || loading" @update:model-value="selectWorkspace" />
           <div class="flex items-center gap-4">
-            <details v-if="can('trash.delete')" class="relative">
+            <details v-if="can('trash.delete') || can('purchase_quotations.view')" class="relative">
               <summary class="cursor-pointer text-sm text-muted-fg">Más acciones</summary>
-              <div class="absolute right-0 top-full z-30 mt-3 min-w-52 rounded-xl border border-border bg-surface p-3 shadow-subtle"><TrashButton entity="purchase_processes" :record-id="current.id" :label="current.code" :disabled="busy || changed" @deleted="load" /></div>
+              <div class="absolute right-0 top-full z-30 mt-3 flex min-w-52 flex-col gap-2 rounded-xl border border-border bg-surface p-3 shadow-subtle"><RouterLink v-if="can('purchase_quotations.view')" to="/purchases/quotations" class="rounded-lg border border-border px-3 py-2 text-center text-sm hover:bg-surface-secondary">Ver ofertas anteriores</RouterLink><TrashButton v-if="can('trash.delete')" entity="purchase_processes" :record-id="current.id" :label="current.code" :disabled="busy || changed" @deleted="load" /></div>
             </details>
           </div>
         </div>
 
         <section v-if="!offer && workspace === 'products'" class="overflow-hidden rounded-2xl border border-border bg-surface">
           <div class="flex flex-wrap items-center justify-between gap-4 p-5 sm:p-6">
-            <div><h2 class="text-lg font-semibold">Productos a cotizar</h2><p class="mt-1 text-sm text-muted-fg">Compras propone las cantidades y Gerencia las revisa antes de consultar precios.</p></div>
+            <div><h2 class="text-lg font-semibold">Productos a cotizar</h2><p class="mt-1 text-sm text-muted-fg">Ajuste las cantidades que va a comprar antes de consultar a los proveedores.</p></div>
             <AppButton v-if="canAdjustProposal" variant="outline" :disabled="busy" @click="change(addProduct)">Agregar producto</AppButton>
           </div>
           <div class="overflow-x-auto">
@@ -350,12 +450,11 @@ onBeforeUnmount(() => { mounted = false; ++companyEpoch; ++loadVersion; ++openVe
             <div class="flex flex-wrap justify-end gap-3 sm:col-span-2"><AppButton type="button" variant="outline" :disabled="busy" @click="change(() => { editingProduct = false; })">Cancelar</AppButton><AppButton type="submit" :disabled="busy || !lineEdit.productId">Guardar decisión</AppButton></div>
           </form>
           <div class="flex flex-wrap items-center justify-between gap-4 border-t border-border p-5 sm:p-6">
-            <p class="text-xs text-muted-fg">{{ current.rfqs.length ? 'Las cantidades consultadas se conservan. Compras elige las ofertas y Gerencia autoriza el importe final.' : quantitiesAuthorized ? 'Cantidades autorizadas. Prepare las solicitudes a proveedores.' : 'Autorice las cantidades antes de preparar los PDF para proveedores.' }}</p>
-            <AppButton v-if="quantitiesAuthorized && can('purchase_quotations.view')" :disabled="busy" @click="change(() => { workspace = 'suppliers'; })">Continuar con proveedores</AppButton>
+            <p class="text-xs text-muted-fg">{{ current.rfqs.length ? 'Las cantidades consultadas se conservan. Compras elige las ofertas y Gerencia aprueba la orden.' : 'Prepare las solicitudes a proveedores.' }}</p>
           </div>
         </section>
 
-        <section v-if="!offer && workspace === 'suppliers' && quantitiesAuthorized" class="rounded-2xl border border-border bg-surface p-5 sm:p-6">
+        <section v-if="!offer && workspace === 'suppliers'" class="rounded-2xl border border-border bg-surface p-5 sm:p-6">
           <div class="flex flex-wrap items-center justify-between gap-4">
             <div><h2 class="text-lg font-semibold">Consulta a proveedores</h2><p class="mt-1 text-sm text-muted-fg">Prepare el PDF y registre la oferta de cada proveedor.</p></div>
             <AppButton v-if="current.rfqs.length && availableSuppliers.length && can('purchase_quotations.create') && !addingSupplier" variant="outline" :disabled="busy" @click="addingSupplier = true">Consultar otro proveedor</AppButton>
@@ -425,7 +524,7 @@ onBeforeUnmount(() => { mounted = false; ++companyEpoch; ++loadVersion; ++openVe
           <div class="mt-6 flex flex-wrap justify-end gap-3"><AppButton type="button" variant="outline" :disabled="busy" @click="change(() => { offer = null; })">Cancelar</AppButton><AppButton type="submit" :disabled="busy">Guardar oferta recibida</AppButton></div>
         </form>
 
-        <section v-if="!offer && workspace === 'compare'" class="rounded-2xl border border-border bg-surface p-6"><h2 class="text-lg font-semibold">Comparar ofertas</h2><RouterLink :to="'/purchases/comparison?id=' + selectedId" class="mt-4 inline-block rounded-xl bg-accent px-4 py-2.5 text-sm font-medium text-accent-foreground">Elegir proveedor por producto</RouterLink></section>
+        <QuotationComparison v-if="!offer && workspace === 'compare' && current" :key="'compare-' + current.id" embedded :process-id="current.id" @awarded="afterAward" />
         <section v-if="!offer && workspace === 'orders' && current.orders.length" class="rounded-2xl border border-border bg-surface p-5 sm:p-6">
           <h2 class="text-lg font-semibold">Órdenes de esta compra</h2><p class="mt-1 text-sm text-muted-fg">Abra la orden para continuar con su aprobación y recepción.</p>
           <div class="mt-5 divide-y divide-border"><RouterLink v-for="o in current.orders" :key="o.id" :to="`/purchases/orders?id=${o.id}`" class="flex items-center justify-between gap-4 py-4 text-sm"><span class="font-medium text-accent">{{ o.code }}</span><span class="text-muted-fg">{{ orderStatusLabel(o.status) }}</span><span class="text-accent" aria-hidden="true">→</span></RouterLink></div>
@@ -433,7 +532,6 @@ onBeforeUnmount(() => { mounted = false; ++companyEpoch; ++loadVersion; ++openVe
       </template>
     </div>
     <PurchaseActionDialog v-if="confirm" title="Confirmar adjudicación" description="Se generará una orden por proveedor con los productos y cantidades seleccionados. Revise cada orden antes de aprobarla." :busy="busy" :error="error" @close="confirm = false" @confirm="award" />
-    <PurchaseActionDialog v-if="quantityDecision" :title="quantityDecision==='approve'?'Autorizar cantidades':quantityDecision==='submit'?'Enviar cantidades a Gerencia':'Devolver propuesta'" :description="quantityDecision==='approve'?'Estas cantidades serán la base de los PDF para proveedores. Lo solicitado originalmente se conserva.':quantityDecision==='submit'?'Gerencia podrá aumentar, reducir o agregar productos antes de consultar proveedores.':'Compras recibirá sus observaciones para ajustar la propuesta.'" :require-reason="quantityDecision==='return'" :busy="busy" :error="error" @close="quantityDecision=null" @confirm="reviewQuantities" />
     <PurchaseActionDialog v-if="leaving || discardChanges" title="Descartar cambios" description="Tiene datos sin guardar en este proceso." :busy="false" @close="resolveDiscard(false)" @confirm="resolveDiscard(true)" />
   </AdminLayout>
 </template>

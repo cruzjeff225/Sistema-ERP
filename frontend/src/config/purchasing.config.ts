@@ -9,8 +9,7 @@ export const purchasingGroups = [
 export const purchasingSections = [
   { id: 'tracking', label: 'Seguimiento', description: 'Ve en qué etapa va cada compra y quién debe actuar.', permission: 'purchases.view', group: 'overview', route: '/purchases/tracking' },
   { id: 'requests', label: 'Solicitudes', description: 'Crea y envía las necesidades de cada sucursal.', permission: 'purchase_requests.view', group: 'preparation', route: '/purchases/requests' },
-  { id: 'quotations', label: 'Cotizaciones', description: 'Consulta a proveedores y registra sus ofertas.', permission: 'purchase_quotations.view', group: 'preparation', route: '/purchases/quotations' },
-  { id: 'comparison', label: 'Comparar ofertas', description: 'Revisa precios y elige un proveedor por producto.', permission: 'purchase_quotations.view', group: 'preparation', route: '/purchases/comparison' },
+  { id: 'quotations', label: 'Cotizaciones', description: 'Reúne solicitudes, consulta a proveedores, compara ofertas y genera las órdenes.', permission: 'purchase_quotations.view', group: 'preparation', route: '/purchases/quotations/manage' },
   { id: 'orders', label: 'Órdenes de compra', description: 'Autoriza y envía lo que se comprará a cada proveedor.', permission: 'purchase_orders.view', group: 'fulfillment', route: '/purchases/orders' },
   { id: 'receipts', label: 'Recepciones', description: 'Registra lo recibido y continúa con su ubicación.', permission: 'purchases.view', group: 'fulfillment', route: '/purchases/receipts' },
   { id: 'retaceos', label: 'Retaceo y costos', description: 'Distribuye los gastos reales entre los productos recibidos.', permission: 'retaceos.view', group: 'fulfillment', route: '/purchases/retaceos' },
@@ -18,7 +17,7 @@ export const purchasingSections = [
 ] as const;
 
 export const purchasingPermissions = [...new Set(purchasingSections.map(section => section.permission))];
-export const purchasingActiveRoutes = [purchasingRoute, ...purchasingSections.map(section => section.route), '/purchases/quotations/manage', '/purchases/expense-types'];
+export const purchasingActiveRoutes = [purchasingRoute, ...purchasingSections.map(section => section.route), '/purchases/quotations', '/purchases/comparison', '/purchases/expense-types'];
 
 export function visiblePurchasingSections(can: (permission: string) => boolean) {
   return purchasingSections.filter(section => can(section.permission));
@@ -26,7 +25,7 @@ export function visiblePurchasingSections(can: (permission: string) => boolean) 
 
 export function purchasingSectionRoute(path: string) {
   if (path.startsWith('/purchases/tracking')) return '/purchases/tracking';
-  if (path === '/purchases/quotations/manage') return '/purchases/quotations';
+  if (path === '/purchases/quotations' || path === '/purchases/comparison') return '/purchases/quotations/manage';
   if (path === '/purchases/expense-types') return '/purchases/retaceos';
   return path;
 }

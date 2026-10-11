@@ -17,6 +17,9 @@ import { isCurrentPurchaseWeek } from '../utils/purchase-inbox';
 import { filterQuotationProcesses } from '../utils/quotation-process-inbox';
 import { estimateQuotationSelection, evaluateComparisonOffer, recommendComparisonOffer, roundPurchaseAmount, type ComparisonOffer } from '../utils/quotation-comparison';
 
+// Standalone it is a page; embedded it is the Compare tab of the quotation workspace, which already knows the purchase.
+const props = defineProps<{ processId?: number; embedded?: boolean }>();
+const emit = defineEmits<{ awarded: [] }>();
 const route = useRoute();
 const { can } = usePermissions();
 const processes = ref<any[]>([]), current = ref<any>(null), selectedId = ref(0), productId = ref(0);
@@ -217,7 +220,8 @@ async function load() {
     if (!validContext(token, company)) return;
     processes.value = p.data.data; warehouse.value = w.data.data.generalWarehouse;
     let id = 0;
-    if (route.query.requestId !== undefined) {
+    if (props.embedded) id = props.processId ?? 0;
+    else if (route.query.requestId !== undefined) {
       const requestId = queryId(route.query.requestId);
       if (!requestId) { error.value = 'La solicitud indicada no es válida.'; return; }
       const response = await http.get('/purchase-requests/' + requestId, config());
@@ -258,6 +262,7 @@ async function award() {
     if (!validContext(token, company)) return;
     applyCurrent(response.data.data, id);
     awardReference = null;
+    emit('awarded');
     success.value = 'Órdenes enviadas a Gerencia, pendientes de aprobación. Todavía no se envían al proveedor.';
   } catch (e) {
     if (validContext(token, company)) {
@@ -272,7 +277,7 @@ async function award() {
 }
 watch(productId, () => { comparisonCurrency.value = ''; expandedOfferId.value = 0; }, { flush: 'sync' });
 watch(()=>JSON.stringify([selectedId.value,current.value?.updatedAt,Object.values(selections.value)]),()=>{partialAccepted.value=false;comparisonReady.value=false;if(serverComparison.value?.processId!==selectedId.value)serverComparison.value=null;++comparisonVersion;comparing.value=!!current.value;clearTimeout(comparisonTimer);comparisonTimer=setTimeout(()=>{void refreshComparison();},120);},{flush:'sync'});
-watch([activeCompanyId, () => route.query.requestId, () => route.query.id], () => {
+watch([activeCompanyId, () => route.query.requestId, () => route.query.id, () => props.processId], () => {
   ++version; selections.value = {}; current.value = null; processes.value = []; selectedId.value = 0; warehouse.value = null;
   awardReference = null;
   ++comparisonVersion;clearTimeout(comparisonTimer);serverComparison.value=null;comparing.value=false;comparisonReady.value=false;
@@ -284,14 +289,15 @@ onBeforeUnmount(() => { ++version;++comparisonVersion;clearTimeout(comparisonTim
 </script>
 
 <template>
-  <AdminLayout title="Comparar cotizaciones">
-    <div class="comparison-page mx-auto max-w-[1440px] space-y-6">
-      <PurchasesNav />
-      <PurchaseSectionHeader title="Elegir ofertas" description="Compare por producto. Revise su selección antes de crear las órdenes.">
+  <component :is="embedded ? 'div' : AdminLayout" :title="embedded ? undefined : 'Comparar cotizaciones'">
+    <div class="comparison-page space-y-6" :class="embedded ? '' : 'mx-auto max-w-[1440px]'">
+      <div v-if="embedded && current" class="flex items-center justify-between gap-3"><div><h2 class="text-lg font-semibold">Comparar ofertas</h2><p class="mt-1 text-sm text-muted-fg">Compare por producto. Revise su selección antes de crear las órdenes.</p></div><AppButton variant="outline" size="sm" :disabled="busy||loading" @click="refreshOffers">Actualizar ofertas</AppButton></div>
+      <PurchasesNav v-if="!embedded" />
+      <PurchaseSectionHeader v-if="!embedded" title="Elegir ofertas" description="Compare por producto. Revise su selección antes de crear las órdenes.">
         <template #actions><div class="flex items-center gap-4"><AppButton v-if="current" variant="outline" size="sm" :disabled="busy||loading" @click="refreshOffers">Actualizar ofertas</AppButton><RouterLink :to="selectedId ? '/purchases/quotations/manage?id=' + selectedId : '/purchases/quotations'" class="inline-flex items-center gap-2 text-sm font-medium text-muted-fg hover:text-fg"><ArrowLeft class="h-4 w-4" />Cotizaciones</RouterLink></div></template>
       </PurchaseSectionHeader>
 
-      <section aria-label="Compra y filtros" class="flex flex-wrap items-end gap-4 rounded-2xl border border-border bg-surface p-4 sm:px-5">
+      <section v-if="!embedded" aria-label="Compra y filtros" class="flex flex-wrap items-end gap-4 rounded-2xl border border-border bg-surface p-4 sm:px-5">
         <label class="min-w-0 flex-[1_1_280px] text-xs font-medium text-muted-fg">Compra
           <select :value="selectedId" :disabled="busy || loading" class="field-control mt-1.5 text-fg" @change="changeProcess">
             <option :value="0" disabled>Seleccione una compra</option>
@@ -448,7 +454,7 @@ onBeforeUnmount(() => { ++version;++comparisonVersion;clearTimeout(comparisonTim
     </div>
     <PurchaseActionDialog v-if="discardSelection" title="Descartar selección" description="Tiene productos seleccionados sin guardar. Confirme si desea descartarlos y continuar." :busy="false" @close="resolveSelectionDiscard(false)" @confirm="resolveSelectionDiscard(true)" />
     <PurchaseActionDialog v-if="leaving" title="Descartar selección" description="Tiene productos seleccionados sin guardar en sus órdenes." :busy="false" @close="resolveLeave(false)" @confirm="resolveLeave(true)" />
-  </AdminLayout>
+  </component>
 </template>
 
 <style scoped>

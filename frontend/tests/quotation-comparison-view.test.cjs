@@ -23,6 +23,7 @@ function harness(allowed = true) {
     if (spec === 'vue') return { ...vue, onBeforeUnmount: fn => hooks.push(fn) };
     if (spec === 'vue-router') return { RouterLink: {}, useRoute: () => route };
     if (spec === 'lucide-vue-next') return front(spec);
+    if (spec.endsWith('/AdminLayout.vue')) return { default: vue.defineComponent({ setup: (_, { slots }) => () => vue.h('main', slots.default?.()) }) };
     if (spec.endsWith('.vue')) return { default: {} };
     if (spec.endsWith('/http.service')) return { http: wire };
     if (spec.endsWith('/company-context')) return { activeCompanyId: company };
@@ -87,8 +88,9 @@ const compiledTemplate = compiler.compileTemplate({ source: descriptor.template.
 assert.equal(compiledTemplate.errors.length, 0);
 const renderExports = {}; vm.runInNewContext(transpile(compiledTemplate.code), { exports: renderExports, require: front });
 async function html(state) {
-  const app = vue.createSSRApp(vue.defineComponent({ setup: () => ({ ...state }), ssrRender: renderExports.ssrRender }));
   const slot = tag => vue.defineComponent({ setup: (_, { slots }) => () => vue.h(tag, {}, slots.default?.()) });
+  // The page layout is a binding of the template (it is picked dynamically), not a globally registered component.
+  const app = vue.createSSRApp(vue.defineComponent({ setup: () => ({ ...state, embedded: false, AdminLayout: slot('main') }), ssrRender: renderExports.ssrRender }));
   app.config.warnHandler = message => { throw Error(message); };
   app.component('AdminLayout', slot('main')); app.component('PurchasesNav', slot('nav'));
   app.component('PurchaseSectionHeader', vue.defineComponent({ props: ['title','description'], setup: (p,{slots}) => () => vue.h('header', [vue.h('h1',p.title),vue.h('p',p.description),slots.actions?.()]) }));

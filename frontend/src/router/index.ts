@@ -44,7 +44,8 @@ const router = createRouter({
     { path: '/purchases/consolidations', redirect: to => ({ path: '/purchases/quotations/manage', query: to.query }) },
     { path: '/inventory/warehouse', name: 'warehouse-operations', beforeEnter: to => to.query.tab==='configuration' && !to.query.purchaseId && !to.query.requestId ? {path:'/administration/settings/warehouse'} : true, component: () => import('../views/WarehouseOperationsView.vue'), meta: { permission: 'inventory.view' } },
     { path: "/inventory", name: "inventory", component: () => import("../views/InventoryView.vue"), meta: { permission: "inventory.view" } },
-    { path: "/purchases/comparison", name: "quotation-comparison", component: () => import("../views/QuotationComparisonView.vue"), meta: { permission: "purchase_quotations.view" } },
+    // Comparing offers is now a tab of the quotation workspace; old links still land on it.
+    { path: "/purchases/comparison", name: "quotation-comparison", redirect: to => ({ path: '/purchases/quotations/manage', query: { ...to.query, tab: 'compare' } }), meta: { permission: "purchase_quotations.view" } },
     { path: "/purchases/expense-types", name: "expense-types", component: () => import("../views/ExpenseTypesView.vue"), meta: { permission: "expense_types.view" } },
     { path: "/purchases/receipts", name: "purchase-receipts", component: () => import("../views/PurchaseReceiptsView.vue"), meta: { permission: "purchases.view" } },
     { path: "/account/security", name: "account-security", component: () => import("../views/AccountSecurityView.vue") },
