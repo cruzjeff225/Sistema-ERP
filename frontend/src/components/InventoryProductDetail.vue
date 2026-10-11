@@ -82,7 +82,7 @@ function showLocation(stock = current.value) { current.value = stock; map.value 
 
 <template>
   <Teleport to="body">
-    <dialog ref="dialog" aria-labelledby="inventory-product-title" class="inventory-detail m-auto max-h-[92dvh] w-[calc(100%-1rem)] overflow-y-auto rounded-2xl border border-border bg-surface p-0 text-fg shadow-xl backdrop:bg-black/50" :class="map ? 'max-w-6xl' : 'max-w-2xl'" @cancel.prevent="emit('close')">
+    <dialog ref="dialog" aria-labelledby="inventory-product-title" class="inventory-detail m-auto max-h-[92dvh] w-[calc(100%-1rem)] overflow-y-auto rounded-2xl border border-border bg-surface p-0 text-fg shadow-[var(--shadow-float)] backdrop:bg-black/50" :class="map ? 'max-w-6xl' : 'max-w-2xl'" @cancel.prevent="emit('close')">
       <header class="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-border bg-surface px-5 py-4 sm:px-6">
         <div class="min-w-0"><p class="text-xs text-muted-fg">{{ map ? 'Ubicación física' : 'Ficha de inventario' }}</p><h2 id="inventory-product-title" class="mt-1 break-words text-lg font-semibold">{{ current.product.name }}</h2><p class="mt-1 break-all text-xs text-muted-fg">{{ current.product.sku }}</p></div>
         <button type="button" class="icon-button shrink-0" aria-label="Cerrar ficha de inventario" autofocus @click="emit('close')"><X class="h-4 w-4"/></button>

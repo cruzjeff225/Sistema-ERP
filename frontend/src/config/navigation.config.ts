@@ -68,7 +68,9 @@ export function breadcrumbsFor(path: string, pageTitle: string): Breadcrumb[] {
   if (section) crumbs.push({ label: section.label, route: section.route });
   const known = crumbs.map(crumb => crumb.label.toLocaleLowerCase('es'));
   const same = (label: string) => label.includes(title.toLocaleLowerCase('es')) || title.toLocaleLowerCase('es').includes(label);
-  if (title && !known.some(same)) crumbs.push({ label: title });
+  // On the page itself the section crumb already names it; the title only adds a crumb for a document or inner screen.
+  const onSectionPage = Boolean(section) && path === section!.route;
+  if (title && !onSectionPage && !known.some(same)) crumbs.push({ label: title });
   const last = crumbs[crumbs.length - 1];
   if (last.route === path) delete last.route;
   return crumbs;

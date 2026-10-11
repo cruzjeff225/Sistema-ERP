@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { Building2, ChevronDown, ChevronRight, LogOut, Menu, Moon, ShieldCheck, Sun } from "lucide-vue-next";
 import { breadcrumbsFor } from "../../config/navigation.config";
@@ -25,6 +25,19 @@ const initial = computed(() => displayName.value.slice(0, 1).toUpperCase() || "?
 const menuOpen = ref(false);
 const menu = ref<HTMLElement | null>(null);
 const closeOnOutside = (event: MouseEvent) => { if (menuOpen.value && !menu.value?.contains(event.target as Node)) menuOpen.value = false; };
+// Opening the menu puts the keyboard on its first entry; Esc closes it (see the template) and arrows move between entries.
+async function openMenu() {
+  menuOpen.value = true;
+  await nextTick();
+  menu.value?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+}
+function toggleMenu() { if (menuOpen.value) menuOpen.value = false; else void openMenu(); }
+function moveInMenu(step: 1 | -1) {
+  const items = Array.from(menu.value?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? []);
+  if (!items.length) return;
+  const index = items.indexOf(document.activeElement as HTMLElement);
+  items[(index + step + items.length) % items.length].focus();
+}
 onMounted(() => document.addEventListener("click", closeOnOutside));
 onBeforeUnmount(() => document.removeEventListener("click", closeOnOutside));
 
@@ -67,8 +80,8 @@ async function handleLogout() {
         <Sun v-if="themeStore.theme === 'dark'" class="h-4 w-4" />
         <Moon v-else class="h-4 w-4" />
       </button>
-      <div ref="menu" class="relative" @keydown.esc="menuOpen = false">
-        <button type="button" class="flex h-9 items-center gap-2 rounded-lg pl-1 pr-2 transition-colors hover:bg-surface-secondary" aria-haspopup="menu" :aria-expanded="menuOpen" aria-label="Menú de usuario" @click="menuOpen = !menuOpen">
+      <div ref="menu" class="relative" @keydown.esc="menuOpen = false" @keydown.down.prevent="menuOpen && moveInMenu(1)" @keydown.up.prevent="menuOpen && moveInMenu(-1)">
+        <button type="button" class="flex h-9 items-center gap-2 rounded-lg pl-1 pr-2 transition-colors hover:bg-surface-secondary" aria-haspopup="menu" :aria-expanded="menuOpen" aria-label="Menú de usuario" @click="toggleMenu" @keydown.down.prevent="openMenu">
           <span class="grid h-7 w-7 place-items-center rounded-full bg-accent-soft text-xs font-semibold text-accent">{{ initial }}</span>
           <span class="hidden max-w-32 truncate text-sm font-medium text-fg md:block">{{ currentUser?.username }}</span>
           <ChevronDown class="h-3.5 w-3.5 text-muted-fg" aria-hidden="true" />

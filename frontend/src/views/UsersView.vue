@@ -566,7 +566,7 @@ onMounted(loadAll);
       </AppDrawer>
 
     <div v-if="passwordEditorOpen" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/35 p-4" @click.self="closePasswordEditor">
-      <form class="w-full max-w-lg rounded-lg border border-border bg-surface p-5 shadow-2xl" novalidate @submit.prevent="changePassword">
+      <form class="w-full max-w-lg rounded-lg border border-border bg-surface p-5 shadow-[var(--shadow-float)]" novalidate @submit.prevent="changePassword">
         <div class="flex items-start justify-between gap-4">
           <div>
             <p class="text-sm font-medium text-accent">Seguridad</p>

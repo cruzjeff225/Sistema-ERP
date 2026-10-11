@@ -41,4 +41,6 @@ test('la ruta de navegación dice dónde está el usuario sin repetir el título
   ]);
   assert.deepEqual(breadcrumbsFor('/administration/settings/roles', 'Configuración · Roles').map(crumb => crumb.label), ['Configuración', 'Roles y accesos']);
   assert.deepEqual(breadcrumbsFor('/account/security', 'Seguridad de mi cuenta'), [{ label: 'Seguridad de mi cuenta' }]);
+  // The page title ("Inventario") is not repeated after the section that already names the page ("Existencias y mapa").
+  assert.deepEqual(breadcrumbsFor('/inventory', 'Inventario').map(crumb => crumb.label), ['Operaciones', 'Existencias y mapa']);
 });

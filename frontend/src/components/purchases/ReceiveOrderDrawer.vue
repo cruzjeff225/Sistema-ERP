@@ -88,7 +88,7 @@ onMounted(() => void load());
 
 <template>
   <div class="fixed inset-0 z-50 flex justify-end bg-black/35" @click.self="!saving && emit('close')">
-    <aside role="dialog" aria-modal="true" aria-label="Registrar recepción" class="h-full w-full max-w-3xl overflow-y-auto bg-surface p-4 shadow-xl sm:p-6" @keydown.esc="!saving && emit('close')">
+    <aside role="dialog" aria-modal="true" aria-label="Registrar recepción" class="h-full w-full max-w-3xl overflow-y-auto bg-surface p-4 shadow-[var(--shadow-float)] sm:p-6" @keydown.esc="!saving && emit('close')">
       <div><p class="section-eyebrow">Proceso de compras</p><h2 class="mt-1 text-xl font-semibold text-fg">Registrar recepción</h2></div>
       <p v-if="error" role="alert" class="sticky top-0 z-10 mt-4 rounded-lg border border-danger/30 bg-surface p-3 text-sm text-danger">{{ error }}</p>
       <p v-if="loading" role="status" class="mt-6 text-sm text-muted-fg">Consultando las cantidades pendientes…</p>

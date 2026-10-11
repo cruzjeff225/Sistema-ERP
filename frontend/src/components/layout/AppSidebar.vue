@@ -36,7 +36,7 @@ const visibleGroups = computed(() =>
 <template>
   <aside
     aria-label="Barra lateral"
-    class="sidebar fixed inset-y-0 left-0 z-40 flex w-[280px] max-w-[calc(100vw-32px)] shrink-0 flex-col border-r border-border/70 bg-sidebar shadow-2xl transition-transform duration-200 ease-out lg:visible lg:static lg:z-auto lg:w-[272px] lg:translate-x-0 lg:shadow-none"
+    class="sidebar fixed inset-y-0 left-0 z-40 flex w-[280px] max-w-[calc(100vw-32px)] shrink-0 flex-col border-r border-border/70 bg-sidebar shadow-[var(--shadow-float)] transition-transform duration-200 ease-out lg:visible lg:static lg:z-auto lg:w-[272px] lg:translate-x-0 lg:shadow-none"
     :class="open ? 'visible translate-x-0' : 'invisible -translate-x-full'"
     @keydown.esc="emit('close')"
   >

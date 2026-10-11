@@ -19,12 +19,22 @@ onMounted(() => {
     opener = document.activeElement as HTMLElement | null;
     if (!panel.value?.contains(document.activeElement)) panel.value?.focus();
 });
+
+// Tab and Shift+Tab stay inside the panel while it is open, so the keyboard never lands on the page behind it.
+const focusable = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+function keepFocus(event: KeyboardEvent) {
+    const items = Array.from(panel.value?.querySelectorAll<HTMLElement>(focusable) ?? []).filter(item => item.offsetParent !== null);
+    if (!items.length) { event.preventDefault(); panel.value?.focus(); return; }
+    const first = items[0], last = items[items.length - 1], active = document.activeElement;
+    if (event.shiftKey && (active === first || active === panel.value)) { event.preventDefault(); last.focus(); }
+    else if (!event.shiftKey && active === last) { event.preventDefault(); first.focus(); }
+}
 onBeforeUnmount(() => opener?.focus?.());
 </script>
 
 <template>
     <div class="fixed inset-0 z-50 flex justify-end bg-black/40" @click.self="$emit('close')">
-        <aside ref="panel" role="dialog" aria-modal="true" :aria-label="label" tabindex="-1" class="flex h-full w-full flex-col bg-surface shadow-[var(--shadow-float)] outline-none" :class="widths[size]" @keydown.esc.stop="$emit('close')">
+        <aside ref="panel" role="dialog" aria-modal="true" :aria-label="label" tabindex="-1" class="flex h-full w-full flex-col bg-surface shadow-[var(--shadow-float)] outline-none" :class="widths[size]" @keydown.esc.stop="$emit('close')" @keydown.tab="keepFocus">
             <div v-if="padded" class="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6"><slot /></div>
             <slot v-else />
         </aside>

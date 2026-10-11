@@ -61,7 +61,7 @@ watch(search, () => { clearTimeout(timer); timer = setTimeout(() => void load(),
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div class="inline-flex rounded-lg bg-surface-secondary p-1" role="tablist" aria-label="Estado de las compras">
           <button v-for="option in PROCESS_SCOPES" :key="option.id" type="button" role="tab" :aria-selected="scope === option.id"
-            class="min-h-8 rounded-md px-3 text-sm font-medium transition-colors" :class="scope === option.id ? 'bg-surface text-fg shadow-sm' : 'text-muted-fg hover:text-fg'" @click="scope = option.id">{{ option.label }}</button>
+            class="min-h-8 rounded-md px-3 text-sm font-medium transition-colors" :class="scope === option.id ? 'bg-surface text-fg' : 'text-muted-fg hover:text-fg'" @click="scope = option.id">{{ option.label }}</button>
         </div>
         <SearchField v-model="search" maxlength="60" placeholder="Buscar por código (PR-, OC-, RC-…)" aria-label="Buscar por código de solicitud, orden o recepción" class="w-full sm:w-80" />
       </div>

@@ -12,7 +12,7 @@ onMounted(() => dialog.value?.showModal());
 
 <template>
   <Teleport to="body">
-    <dialog ref="dialog" class="m-auto w-[calc(100%-2rem)] max-w-md rounded-lg border border-border bg-surface p-6 text-fg shadow-xl backdrop:bg-black/50" aria-labelledby="purchase-confirm-title" @cancel.prevent="!props.busy && emit('close')">
+    <dialog ref="dialog" class="m-auto w-[calc(100%-2rem)] max-w-md rounded-lg border border-border bg-surface p-6 text-fg shadow-[var(--shadow-float)] backdrop:bg-black/50" aria-labelledby="purchase-confirm-title" @cancel.prevent="!props.busy && emit('close')">
       <form @submit.prevent="emit('confirm', reason.trim())">
         <div class="flex items-start justify-between gap-4"><h2 id="purchase-confirm-title" class="text-lg font-semibold">{{ props.title }}</h2><button type="button" class="icon-button shrink-0" aria-label="Cerrar confirmación" :disabled="props.busy" @click="emit('close')"><X class="h-4 w-4" /></button></div>
         <p class="mt-3 text-sm leading-6 text-muted-fg">{{ props.description }}</p>

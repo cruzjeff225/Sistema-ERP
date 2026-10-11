@@ -34,7 +34,8 @@ const quickActions = computed(() => [
 <template>
  <AdminLayout title="Inicio">
   <div class="welcome">
-   <div class="welcome-meta"><span class="welcome-company">Inicio</span><span class="welcome-date">{{ date }}</span></div>
+   <!-- The breadcrumb already says "Inicio"; the strip above the hero only carries the date. -->
+   <div class="welcome-meta"><span class="welcome-company" aria-hidden="true"></span><span class="welcome-date">{{ date }}</span></div>
    <section class="welcome-hero" aria-labelledby="welcome-title">
     <div class="welcome-copy">
      <p class="welcome-eyebrow"><span></span>SU ESPACIO DE GESTIÓN</p>
@@ -66,7 +67,7 @@ const quickActions = computed(() => [
     </RouterLink>
    </section>
    <!-- What needs the user right now, before the shortcuts (the panel hides itself without purchasing access). -->
-   <div class="pending-wrap"><MyPendingPanel /></div>
+   <div class="mt-7 empty:hidden"><MyPendingPanel /></div>
    <section v-if="quickActions.length" class="quick-actions" aria-labelledby="quick-actions-title">
     <h2 id="quick-actions-title" class="quick-actions-title">Accesos rápidos</h2>
     <div class="quick-actions-grid">
@@ -118,38 +119,39 @@ h1 { margin:32px 0 22px; font-size:clamp(36px,4vw,60px); line-height:1.09; lette
 .destination-number { font-size:11px; color:hsl(var(--muted-fg)); opacity:.6; font-variant-numeric:tabular-nums; }
 .welcome-footer { display:flex; justify-content:space-between; flex-wrap:wrap; gap:12px; padding:26px 4px 8px; font-size:10px; color:hsl(var(--muted-fg)); }
 .welcome-footer span:first-child { letter-spacing:.18em; font-weight:600; }
-:global(.dark) .welcome-hero { background:linear-gradient(125deg,#112131 0%,#0a141f 100%); border-color:#526476; color:#ffffff; box-shadow:0 16px 48px rgb(0 0 0 / .2); }
-:global(.dark) .welcome-eyebrow, :global(.dark) .welcome-description, :global(.dark) .welcome-clock, :global(.dark) .hero-footer, :global(.dark) .art-caption { color:#d1d9e4; }
-:global(.dark) .welcome-art, :global(.dark) .art-caption span:first-child { color:#ffffff; }
-:global(.dark) .hero-footer { border-color:rgb(255 255 255 / .24); }
-:global(.dark) .art-orbit { stroke-opacity:.26; }
-:global(.dark) .art-grid { stroke-opacity:.36; }
-:global(.dark) #apex-wall stop:first-child { stop-color:#ffffff; stop-opacity:.35; }
-:global(.dark) #apex-wall stop:last-child { stop-color:#ffffff; stop-opacity:.08; }
-:global(.dark) .art-building { stroke-opacity:.55; }
-:global(.dark) .welcome-art path[opacity=".24"], :global(.dark) .welcome-art path[opacity=".17"] { opacity:.55; }
-:global(.dark) .art-outline { stroke-opacity:.6; }
-:global(.dark) #apex-roof stop:first-child { stop-color:#f04d50; }
-:global(.dark) #apex-roof stop:last-child { stop-color:#cc3037; }
-:global(.dark) .welcome-eyebrow span { background:#ff8285; }
-:global(.dark) .destination { background:#222b37; border-color:#4c596b; }
-:global(.dark) .destination-purchases { background:linear-gradient(140deg,#222b37,#30282f); border-color:#72545b; }
-:global(.dark) .destination:hover { background:#293443; border-color:#ff8b8e; }
-:global(.dark) .destination h2 { color:#f8fafc; }
-:global(.dark) .destination p, :global(.dark) .destination-top, :global(.dark) .welcome-meta, :global(.dark) .welcome-footer { color:#cbd5e1; }
-:global(.dark) .destination-number, :global(.dark) .destination-arrow { opacity:1; }
 @media (max-width:900px) { .welcome-copy { padding:40px 0 85px 32px; } .welcome-hero { min-height:430px; } .welcome-art { padding-right:8px; } }
 @media (max-width:600px) { .welcome-meta { align-items:flex-start; font-size:11px; } .welcome-date { text-align:right; } .welcome-hero { grid-template-columns:1fr; } .welcome-copy { padding:32px 28px 0; } h1 { margin:24px 0 18px; font-size:40px; } .welcome-description { font-size:15px; } .welcome-clock { margin-top:24px; } .welcome-art { width:85%; max-width:360px; justify-self:center; margin-top:0; padding:0 0 85px; } .art-caption { display:none; } .hero-footer { margin:0 24px; padding:18px 0; } .hero-edition { display:none; } .welcome-destinations { grid-template-columns:1fr; gap:10px; } .destination { padding:20px; } .destination-bottom { margin-top:16px; } .welcome-footer { font-size:9px; } }
-.pending-wrap { margin-top:28px; }
-.pending-wrap:empty { display:none; }
 .quick-actions { margin-top:28px; }
 .quick-actions-title { margin:0 0 12px 4px; font-size:13px; font-weight:600; color:hsl(var(--muted-fg)); }
 .quick-actions-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:12px; }
 .quick-action { display:flex; align-items:center; gap:12px; border:1px solid hsl(var(--border) / .65); border-radius:12px; background:hsl(var(--surface)); padding:12px 14px; color:hsl(var(--fg)); font-size:14px; font-weight:500; transition:border-color .2s,background-color .2s; }
 .quick-action:hover { border-color:hsl(var(--accent) / .5); background:hsl(var(--accent-soft)); }
 .quick-action-icon { display:grid; place-items:center; width:34px; height:34px; flex:none; border-radius:9px; background:hsl(var(--accent-soft)); color:hsl(var(--accent)); }
-:global(.dark) .quick-action { background:#222b37; border-color:#4c596b; }
-:global(.dark) .quick-action:hover { background:#293443; border-color:#ff8b8e; }
 @media (prefers-reduced-motion:reduce) { .quick-action { transition:none; } }
 @media (prefers-reduced-motion:reduce) { .destination { transition:none; } .destination:hover { transform:none; } }
+</style>
+<style>
+/* Dark theme of the home. Kept outside the scoped block: scoped :global(.dark) rules were dropped by the build, so the hero never darkened. */
+.dark .welcome-hero { background:linear-gradient(125deg,#112131 0%,#0a141f 100%); border-color:#526476; color:#ffffff; box-shadow:0 16px 48px rgb(0 0 0 / .2); }
+.dark .welcome-eyebrow, .dark .welcome-description, .dark .welcome-clock, .dark .hero-footer, .dark .art-caption { color:#d1d9e4; }
+.dark .welcome-art, .dark .art-caption span:first-child { color:#ffffff; }
+.dark .hero-footer { border-color:rgb(255 255 255 / .24); }
+.dark .art-orbit { stroke-opacity:.26; }
+.dark .art-grid { stroke-opacity:.36; }
+.dark #apex-wall stop:first-child { stop-color:#ffffff; stop-opacity:.35; }
+.dark #apex-wall stop:last-child { stop-color:#ffffff; stop-opacity:.08; }
+.dark .art-building { stroke-opacity:.55; }
+.dark .welcome-art path[opacity=".24"], .dark .welcome-art path[opacity=".17"] { opacity:.55; }
+.dark .art-outline { stroke-opacity:.6; }
+.dark #apex-roof stop:first-child { stop-color:#f04d50; }
+.dark #apex-roof stop:last-child { stop-color:#cc3037; }
+.dark .welcome-eyebrow span { background:#ff8285; }
+.dark .destination { background:#222b37; border-color:#4c596b; }
+.dark .destination-purchases { background:linear-gradient(140deg,#222b37,#30282f); border-color:#72545b; }
+.dark .destination:hover { background:#293443; border-color:#ff8b8e; }
+.dark .destination h2 { color:#f8fafc; }
+.dark .destination p, .dark .destination-top, .dark .welcome-meta, .dark .welcome-footer { color:#cbd5e1; }
+.dark .destination-number, .dark .destination-arrow { opacity:1; }
+.dark .quick-action { background:#222b37; border-color:#4c596b; }
+.dark .quick-action:hover { background:#293443; border-color:#ff8b8e; }
 </style>
