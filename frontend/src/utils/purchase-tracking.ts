@@ -119,6 +119,8 @@ export type ProcessRow = {
   anchor: { type: TrackingType; id: number };
   documents: TrackingDocuments;
   nextStep: TrackingStep | null;
+  /** Steps other teams can already take in parallel; they show up in each team's pending list. */
+  alsoAvailable?: TrackingStep[];
   blockers: number;
   completed: boolean;
   stagesDone: number;
