@@ -151,7 +151,7 @@ watch([() => route.params.id, activeCompanyId], () => { tab.value = route.query.
 <template>
   <AdminLayout :title="request ? 'Solicitud ' + request.code : 'Solicitud de compra'">
     <div class="mx-auto max-w-[1200px] space-y-5">
-      <nav aria-label="Ruta de navegación">
+      <nav aria-label="Volver al listado">
         <RouterLink :to="requestListLocation(id)" class="inline-flex items-center gap-1.5 rounded-lg py-1 pr-2 text-sm font-medium text-muted-fg transition-colors hover:text-fg"><ArrowLeft class="h-4 w-4" aria-hidden="true" />Volver a solicitudes</RouterLink>
       </nav>
 
