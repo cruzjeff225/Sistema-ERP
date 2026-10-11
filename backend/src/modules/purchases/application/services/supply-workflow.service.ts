@@ -4,6 +4,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { PrismaService } from '../../../../infrastructure/database/prisma/prisma.service';
 import { AuditService } from '../../../audit/application/services/audit.service';
 import { InventoryService } from '../../../inventory/inventory.service';
+import { describeSlots } from '../../../inventory/location-allocation';
 import { AuthenticatedUser } from '../../../auth/presentation/decorators/current-user.decorator';
 import { PurchasesService } from './purchases.service';
 import { purchaseTransaction } from './purchase-transaction';
@@ -199,8 +200,17 @@ export class SupplyWorkflowService {
       return this.one(id, companyId, tx);
     });
   }
+  /** Received lines waiting for a physical space, each with the spaces of its warehouse that can (or cannot) take it. */
   async pendingPlacement(companyId: number) {
-    return this.prisma.purchaseItem.findMany({ where: { locationId: null, purchase: { companyId, deletedAt: null, status: { not: 'CANCELLED' } } }, include: { product: true, unit: true, purchase: { include: { warehouse: { include: { locations: { where: { isActive: true, deletedAt: null } } } } } } }, orderBy: { id: 'asc' } });
+    const items = await this.prisma.purchaseItem.findMany({ where: { locationId: null, purchase: { companyId, deletedAt: null, status: { not: 'CANCELLED' } } },
+      include: { product: true, unit: true, purchase: { include: { warehouse: { include: { locations: { where: { isActive: true, deletedAt: null }, include: { stocks: { where: { quantity: { gt: 0 } }, include: { product: true } } } } } } } } }, orderBy: { id: 'asc' } });
+    return items.map(item => {
+      const warehouse = item.purchase.warehouse;
+      const locationOptions = describeSlots(warehouse?.locations ?? [], item.productId, item.unitId, item.unit.name, Number(item.quantity));
+      const suggested = locationOptions.find(option => option.id === item.suggestedLocationId && option.compatible);
+      return { ...item, purchase: { ...item.purchase, warehouse: warehouse && { id: warehouse.id, name: warehouse.name } }, locationOptions,
+        recommendedLocationId: suggested?.id ?? locationOptions.find(option => option.compatible)?.id ?? null };
+    });
   }
   place(id: number, dto: PlacementDto, companyId: number, userId: number) {
     return purchaseTransaction(this.prisma, companyId, async tx => {
