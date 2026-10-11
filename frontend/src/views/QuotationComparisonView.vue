@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { ArrowLeft, ArrowRight, Check, CheckCircle2, ChevronDown, ChevronRight, FileSearch, Package, ShoppingCart, SlidersHorizontal, X } from 'lucide-vue-next';
 import { RouterLink, useRoute } from 'vue-router';
 import AdminLayout from '../layouts/AdminLayout.vue';
+import EmptyState from '../components/base/EmptyState.vue';
 import PageHeader from '../components/base/PageHeader.vue';
 import PurchaseTabs from '../components/purchases/PurchaseTabs.vue';
 import AppButton from '../components/base/AppButton.vue';
@@ -317,7 +318,7 @@ onBeforeUnmount(() => { ++version;++comparisonVersion;clearTimeout(comparisonTim
       <p v-if="error" role="alert" class="rounded-xl bg-danger/10 p-4 text-sm text-danger">{{ error }}</p>
       <p v-if="success" role="status" class="rounded-xl bg-success/10 p-4 text-sm text-success">{{ success }}</p>
 
-      <p v-if="loading" role="status" class="py-12 text-center text-sm text-muted-fg">Cargando ofertas…</p>
+      <EmptyState v-if="loading" title="Cargando ofertas…" />
       <template v-else-if="current">
         <div v-if="!allOrdered && pendingProducts.length" class="flex flex-wrap items-center justify-between gap-3">
           <nav aria-label="Pasos para elegir ofertas" class="flex items-center gap-3 text-sm">
@@ -386,7 +387,7 @@ onBeforeUnmount(() => { ++version;++comparisonVersion;clearTimeout(comparisonTim
                 <div class="mb-4 flex flex-wrap items-center justify-between gap-2"><h3 class="text-sm font-semibold">Ofertas de proveedores</h3><p class="text-xs text-muted-fg">Impuestos y cargos registrados incluidos</p></div>
                 <div class="offer-table overflow-x-auto">
                   <table :aria-label="'Ofertas para ' + product.product.name" class="w-full text-left text-sm">
-                    <thead class="text-xs text-muted-fg"><tr><th scope="col" class="pb-3 font-medium">Proveedor</th><th scope="col" class="pb-3 text-right font-medium">Precio unitario</th><th scope="col" class="pb-3 text-right font-medium">Total estimado</th><th scope="col" class="pb-3 text-right font-medium">Disponible</th><th scope="col" class="pb-3 text-right font-medium">Entrega</th><th scope="col" class="pb-3 text-right font-medium"><span class="sr-only">Condiciones de la oferta</span></th></tr></thead>
+                    <thead class="data-thead"><tr><th scope="col" class="pb-3 font-medium">Proveedor</th><th scope="col" class="pb-3 text-right font-medium">Precio unitario</th><th scope="col" class="pb-3 text-right font-medium">Total estimado</th><th scope="col" class="pb-3 text-right font-medium">Disponible</th><th scope="col" class="pb-3 text-right font-medium">Entrega</th><th scope="col" class="pb-3 text-right font-medium"><span class="sr-only">Condiciones de la oferta</span></th></tr></thead>
                     <tbody v-for="offer in availableOffers" :key="offer.detail.id" :class="selections[productId]?.detailId === offer.detail.id ? 'chosen-offer' : ''">
                       <tr class="offer-row border-t border-border">
                         <td class="offer-supplier py-5 pr-4 align-top">

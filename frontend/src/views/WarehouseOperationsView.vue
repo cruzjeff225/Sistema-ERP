@@ -4,6 +4,7 @@ import { RouterLink, useRoute } from 'vue-router';
 import JsBarcode from 'jsbarcode';
 import { ArrowLeft, ArrowRight, ScanLine, Truck, ReceiptText, RefreshCw } from 'lucide-vue-next';
 import AdminLayout from '../layouts/AdminLayout.vue';
+import EmptyState from '../components/base/EmptyState.vue';
 import AppButton from '../components/base/AppButton.vue';
 import ConfirmDialog from '../components/base/ConfirmDialog.vue';
 import { http } from '../services/http.service';
@@ -229,7 +230,7 @@ onBeforeUnmount(() => { loadVersion++; stockVersion++; expenseVersion++; destina
         <div class="flex items-center gap-3"><RouterLink to="/inventory" class="text-sm text-muted-fg hover:text-fg">Existencias y mapa</RouterLink><AppButton variant="outline" size="sm" :disabled="busy || loading" aria-label="Actualizar bodega" title="Actualizar" @click="load"><RefreshCw class="h-4 w-4" /></AppButton></div>
       </header>
       <div v-if="context && tabs.length>1" class="flex flex-wrap gap-2"><RouterLink v-for="task in tabs" :key="task.id" :to="taskLink(task.id)" :aria-current="tab===task.id?'page':undefined" class="rounded-lg px-4 py-2 text-sm" :class="tab===task.id?'bg-surface-secondary font-medium text-fg':'text-muted-fg hover:text-fg'">{{ task.name }}</RouterLink></div>
-      <p v-if="loading" role="status" class="py-8 text-center text-sm text-muted-fg">Cargando bodega…</p>
+      <EmptyState v-if="loading" title="Cargando bodega…" />
       <template v-else-if="!contextNotice && !loadFailed">
       <section v-if="tab==='home'" aria-label="Tareas de bodega" class="space-y-6">
         <div class="grid gap-4 sm:grid-cols-2">

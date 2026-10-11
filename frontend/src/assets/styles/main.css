@@ -121,6 +121,23 @@
     }
 }
 
+/* Components sit below utilities, so a layout class on the element (w-*, text-right…) always wins. */
+@layer components {
+    /* One look for every filter, select and search box: 36px, hairline border, accent focus. */
+    .control {
+        @apply h-9 rounded-lg border border-border bg-surface px-3 text-sm text-fg outline-none transition focus:border-accent focus:ring-4 focus:ring-accent/15 disabled:cursor-not-allowed disabled:bg-surface-secondary disabled:text-muted-fg;
+    }
+
+    /* One header for every data table: quiet, sentence case, no heavy fill. */
+    .data-thead {
+        @apply border-b border-border bg-surface-secondary/70 text-xs text-muted-fg;
+    }
+
+    .data-thead th {
+        @apply font-medium;
+    }
+}
+
 @layer utilities {
     .page-title {
         @apply text-xl font-semibold tracking-tight text-fg sm:text-2xl;

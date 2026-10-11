@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRouter } from "vue-router";
-import { Copy, Edit2, Plus, Power, RefreshCw, Save, Search, ShieldCheck, Trash2, X } from "lucide-vue-next";
+import { Copy, Edit2, Plus, Power, RefreshCw, Save, ShieldCheck, Trash2, X } from "lucide-vue-next";
 import AdminLayout from "../layouts/AdminLayout.vue";
+import EmptyState from "../components/base/EmptyState.vue";
+import SearchField from "../components/base/SearchField.vue";
 import AppBadge from "../components/base/AppBadge.vue";
 import AppButton from "../components/base/AppButton.vue";
 import ConfirmDialog from "../components/base/ConfirmDialog.vue";
@@ -284,16 +286,13 @@ onMounted(loadAll);
 
     <section class="overflow-hidden rounded-lg border border-border bg-surface shadow-subtle">
       <div class="flex flex-col gap-3 border-b border-border p-3 sm:flex-row sm:items-center sm:justify-between">
-        <div class="relative w-full sm:max-w-sm">
-          <Search class="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-fg" />
-          <input v-model="search" class="h-9 w-full rounded-lg border border-border bg-surface pl-9 pr-3 text-sm outline-none focus:border-accent focus:ring-4 focus:ring-accent/15" placeholder="Buscar por rol o descripción" />
-        </div>
+        <SearchField v-model="search" placeholder="Buscar por rol o descripción" class="w-full sm:max-w-sm" />
         <AppBadge>{{ filteredRoles.length }} roles</AppBadge>
       </div>
 
       <div class="hidden overflow-x-auto md:block">
         <table class="w-full min-w-[760px] text-left text-sm">
-          <thead class="border-b border-border bg-surface-secondary/70 text-xs uppercase text-muted-fg">
+          <thead class="data-thead">
             <tr><th class="px-4 py-3">Rol</th><th class="px-4 py-3">Permisos</th><th class="px-4 py-3">Usuarios</th><th class="px-4 py-3">Estado</th><th class="px-4 py-3 text-right">Acciones</th></tr>
           </thead>
           <tbody class="divide-y divide-border">
@@ -309,7 +308,7 @@ onMounted(loadAll);
                 <button v-if="can('roles.delete')" type="button" class="grid h-8 w-8 place-items-center rounded-lg text-danger hover:bg-danger/10 disabled:cursor-not-allowed disabled:opacity-30" :disabled="saving || role.isSystem" title="Enviar rol a papelera" @click="removeRole(role)"><Trash2 class="h-4 w-4" /></button>
               </div></td>
             </tr>
-            <tr v-if="!loading && !filteredRoles.length"><td colspan="5" class="px-4 py-12 text-center text-muted-fg">No hay roles para esta búsqueda.</td></tr>
+            <tr v-if="!loading && !filteredRoles.length"><td colspan="5"><EmptyState title="No hay roles para esta búsqueda." /></td></tr>
           </tbody>
         </table>
       </div>

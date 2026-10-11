@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref, watch } from "vue";
 import { Edit2, KeyRound, LockOpen, Plus, Power, RefreshCw, Save, Search, UserRound, X } from "lucide-vue-next";
 import { useRouter } from "vue-router";
 import AdminLayout from "../layouts/AdminLayout.vue";
+import EmptyState from "../components/base/EmptyState.vue";
 import AppBadge from "../components/base/AppBadge.vue";
 import TrashButton from "../components/admin/TrashButton.vue";
 import AppButton from "../components/base/AppButton.vue";
@@ -439,11 +440,11 @@ onMounted(loadAll);
       <div class="flex flex-col gap-3 border-b border-border p-3 sm:flex-row sm:items-center sm:justify-between">
           <div class="relative w-full sm:max-w-sm">
             <Search class="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-fg" />
-            <input v-model="search" class="h-9 w-full rounded-lg border border-border bg-surface pl-9 pr-10 text-sm outline-none focus:border-accent focus:ring-4 focus:ring-accent/15" placeholder="Buscar por nombre, codigo o correo" @keyup.enter="loadAll(1)" />
+            <input v-model="search" class="control w-full" placeholder="Buscar por nombre, codigo o correo" @keyup.enter="loadAll(1)" />
             <button type="button" class="absolute right-1 top-1 grid h-7 w-7 place-items-center rounded-md text-muted-fg hover:bg-surface-secondary hover:text-fg" title="Buscar usuarios" @click="loadAll(1)"><Search class="h-4 w-4" /></button>
           </div>
           <div class="flex items-center gap-2">
-           <select v-model="statusFilter" class="h-9 rounded-lg border border-border bg-surface px-3 text-sm text-fg outline-none focus:border-accent" @change="loadAll(1)">
+           <select v-model="statusFilter" class="control w-full" @change="loadAll(1)">
             <option value="all">Todos los estados</option>
             <option value="active">Activos</option>
             <option value="inactive">Inactivos</option>
@@ -454,7 +455,7 @@ onMounted(loadAll);
 
       <div class="hidden overflow-x-auto md:block">
         <table class="w-full min-w-[840px] text-left text-sm">
-          <thead class="border-b border-border bg-surface-secondary/70 text-xs uppercase text-muted-fg">
+          <thead class="data-thead">
             <tr><th class="px-4 py-3">Persona</th><th class="px-4 py-3">Usuario</th><th class="px-4 py-3">Roles</th><th class="px-4 py-3">Estado</th><th class="px-4 py-3 text-right">Acciones</th></tr>
           </thead>
           <tbody class="divide-y divide-border">
@@ -470,7 +471,7 @@ onMounted(loadAll);
                 <button v-if="can('users.update')" type="button" class="grid h-8 w-8 place-items-center rounded-lg text-muted-fg hover:bg-surface-secondary hover:text-fg" :title="user.isActive ? 'Desactivar usuario' : 'Activar usuario'" @click="toggleStatus(user)"><Power class="h-4 w-4" /></button><TrashButton compact entity="users" :record-id="user.id" :label="user.username" :disabled="saving" @deleted="loadAll" />
               </div></td>
             </tr>
-            <tr v-if="!loading && !filteredUsers.length"><td colspan="5" class="px-4 py-12 text-center text-muted-fg">No hay usuarios para esta busqueda.</td></tr>
+            <tr v-if="!loading && !filteredUsers.length"><td colspan="5"><EmptyState title="No hay usuarios para esta busqueda." /></td></tr>
           </tbody>
         </table>
       </div>
@@ -489,7 +490,7 @@ onMounted(loadAll);
              <button v-if="can('users.update')" type="button" class="grid h-8 w-8 place-items-center rounded-lg text-muted-fg hover:bg-surface-secondary" :title="user.isActive ? 'Desactivar' : 'Activar'" @click="toggleStatus(user)"><Power class="h-4 w-4" /></button><TrashButton compact entity="users" :record-id="user.id" :label="user.username" :disabled="saving" @deleted="loadAll" />
           </div>
         </article>
-        <p v-if="!loading && !filteredUsers.length" class="px-4 py-12 text-center text-sm text-muted-fg">No hay usuarios para esta busqueda.</p>
+        <EmptyState v-if="!loading && !filteredUsers.length" title="No hay usuarios para esta busqueda." />
       </div>
       <div class="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3 text-sm text-muted-fg"><span>{{ userMeta.total }} usuarios</span><div class="flex items-center gap-2"><AppButton variant="outline" :disabled="userMeta.page <= 1 || loading" @click="loadAll(userMeta.page - 1)">Anterior</AppButton><span>{{ userMeta.page }} / {{ Math.max(userMeta.totalPages, 1) }}</span><AppButton variant="outline" :disabled="userMeta.page >= userMeta.totalPages || loading" @click="loadAll(userMeta.page + 1)">Siguiente</AppButton></div></div>
     </section>
@@ -533,7 +534,7 @@ onMounted(loadAll);
               <div class="grid gap-4 sm:grid-cols-2">
                 <label class="text-sm font-medium text-fg">
                   País
-                  <select v-model="form.countryId" required class="mt-1.5 h-10 w-full rounded-lg border bg-surface px-3 text-sm text-fg outline-none transition focus:ring-4" :class="formErrors.countryId ? 'border-danger focus:border-danger focus:ring-danger/15' : 'border-border focus:border-accent focus:ring-accent/15'" @change="clearLocationWhenForeign">
+                  <select v-model="form.countryId" required class="control mt-1.5 w-full" :class="formErrors.countryId ? 'border-danger focus:border-danger focus:ring-danger/15' : 'border-border focus:border-accent focus:ring-accent/15'" @change="clearLocationWhenForeign">
                     <option value="" disabled>Selecciona un país</option>
                     <option v-for="country in countries" :key="country.id" :value="String(country.id)">{{ country.name }}</option>
                   </select>

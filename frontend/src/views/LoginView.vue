@@ -45,7 +45,7 @@ async function handleSubmit() {
           <div>
             <label for="password" class="mb-1.5 block text-sm font-medium text-fg">Contrasena</label>
             <div class="relative">
-              <input id="password" v-model="password" :type="showPassword ? 'text' : 'password'" autocomplete="current-password" required class="h-10 w-full rounded-lg border border-border bg-surface px-3 pr-11 text-sm text-fg shadow-sm outline-none transition focus:border-accent focus:ring-4 focus:ring-accent/15" />
+              <input id="password" v-model="password" :type="showPassword ? 'text' : 'password'" autocomplete="current-password" required class="control w-full" />
               <button type="button" class="absolute right-1 top-1 grid h-8 w-8 place-items-center rounded-md text-muted-fg hover:bg-surface-secondary hover:text-fg" :title="showPassword ? 'Ocultar contrasena' : 'Mostrar contrasena'" @click="showPassword = !showPassword"><EyeOff v-if="showPassword" class="h-4 w-4" /><Eye v-else class="h-4 w-4" /></button>
             </div>
           </div>

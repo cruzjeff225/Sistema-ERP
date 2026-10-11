@@ -170,7 +170,7 @@ watch(() => [route.params.type, route.params.id, activeCompanyId.value], () => {
             <div v-if="!data.lines.length" class="px-5 pb-5 pt-3 text-sm text-muted-fg">Todavía no hay productos en esta compra.</div>
             <div v-else class="overflow-x-auto">
               <table class="mt-3 w-full min-w-[640px] text-left text-sm">
-                <thead class="border-y border-border/70 bg-surface-secondary text-xs text-muted-fg">
+                <thead class="data-thead">
                   <tr>
                     <th scope="col" class="px-5 py-2 font-medium">Producto</th>
                     <th scope="col" class="px-3 py-2 text-right font-medium">Solicitado</th>
