@@ -3,6 +3,7 @@ import { computed, onMounted, onBeforeUnmount, ref } from 'vue';
 import { RouterLink } from 'vue-router';
 import { ArrowUpRight, ClipboardCheck, Package, Building2, Sun, Moon, FilePlus2, ListChecks, PackageCheck, SlidersHorizontal, UserPlus, PackagePlus } from 'lucide-vue-next';
 import AdminLayout from '../layouts/AdminLayout.vue';
+import MyPendingPanel from '../components/purchases/MyPendingPanel.vue';
 import { usePermissions } from '../composables/usePermissions';
 import { purchasingPermissions, purchasingRoute } from '../config/purchasing.config';
 const { currentUser, can, canAny } = usePermissions();
@@ -64,6 +65,8 @@ const quickActions = computed(() => [
      <div class="destination-bottom"><div><h2>{{ destination.name }}</h2><p>{{ destination.detail }}</p></div><span v-if="destination.name !== 'Gestionar compras'" class="destination-number">0{{ index + 1 }}</span></div>
     </RouterLink>
    </section>
+   <!-- What needs the user right now, before the shortcuts (the panel hides itself without purchasing access). -->
+   <div class="pending-wrap"><MyPendingPanel /></div>
    <section v-if="quickActions.length" class="quick-actions" aria-labelledby="quick-actions-title">
     <h2 id="quick-actions-title" class="quick-actions-title">Accesos rápidos</h2>
     <div class="quick-actions-grid">
@@ -137,6 +140,8 @@ h1 { margin:32px 0 22px; font-size:clamp(36px,4vw,60px); line-height:1.09; lette
 :global(.dark) .destination-number, :global(.dark) .destination-arrow { opacity:1; }
 @media (max-width:900px) { .welcome-copy { padding:40px 0 85px 32px; } .welcome-hero { min-height:430px; } .welcome-art { padding-right:8px; } }
 @media (max-width:600px) { .welcome-meta { align-items:flex-start; font-size:11px; } .welcome-date { text-align:right; } .welcome-hero { grid-template-columns:1fr; } .welcome-copy { padding:32px 28px 0; } h1 { margin:24px 0 18px; font-size:40px; } .welcome-description { font-size:15px; } .welcome-clock { margin-top:24px; } .welcome-art { width:85%; max-width:360px; justify-self:center; margin-top:0; padding:0 0 85px; } .art-caption { display:none; } .hero-footer { margin:0 24px; padding:18px 0; } .hero-edition { display:none; } .welcome-destinations { grid-template-columns:1fr; gap:10px; } .destination { padding:20px; } .destination-bottom { margin-top:16px; } .welcome-footer { font-size:9px; } }
+.pending-wrap { margin-top:28px; }
+.pending-wrap:empty { display:none; }
 .quick-actions { margin-top:28px; }
 .quick-actions-title { margin:0 0 12px 4px; font-size:13px; font-weight:600; color:hsl(var(--muted-fg)); }
 .quick-actions-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:12px; }

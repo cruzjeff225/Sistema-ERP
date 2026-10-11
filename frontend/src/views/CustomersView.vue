@@ -156,7 +156,7 @@ onBeforeUnmount(() => { mounted = false; ++epoch; ++loadVersion; ++mutationVersi
   <AdminLayout title="Clientes">
     <div class="mx-auto max-w-[1440px] space-y-6">
       <header class="flex flex-wrap items-end justify-between gap-4">
-        <div><h1 class="text-3xl font-semibold tracking-tight">Clientes</h1><p class="mt-2 text-sm leading-6 text-muted-fg">Encuentra a tu cliente y mantén sus datos al día.</p></div>
+        <div><h1 class="page-title">Clientes</h1><p class="page-subtitle">Encuentra a tu cliente y mantén sus datos al día.</p></div>
         <div class="flex flex-wrap gap-2"><AppButton variant="outline" :disabled="loading || saving || editorOpen" @click="load()"><RefreshCw class="h-4 w-4" :class="loading && 'animate-spin'" />Actualizar</AppButton><AppButton v-if="can('customers.create')" :disabled="loading || saving || editorOpen" @click="openEditor()"><Plus class="h-4 w-4" />Nuevo cliente</AppButton></div>
       </header>
       <p v-if="errorMessage" role="alert" class="rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">{{ errorMessage }}</p>

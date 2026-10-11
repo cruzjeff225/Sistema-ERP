@@ -36,9 +36,9 @@ const hasSections = computed(() => props.groups.some(group => group.sections.len
 
 <template>
   <div class="mx-auto max-w-5xl">
-    <header class="mb-8 sm:mb-10">
-      <h1 class="text-3xl font-semibold tracking-tight text-fg sm:text-4xl">{{ title }}</h1>
-      <p class="mt-3 max-w-xl text-sm leading-6 text-muted-fg">{{ description }}</p>
+    <header class="mb-6">
+      <h1 class="page-title">{{ title }}</h1>
+      <p class="page-subtitle">{{ description }}</p>
     </header>
     <div class="grid items-start gap-7 lg:gap-8" :class="groups.length > 1 ? 'lg:grid-cols-2' : ''">
       <section v-for="group in groups" :key="group.id" :aria-labelledby="`${directoryId}-${group.id}`">
@@ -47,8 +47,8 @@ const hasSections = computed(() => props.groups.some(group => group.sections.len
           <p class="mt-1 text-sm leading-6 text-muted-fg">{{ group.description }}</p>
         </div>
         <div class="overflow-hidden rounded-2xl border border-border bg-surface">
-          <RouterLink v-for="(section, index) in group.sections" :key="section.id" :to="section.route" class="directory-row flex min-h-24 items-center gap-4 px-5 py-5 transition-colors hover:bg-surface-secondary" :class="index > 0 ? 'border-t border-border/70' : ''">
-            <span class="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-surface-secondary text-fg"><component :is="section.icon" class="h-5 w-5" :stroke-width="1.6" aria-hidden="true" /></span>
+          <RouterLink v-for="(section, index) in group.sections" :key="section.id" :to="section.route" class="directory-row flex min-h-20 items-center gap-4 px-5 py-4 transition-colors hover:bg-surface-secondary" :class="index > 0 ? 'border-t border-border/70' : ''">
+            <span class="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-surface-secondary text-fg"><component :is="section.icon" class="h-5 w-5" :stroke-width="1.6" aria-hidden="true" /></span>
             <span class="min-w-0 flex-1"><span class="block text-sm font-semibold text-fg">{{ section.label }}</span><span class="mt-1 block text-sm leading-5 text-muted-fg">{{ section.description }}</span></span>
             <ChevronRight class="h-4 w-4 shrink-0 text-muted-fg" aria-hidden="true" />
           </RouterLink>
@@ -60,8 +60,8 @@ const hasSections = computed(() => props.groups.some(group => group.sections.len
         {{ supportLabel }}<ChevronDown class="directory-chevron h-4 w-4 shrink-0" aria-hidden="true" />
       </summary>
       <div class="border-t border-border/70">
-        <RouterLink v-for="(section, index) in support" :key="section.id" :to="section.route" class="directory-row flex items-center gap-4 px-5 py-5 transition-colors hover:bg-surface-secondary" :class="index > 0 ? 'border-t border-border/70' : ''">
-          <span class="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-surface-secondary text-fg"><component :is="section.icon" class="h-5 w-5" :stroke-width="1.6" aria-hidden="true" /></span>
+        <RouterLink v-for="(section, index) in support" :key="section.id" :to="section.route" class="directory-row flex items-center gap-4 px-5 py-4 transition-colors hover:bg-surface-secondary" :class="index > 0 ? 'border-t border-border/70' : ''">
+          <span class="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-surface-secondary text-fg"><component :is="section.icon" class="h-5 w-5" :stroke-width="1.6" aria-hidden="true" /></span>
           <span class="min-w-0 flex-1"><span class="block text-sm font-semibold text-fg">{{ section.label }}</span><span class="mt-1 block text-sm leading-5 text-muted-fg">{{ section.description }}</span></span>
           <ChevronRight class="h-4 w-4 shrink-0 text-muted-fg" aria-hidden="true" />
         </RouterLink>

@@ -60,7 +60,7 @@ onBeforeUnmount(() => { mounted = false; ++version; ++operation; });
 <template>
   <AdminLayout title="Centro de recepción de compras">
     <div class="mx-auto max-w-3xl space-y-6">
-      <header><h1 class="text-3xl font-semibold tracking-tight">Centro de recepción</h1><p class="mt-3 max-w-xl text-sm leading-6 text-muted-fg">El almacén general recibe las compras. Desde allí se distribuyen a las sucursales.</p></header>
+      <header><h1 class="page-title">Centro de recepción</h1><p class="page-subtitle">El almacén general recibe las compras. Desde allí se distribuyen a las sucursales.</p></header>
       <p v-if="error" role="alert" class="rounded-xl bg-danger-soft p-4 text-sm text-danger">{{ error }}</p>
       <p v-if="success" role="status" class="rounded-xl bg-success-soft p-4 text-sm">{{ success }}</p>
       <p v-if="loading" role="status" class="py-8 text-sm text-muted-fg">Cargando configuración…</p>
