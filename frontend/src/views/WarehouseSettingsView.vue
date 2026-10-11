@@ -2,7 +2,6 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { RouterLink } from 'vue-router';
 import AdminLayout from '../layouts/AdminLayout.vue';
-import AdministrationNav from '../components/admin/AdministrationNav.vue';
 import AppButton from '../components/base/AppButton.vue';
 import ConfirmDialog from '../components/base/ConfirmDialog.vue';
 import { http } from '../services/http.service';
@@ -60,7 +59,6 @@ onBeforeUnmount(() => { mounted = false; ++version; ++operation; });
 
 <template>
   <AdminLayout title="Centro de recepción de compras">
-    <AdministrationNav section="warehouse" />
     <div class="mx-auto max-w-3xl space-y-6">
       <header><h1 class="text-3xl font-semibold tracking-tight">Centro de recepción</h1><p class="mt-3 max-w-xl text-sm leading-6 text-muted-fg">El almacén general recibe las compras. Desde allí se distribuyen a las sucursales.</p></header>
       <p v-if="error" role="alert" class="rounded-xl bg-danger-soft p-4 text-sm text-danger">{{ error }}</p>

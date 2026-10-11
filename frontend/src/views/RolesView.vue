@@ -3,7 +3,6 @@ import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { Copy, Edit2, Plus, Power, RefreshCw, Save, Search, ShieldCheck, Trash2, X } from "lucide-vue-next";
 import AdminLayout from "../layouts/AdminLayout.vue";
-import AdministrationNav from "../components/admin/AdministrationNav.vue";
 import AppBadge from "../components/base/AppBadge.vue";
 import AppButton from "../components/base/AppButton.vue";
 import ConfirmDialog from "../components/base/ConfirmDialog.vue";
@@ -266,7 +265,6 @@ onMounted(loadAll);
 
 <template>
   <AdminLayout title="Configuración · Roles">
-    <AdministrationNav section="roles" />
     <div class="mb-6 flex flex-wrap items-end justify-between gap-4">
       <div>
         <h1 class="page-title">Roles</h1>

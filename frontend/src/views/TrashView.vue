@@ -2,7 +2,6 @@
 import { onBeforeUnmount, ref, watch } from 'vue';
 import { Search, RefreshCw, RotateCcw, Trash2, X, ChevronLeft, ChevronRight } from 'lucide-vue-next';
 import AdminLayout from '../layouts/AdminLayout.vue';
-import AdministrationNav from '../components/admin/AdministrationNav.vue';
 import AppButton from '../components/base/AppButton.vue';
 import ConfirmDialog from '../components/base/ConfirmDialog.vue';
 import TrashButton from '../components/admin/TrashButton.vue';
@@ -45,7 +44,6 @@ watch(page,()=>void load());watch([recordEntity,recordSearch],()=>{recordPage.va
 function deleted(){success.value='Registro enviado a papelera. Disponible durante 30 días.';void loadRecords();void load();}
 </script>
 <template><AdminLayout title="Configuración · Papelera"><div class="mx-auto max-w-5xl space-y-5">
-<AdministrationNav section="trash" />
 <header class="flex flex-wrap items-end justify-between gap-4"><div><h1 class="page-title">Papelera</h1><p class="page-subtitle">Recupera los registros eliminados durante los siguientes 30 días.</p></div><div class="flex flex-wrap gap-2"><AppButton v-if="can('trash.purge')" variant="outline" :disabled="loading || busy || previewing || (!total && !search && !entity)" @click="preparePurge()"><Trash2 class="h-4 w-4"/>Vaciar papelera</AppButton><AppButton variant="outline" :disabled="loading || busy" @click="load"><RefreshCw class="h-4 w-4"/>Actualizar</AppButton><AppButton v-if="can('trash.delete')" variant="outline" @click="browser=true"><Trash2 class="h-4 w-4"/>Eliminar registros</AppButton></div></header>
 <p v-if="error" role="alert" class="rounded-lg bg-danger/10 p-3 text-sm text-danger">{{error}}</p><p v-if="success" role="status" class="text-sm text-success">{{success}}</p>
 <div class="flex flex-wrap gap-3"><label class="relative min-w-60 flex-1"><Search class="absolute left-3 top-3 h-4 w-4 text-muted-fg"/><input v-model="search" aria-label="Buscar eliminados" placeholder="Buscar registro eliminado" class="field-control !mt-0 !pl-9"/></label><select v-model="entity" aria-label="Filtrar por módulo" class="field-control !mt-0 max-w-xs"><option value="">Todos los módulos</option><option v-for="e in entities" :key="e.key" :value="e.key">{{e.label}}</option></select></div>

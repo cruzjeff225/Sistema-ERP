@@ -3,7 +3,6 @@ import { computed, onBeforeUnmount, reactive, ref, watch } from "vue";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 import { Check, ChevronLeft, PackagePlus, ChevronRight, LockKeyhole, Pencil, RefreshCw, Search, X } from "lucide-vue-next";
 import AdminLayout from "../layouts/AdminLayout.vue";
-import PurchasesNav from "../components/purchases/PurchasesNav.vue";
 import PageHeader from "../components/base/PageHeader.vue";
 import PurchaseTabs from "../components/purchases/PurchaseTabs.vue";
 import TrashButton from "../components/admin/TrashButton.vue";
@@ -183,7 +182,6 @@ async function mutate(reason?: string) {
 <template>
   <AdminLayout title="Recepciones de mercadería">
     <div class="mx-auto max-w-[1440px] space-y-6">
-    <PurchasesNav />
     <PageHeader title="Recepciones" description="Registra lo que llega, ubícalo y verifícalo antes del costo final.">
       <template #actions>
       <AppButton variant="outline" :disabled="loading || busy || editing" @click="load(meta.page)"><RefreshCw class="h-4 w-4" :class="loading && 'animate-spin'" />Actualizar</AppButton>

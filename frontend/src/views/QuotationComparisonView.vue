@@ -3,7 +3,6 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { ArrowLeft, ArrowRight, Check, CheckCircle2, ChevronDown, ChevronRight, FileSearch, Package, ShoppingCart, SlidersHorizontal, X } from 'lucide-vue-next';
 import { RouterLink, useRoute } from 'vue-router';
 import AdminLayout from '../layouts/AdminLayout.vue';
-import PurchasesNav from '../components/purchases/PurchasesNav.vue';
 import PageHeader from '../components/base/PageHeader.vue';
 import PurchaseTabs from '../components/purchases/PurchaseTabs.vue';
 import AppButton from '../components/base/AppButton.vue';
@@ -292,7 +291,6 @@ onBeforeUnmount(() => { ++version;++comparisonVersion;clearTimeout(comparisonTim
   <component :is="embedded ? 'div' : AdminLayout" :title="embedded ? undefined : 'Comparar cotizaciones'">
     <div class="comparison-page space-y-6" :class="embedded ? '' : 'mx-auto max-w-[1440px]'">
       <div v-if="embedded && current" class="flex items-center justify-between gap-3"><div><h2 class="text-lg font-semibold">Comparar ofertas</h2><p class="mt-1 text-sm text-muted-fg">Compare por producto. Revise su selección antes de crear las órdenes.</p></div><AppButton variant="outline" size="sm" :disabled="busy||loading" @click="refreshOffers">Actualizar ofertas</AppButton></div>
-      <PurchasesNav v-if="!embedded" />
       <PageHeader v-if="!embedded" title="Elegir ofertas" description="Compare por producto. Revise su selección antes de crear las órdenes.">
         <template #actions><div class="flex items-center gap-4"><AppButton v-if="current" variant="outline" size="sm" :disabled="busy||loading" @click="refreshOffers">Actualizar ofertas</AppButton><RouterLink :to="selectedId ? '/purchases/quotations/manage?id=' + selectedId : '/purchases/quotations'" class="inline-flex items-center gap-2 text-sm font-medium text-muted-fg hover:text-fg"><ArrowLeft class="h-4 w-4" />Cotizaciones</RouterLink></div></template>
       </PageHeader>

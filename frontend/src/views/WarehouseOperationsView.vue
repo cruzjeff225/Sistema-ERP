@@ -4,7 +4,6 @@ import { RouterLink, useRoute } from 'vue-router';
 import JsBarcode from 'jsbarcode';
 import { ArrowLeft, ArrowRight, ScanLine, Truck, ReceiptText, RefreshCw } from 'lucide-vue-next';
 import AdminLayout from '../layouts/AdminLayout.vue';
-import OperationsNav from '../components/operations/OperationsNav.vue';
 import AppButton from '../components/base/AppButton.vue';
 import ConfirmDialog from '../components/base/ConfirmDialog.vue';
 import { http } from '../services/http.service';
@@ -219,7 +218,6 @@ onBeforeUnmount(() => { loadVersion++; stockVersion++; expenseVersion++; destina
 
 <template>
   <AdminLayout title="Bodega">
-    <OperationsNav />
     <div class="mx-auto max-w-5xl space-y-6">
       <p v-if="error" role="alert" class="rounded-lg bg-danger-soft p-4 text-danger">{{ error }}</p><p v-if="success" role="status" class="rounded-lg bg-success-soft p-4">{{ success }}</p>
       <section v-if="context" class="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-border bg-surface p-5">

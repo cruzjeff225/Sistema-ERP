@@ -3,7 +3,6 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { RouterLink } from 'vue-router';
 import { RefreshCw, Search, TriangleAlert } from 'lucide-vue-next';
 import AdminLayout from '../layouts/AdminLayout.vue';
-import PurchasesNav from '../components/purchases/PurchasesNav.vue';
 import PageHeader from '../components/base/PageHeader.vue';
 import AppBadge from '../components/base/AppBadge.vue';
 import AppButton from '../components/base/AppButton.vue';
@@ -52,7 +51,6 @@ watch(search, () => { clearTimeout(timer); timer = setTimeout(() => void load(),
 <template>
   <AdminLayout title="Seguimiento de compras">
     <div class="mx-auto max-w-[1440px] space-y-6">
-      <PurchasesNav />
       <PageHeader title="Seguimiento de compras" description="Cada compra con su etapa actual y lo que sigue. Entra a una para ver el detalle.">
         <template #actions>
           <AppButton variant="outline" :disabled="loading" @click="load()"><RefreshCw class="h-4 w-4" :class="loading && 'animate-spin'" aria-hidden="true" />Actualizar</AppButton>

@@ -31,7 +31,6 @@ import { useRoute, useRouter } from "vue-router";
 import { activeCompanyId } from "../services/company-context";
 import ConfirmDialog from "../components/base/ConfirmDialog.vue";
 import AdminLayout from "../layouts/AdminLayout.vue";
-import PurchasesNav from "../components/purchases/PurchasesNav.vue";
 import PageHeader from "../components/base/PageHeader.vue";
 import PurchaseTabs from "../components/purchases/PurchaseTabs.vue";
 import AppBadge from "../components/base/AppBadge.vue";
@@ -40,6 +39,7 @@ import AppButton from "../components/base/AppButton.vue";
 import TrackingLink from "../components/purchases/TrackingLink.vue";
 import AppInput from "../components/base/AppInput.vue";
 import { usePermissions } from "../composables/usePermissions";
+import { consumeCreateIntent } from "../composables/useCreateIntent";
 import { useUnsavedChanges } from "../composables/useUnsavedChanges";
 import { http } from "../services/http.service";
 import { getApiErrorMessage } from "../utils/api-error";
@@ -320,6 +320,8 @@ async function load() {
       if (linked && isEditableRequest(linked.status) && can('purchase_requests.update')) { editFromDetail = fromDetail; editRequest(linked); if (addLine) addRequestLine(); }
       else if (fromDetail && requested) void router.replace(requestDetailPath(requested));
     }
+    // Quick access ("Nueva solicitud") lands here with ?new=1.
+    if (props.section === 'requests' && consumeCreateIntent(route.query, router) && can('purchase_requests.create')) newRequest();
     const supplierId = typeof route.query.supplier === 'string' ? route.query.supplier : '';
     if (props.section === 'quotations' && supplierId && supplierId !== handledSupplier.value && can('purchase_quotations.create')) {
       handledSupplier.value = supplierId;
@@ -639,7 +641,6 @@ onMounted(load);
   <AdminLayout :title="sectionMeta.title">
 
     <div class="mx-auto max-w-[1440px] space-y-6">
-      <PurchasesNav />
       <PageHeader :title="sectionMeta.title" :description="sectionMeta.subtitle">
         <template #actions><div class="flex gap-2"><AppButton variant="ghost" :disabled="loading || saving" title="Actualizar" aria-label="Actualizar" @click="load"><RefreshCw class="h-4 w-4" :class="loading && 'animate-spin'" aria-hidden="true" /><span class="sr-only">Actualizar</span></AppButton><AppButton v-if="props.section === 'requests' && can('purchase_requests.create')" :disabled="loading || saving" @click="newRequest"><Plus class="h-4 w-4" />{{ sectionMeta.create }}</AppButton><AppButton v-if="props.section === 'quotations' && can('purchase_quotations.create')" :disabled="loading || saving" @click="newQuotation()"><Plus class="h-4 w-4" />{{ sectionMeta.create }}</AppButton></div></template>
       </PageHeader>

@@ -2,7 +2,6 @@
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { Boxes, ChevronLeft, ChevronRight, History, LayoutGrid, MapPin, MoreHorizontal, Plus, RefreshCw, Search, SlidersHorizontal, Warehouse as WarehouseIcon, X } from 'lucide-vue-next';
 import AdminLayout from '../layouts/AdminLayout.vue';
-import OperationsNav from '../components/operations/OperationsNav.vue';
 import AppButton from '../components/base/AppButton.vue';
 import AppInput from '../components/base/AppInput.vue';
 import ConfirmDialog from '../components/base/ConfirmDialog.vue';
@@ -155,7 +154,6 @@ async function save() {
 <template>
   <AdminLayout title="Inventario">
     <div class="mx-auto max-w-7xl space-y-5">
-      <OperationsNav />
       <header class="flex flex-wrap items-start justify-between gap-4">
         <div><h1 class="page-title">Inventario</h1><p class="page-subtitle">Consulte existencias, encuentre productos y revise sus movimientos.</p></div>
         <div class="flex items-center gap-2">

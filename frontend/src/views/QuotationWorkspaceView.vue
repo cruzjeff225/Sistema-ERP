@@ -3,7 +3,6 @@ import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { Building2, CalendarDays, ChevronLeft, ChevronRight, FileText, Search, ShoppingCart, Tag, Trash2, ArrowRight, Check } from 'lucide-vue-next';
 import AdminLayout from '../layouts/AdminLayout.vue';
-import PurchasesNav from '../components/purchases/PurchasesNav.vue';
 import PageHeader from '../components/base/PageHeader.vue';
 import PurchaseTabs from '../components/purchases/PurchaseTabs.vue';
 import TrashButton from '../components/admin/TrashButton.vue';
@@ -274,7 +273,6 @@ onBeforeUnmount(() => { mounted = false; ++companyEpoch; ++loadVersion; ++openVe
 <template>
   <AdminLayout title="Gestionar cotizaciones">
     <div class="mx-auto max-w-[1440px] space-y-6">
-      <PurchasesNav />
       <PageHeader :title="offer ? 'Registrar oferta' : 'Cotizaciones'" :description="offer ? 'Complete la respuesta del proveedor para poder compararla.' : 'Reúna solicitudes, consulte a los proveedores y compare sus ofertas en un mismo lugar.'">
         <template #actions>
           <template v-if="!offer">

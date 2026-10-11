@@ -18,7 +18,6 @@ import {
   X,
 } from "lucide-vue-next";
 import AdminLayout from "../layouts/AdminLayout.vue";
-import OperationsNav from '../components/operations/OperationsNav.vue';
 import AppBadge from "../components/base/AppBadge.vue";
 import TrashButton from "../components/admin/TrashButton.vue";
 import AppButton from "../components/base/AppButton.vue";
@@ -433,7 +432,6 @@ onMounted(async () => {
 
 <template>
   <AdminLayout :title="`Organización · ${activeConfig.label}`">
-    <OperationsNav />
     <div class="mb-7 flex flex-wrap items-end justify-between gap-4">
       <div><p v-if="activeLevel === 'locations'" class="section-eyebrow">Estructura de almacenamiento</p><h1 class="page-title" :class="activeLevel === 'locations' && 'mt-1'">{{ activeConfig.label }}</h1><p v-if="activeLevel === 'locations'" class="mt-2 text-sm text-muted-fg">Organiza cada almacén por pasillo, estante, nivel y posición.</p></div>
       <div class="flex gap-2">

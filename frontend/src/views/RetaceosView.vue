@@ -5,7 +5,6 @@ import { RouterLink, useRoute, useRouter } from "vue-router";
 import ExpenseTypesManager from '../components/purchases/ExpenseTypesManager.vue';
 import ConfirmDialog from "../components/base/ConfirmDialog.vue";
 import AdminLayout from "../layouts/AdminLayout.vue";
-import PurchasesNav from "../components/purchases/PurchasesNav.vue";
 import PageHeader from "../components/base/PageHeader.vue";
 import PurchaseTabs from "../components/purchases/PurchaseTabs.vue";
 import AppBadge from "../components/base/AppBadge.vue";
@@ -367,7 +366,6 @@ onMounted(load);
 <template>
   <AdminLayout title="Retaceo">
     <div class="mx-auto max-w-[1440px] space-y-6">
-    <PurchasesNav />
     <PageHeader title="Retaceo y costos" description="Distribuye los gastos de cada recepción y confirma el costo de sus productos.">
       <template #actions>
         <AppButton v-if="can('expense_types.view')" variant="outline" :disabled="saving || drawerOpen" @click="expenseSettingsOpen = true"><Settings2 class="h-4 w-4" />Configurar gastos</AppButton>

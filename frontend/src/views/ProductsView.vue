@@ -19,13 +19,14 @@ import {
   X,
 } from "lucide-vue-next";
 import AdminLayout from "../layouts/AdminLayout.vue";
-import OperationsNav from '../components/operations/OperationsNav.vue';
 import AppBadge from "../components/base/AppBadge.vue";
 import TrashButton from "../components/admin/TrashButton.vue";
 import AppButton from "../components/base/AppButton.vue";
 import ConfirmDialog from "../components/base/ConfirmDialog.vue";
 import AppInput from "../components/base/AppInput.vue";
+import { useRoute, useRouter } from "vue-router";
 import { usePermissions } from "../composables/usePermissions";
+import { consumeCreateIntent } from "../composables/useCreateIntent";
 import { http } from "../services/http.service";
 import { getApiErrorMessage } from "../utils/api-error";
 
@@ -72,6 +73,7 @@ type CatalogKind = "category" | "subcategory" | "unit";
 type Tab = "products" | "categories" | "subcategories" | "units";
 
 const { can, canAny } = usePermissions();
+const route = useRoute(), router = useRouter();
 const activeTab = ref<Tab>("products");
 const editor = ref<Editor>(null);
 const catalogKind = ref<CatalogKind>("category");
@@ -561,12 +563,16 @@ function closeEditor() {
   imageInputKey.value += 1;
 }
 
-onMounted(load);
+onMounted(async () => {
+  // Quick access ("Nuevo producto") lands here with ?new=1.
+  const wantsNew = consumeCreateIntent(route.query, router);
+  await load();
+  if (wantsNew && can("products.create")) openProduct();
+});
 </script>
 
 <template>
   <AdminLayout title="Productos">
-    <OperationsNav />
     <div class="mb-6 flex flex-wrap items-end justify-between gap-4">
       <div><p class="text-sm font-medium text-accent">Catálogo comercial</p><h1 class="page-title mt-1">Productos</h1><p class="page-subtitle">Clasificación, presentación y abastecimiento de cada artículo.</p></div>
       <div class="flex gap-2"><AppButton variant="outline" :disabled="loading" title="Actualizar" @click="load"><RefreshCw class="h-4 w-4" :class="loading && 'animate-spin'" /><span class="hidden sm:inline">Actualizar</span></AppButton><AppButton v-if="can('products.create')" @click="openProduct"><Plus class="h-4 w-4" />Producto</AppButton></div>

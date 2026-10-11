@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onBeforeUnmount, ref } from 'vue';
 import { RouterLink } from 'vue-router';
-import { ArrowUpRight, ClipboardCheck, Package, Building2, Sun, Moon } from 'lucide-vue-next';
+import { ArrowUpRight, ClipboardCheck, Package, Building2, Sun, Moon, FilePlus2, ListChecks, PackageCheck, SlidersHorizontal, UserPlus, PackagePlus } from 'lucide-vue-next';
 import AdminLayout from '../layouts/AdminLayout.vue';
 import { usePermissions } from '../composables/usePermissions';
 import { purchasingPermissions, purchasingRoute } from '../config/purchasing.config';
@@ -20,6 +20,15 @@ const destinations = computed(() => [
  { name: 'Inventario', detail: 'Cada recurso, en su lugar.', icon: Package, route: can('inventory.view') ? '/inventory' : null },
  { name: 'Organización', detail: 'El equipo y sus espacios.', icon: Building2, route: can('companies.view') ? '/organization' : can('branches.view') ? '/organization/branches' : null },
 ].filter(d => d.route));
+// The tasks done most often, one click away; each one only appears when the user's permissions allow it.
+const quickActions = computed(() => [
+ { name: 'Nueva solicitud de compra', icon: FilePlus2, route: '/purchases/requests?new=1', allowed: can('purchase_requests.create') },
+ { name: 'Seguimiento de compras', icon: ListChecks, route: '/purchases/tracking', allowed: can('purchases.view') },
+ { name: 'Registrar recepción', icon: PackageCheck, route: '/purchases/receipts', allowed: can('purchases.create') },
+ { name: 'Ajustar inventario', icon: SlidersHorizontal, route: '/inventory', allowed: can('inventory.adjust') },
+ { name: 'Nuevo producto', icon: PackagePlus, route: '/products?new=1', allowed: can('products.create') },
+ { name: 'Nuevo cliente', icon: UserPlus, route: '/sales/customers?new=1', allowed: can('customers.create') },
+].filter(action => action.allowed));
 </script>
 <template>
  <AdminLayout title="Inicio">
@@ -55,7 +64,15 @@ const destinations = computed(() => [
      <div class="destination-bottom"><div><h2>{{ destination.name }}</h2><p>{{ destination.detail }}</p></div><span v-if="destination.name !== 'Gestionar compras'" class="destination-number">0{{ index + 1 }}</span></div>
     </RouterLink>
    </section>
-
+   <section v-if="quickActions.length" class="quick-actions" aria-labelledby="quick-actions-title">
+    <h2 id="quick-actions-title" class="quick-actions-title">Accesos rápidos</h2>
+    <div class="quick-actions-grid">
+     <RouterLink v-for="action in quickActions" :key="action.name" :to="action.route" class="quick-action">
+      <span class="quick-action-icon"><component :is="action.icon" :size="18" :stroke-width="1.6" aria-hidden="true" /></span>
+      <span class="quick-action-name">{{ action.name }}</span>
+     </RouterLink>
+    </div>
+   </section>
   </div>
  </AdminLayout>
 </template>
@@ -120,5 +137,14 @@ h1 { margin:32px 0 22px; font-size:clamp(36px,4vw,60px); line-height:1.09; lette
 :global(.dark) .destination-number, :global(.dark) .destination-arrow { opacity:1; }
 @media (max-width:900px) { .welcome-copy { padding:40px 0 85px 32px; } .welcome-hero { min-height:430px; } .welcome-art { padding-right:8px; } }
 @media (max-width:600px) { .welcome-meta { align-items:flex-start; font-size:11px; } .welcome-date { text-align:right; } .welcome-hero { grid-template-columns:1fr; } .welcome-copy { padding:32px 28px 0; } h1 { margin:24px 0 18px; font-size:40px; } .welcome-description { font-size:15px; } .welcome-clock { margin-top:24px; } .welcome-art { width:85%; max-width:360px; justify-self:center; margin-top:0; padding:0 0 85px; } .art-caption { display:none; } .hero-footer { margin:0 24px; padding:18px 0; } .hero-edition { display:none; } .welcome-destinations { grid-template-columns:1fr; gap:10px; } .destination { padding:20px; } .destination-bottom { margin-top:16px; } .welcome-footer { font-size:9px; } }
+.quick-actions { margin-top:28px; }
+.quick-actions-title { margin:0 0 12px 4px; font-size:13px; font-weight:600; color:hsl(var(--muted-fg)); }
+.quick-actions-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:12px; }
+.quick-action { display:flex; align-items:center; gap:12px; border:1px solid hsl(var(--border) / .65); border-radius:12px; background:hsl(var(--surface)); padding:12px 14px; color:hsl(var(--fg)); font-size:14px; font-weight:500; transition:border-color .2s,background-color .2s; }
+.quick-action:hover { border-color:hsl(var(--accent) / .5); background:hsl(var(--accent-soft)); }
+.quick-action-icon { display:grid; place-items:center; width:34px; height:34px; flex:none; border-radius:9px; background:hsl(var(--accent-soft)); color:hsl(var(--accent)); }
+:global(.dark) .quick-action { background:#222b37; border-color:#4c596b; }
+:global(.dark) .quick-action:hover { background:#293443; border-color:#ff8b8e; }
+@media (prefers-reduced-motion:reduce) { .quick-action { transition:none; } }
 @media (prefers-reduced-motion:reduce) { .destination { transition:none; } .destination:hover { transform:none; } }
 </style>

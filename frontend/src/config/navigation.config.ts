@@ -42,6 +42,38 @@ export function activeSectionRoute(sections: readonly NavigationSection[] | unde
   return hits.sort((a, b) => b.route.length - a.route.length)[0]?.route ?? null;
 }
 
+/** Whether a menu entry (or one of its pages and inner screens) is where the user is. */
+export function isItemActive(item: NavigationItem, path: string): boolean {
+  return item.route === path
+    || Boolean(item.activeRoutes?.includes(path))
+    || Boolean(item.activePrefixes?.some(prefix => path.startsWith(prefix)))
+    || Boolean(activeSectionRoute(item.sections, path));
+}
+
+export interface Breadcrumb {
+  label: string;
+  /** The last crumb is the screen itself and is not a link. */
+  route?: string;
+}
+
+/** Where the user is: module › page › the document or screen being viewed. */
+export function breadcrumbsFor(path: string, pageTitle: string): Breadcrumb[] {
+  const item = navigationGroups.flatMap(group => group.items).find(entry => isItemActive(entry, path));
+  // Titles of settings screens read "Configuración · Roles"; the crumb already says where.
+  const title = pageTitle.split('·').pop()!.trim();
+  if (!item || item.route === path) return [{ label: item?.label ?? title }];
+  const crumbs: Breadcrumb[] = [{ label: item.label, route: item.route }];
+  const sectionRoute = activeSectionRoute(item.sections, path);
+  const section = item.sections?.find(entry => entry.route === sectionRoute);
+  if (section) crumbs.push({ label: section.label, route: section.route });
+  const known = crumbs.map(crumb => crumb.label.toLocaleLowerCase('es'));
+  const same = (label: string) => label.includes(title.toLocaleLowerCase('es')) || title.toLocaleLowerCase('es').includes(label);
+  if (title && !known.some(same)) crumbs.push({ label: title });
+  const last = crumbs[crumbs.length - 1];
+  if (last.route === path) delete last.route;
+  return crumbs;
+}
+
 export interface NavigationGroup {
   label: string;
   items: NavigationItem[];

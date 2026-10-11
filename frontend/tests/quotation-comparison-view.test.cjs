@@ -92,7 +92,7 @@ async function html(state) {
   // The page layout is a binding of the template (it is picked dynamically), not a globally registered component.
   const app = vue.createSSRApp(vue.defineComponent({ setup: () => ({ ...state, embedded: false, AdminLayout: slot('main') }), ssrRender: renderExports.ssrRender }));
   app.config.warnHandler = message => { throw Error(message); };
-  app.component('AdminLayout', slot('main')); app.component('PurchasesNav', slot('nav'));
+  app.component('AdminLayout', slot('main'));
   app.component('PageHeader', vue.defineComponent({ props: ['title','description'], setup: (p,{slots}) => () => vue.h('header', [vue.h('h1',p.title),vue.h('p',p.description),slots.actions?.()]) }));
   app.component('PurchaseTabs', vue.defineComponent({ props: ['items'], setup: p => () => vue.h('div', p.items.map(item => vue.h('span',item.label))) }));
   app.component('AppButton', vue.defineComponent({ props: ['disabled','type'], setup: (p,{slots}) => () => vue.h('button',{disabled:p.disabled,type:p.type||'button'},slots.default?.()) }));

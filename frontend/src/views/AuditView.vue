@@ -2,7 +2,6 @@
 import { onMounted, reactive, ref } from "vue";
 import { Download, Eye, RefreshCw, Search, SlidersHorizontal, X } from "lucide-vue-next";
 import AdminLayout from "../layouts/AdminLayout.vue";
-import AdministrationNav from "../components/admin/AdministrationNav.vue";
 import AppBadge from "../components/base/AppBadge.vue";
 import AppButton from "../components/base/AppButton.vue";
 import { http } from "../services/http.service";
@@ -88,7 +87,6 @@ onMounted(async () => {
 
 <template>
   <AdminLayout title="Configuración · Bitácora">
-    <AdministrationNav section="audit" />
     <div class="mb-6 flex flex-wrap items-end justify-between gap-4">
       <div>
         <AppBadge>Solo lectura</AppBadge>

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { activeSectionRoute, navigationGroups } from '../src/config/navigation.config';
+import { activeSectionRoute, breadcrumbsFor, navigationGroups } from '../src/config/navigation.config';
 
 const item = (label: string) => navigationGroups.flatMap(group => group.items).find(entry => entry.label === label)!;
 
@@ -30,4 +30,15 @@ test('se resalta la página más específica y sigue resaltada en sus pantallas 
   assert.equal(activeSectionRoute(operations, '/organization/branches'), '/organization/branches');
   assert.equal(activeSectionRoute(purchases, '/dashboard'), null);
   assert.equal(activeSectionRoute(undefined, '/purchases'), null);
+});
+
+test('la ruta de navegación dice dónde está el usuario sin repetir el título', () => {
+  assert.deepEqual(breadcrumbsFor('/dashboard', 'Inicio'), [{ label: 'Inicio' }]);
+  assert.deepEqual(breadcrumbsFor('/purchases', 'Compras'), [{ label: 'Compras' }]);
+  assert.deepEqual(breadcrumbsFor('/purchases/orders', 'Órdenes de compra'), [{ label: 'Compras', route: '/purchases' }, { label: 'Órdenes de compra' }]);
+  assert.deepEqual(breadcrumbsFor('/purchases/requests/24', 'Solicitud REQ-24'), [
+    { label: 'Compras', route: '/purchases' }, { label: 'Solicitudes', route: '/purchases/requests' }, { label: 'Solicitud REQ-24' },
+  ]);
+  assert.deepEqual(breadcrumbsFor('/administration/settings/roles', 'Configuración · Roles').map(crumb => crumb.label), ['Configuración', 'Roles y accesos']);
+  assert.deepEqual(breadcrumbsFor('/account/security', 'Seguridad de mi cuenta'), [{ label: 'Seguridad de mi cuenta' }]);
 });

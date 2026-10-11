@@ -2,14 +2,15 @@
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { ChevronLeft, ChevronRight, Mail, MapPin, Pencil, Phone, Plus, Power, RefreshCw, Search, UserRound, X } from 'lucide-vue-next';
 import AdminLayout from '../layouts/AdminLayout.vue';
-import SalesNav from '../components/sales/SalesNav.vue';
 import AppBadge from '../components/base/AppBadge.vue';
 import AppButton from '../components/base/AppButton.vue';
 import AppInput from '../components/base/AppInput.vue';
 import ConfirmDialog from '../components/base/ConfirmDialog.vue';
 import TrashButton from '../components/admin/TrashButton.vue';
 import NationalLocationFields from '../components/forms/NationalLocationFields.vue';
+import { useRoute, useRouter } from 'vue-router';
 import { usePermissions } from '../composables/usePermissions';
+import { consumeCreateIntent } from '../composables/useCreateIntent';
 import { useUnsavedChanges } from '../composables/useUnsavedChanges';
 import { activeCompanyId } from '../services/company-context';
 import { http } from '../services/http.service';
@@ -25,11 +26,15 @@ type Customer = {
 };
 type CompanyContext = { companyId: number; epoch: number };
 const { can } = usePermissions();
+const route = useRoute(), router = useRouter();
 let mounted = true, epoch = 0, loadVersion = 0, mutationVersion = 0;
 const customers = ref<Customer[]>([]), countries = ref<Country[]>([]), geography = ref<Geography>({ departments: [] });
 const selected = ref<Customer | null>(null);
 const meta = ref({ total: 0, page: 1, totalPages: 0 });
 const loading = ref(false), saving = ref(false), editorOpen = ref(false), editingId = ref<number | null>(null);
+// Quick access ("Nuevo cliente") lands here with ?new=1: open the form as soon as the directory has loaded.
+let openWhenLoaded = consumeCreateIntent(route.query, router);
+watch(loading, isLoading => { if (!isLoading && openWhenLoaded) { openWhenLoaded = false; void openEditor(); } });
 const search = ref(''), appliedSearch = ref(''), status = ref<'active' | 'all' | 'inactive'>('active');
 const statusFilters = [{ value: 'active', label: 'Activos' }, { value: 'all', label: 'Todos' }, { value: 'inactive', label: 'Inactivos' }] as const;
 const errorMessage = ref(''), formError = ref(''), successMessage = ref('');
@@ -150,7 +155,6 @@ onBeforeUnmount(() => { mounted = false; ++epoch; ++loadVersion; ++mutationVersi
 <template>
   <AdminLayout title="Clientes">
     <div class="mx-auto max-w-[1440px] space-y-6">
-      <SalesNav />
       <header class="flex flex-wrap items-end justify-between gap-4">
         <div><h1 class="text-3xl font-semibold tracking-tight">Clientes</h1><p class="mt-2 text-sm leading-6 text-muted-fg">Encuentra a tu cliente y mantén sus datos al día.</p></div>
         <div class="flex flex-wrap gap-2"><AppButton variant="outline" :disabled="loading || saving || editorOpen" @click="load()"><RefreshCw class="h-4 w-4" :class="loading && 'animate-spin'" />Actualizar</AppButton><AppButton v-if="can('customers.create')" :disabled="loading || saving || editorOpen" @click="openEditor()"><Plus class="h-4 w-4" />Nuevo cliente</AppButton></div>

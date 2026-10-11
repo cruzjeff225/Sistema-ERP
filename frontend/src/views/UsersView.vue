@@ -3,7 +3,6 @@ import { computed, onMounted, reactive, ref, watch } from "vue";
 import { Edit2, KeyRound, LockOpen, Plus, Power, RefreshCw, Save, Search, UserRound, X } from "lucide-vue-next";
 import { useRouter } from "vue-router";
 import AdminLayout from "../layouts/AdminLayout.vue";
-import AdministrationNav from "../components/admin/AdministrationNav.vue";
 import AppBadge from "../components/base/AppBadge.vue";
 import TrashButton from "../components/admin/TrashButton.vue";
 import AppButton from "../components/base/AppButton.vue";
@@ -417,7 +416,6 @@ onMounted(loadAll);
 
 <template>
   <AdminLayout title="Configuración · Usuarios">
-    <AdministrationNav section="users" />
     <div class="mb-6 flex flex-wrap items-end justify-between gap-4">
       <div>
         <h1 class="page-title">Usuarios</h1>

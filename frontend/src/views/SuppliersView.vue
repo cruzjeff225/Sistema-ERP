@@ -3,7 +3,6 @@ import { computed, onBeforeUnmount, reactive, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { Building2, History, Mail, Pencil, Phone, Plus, Power, ReceiptText, RefreshCw, Search, Star, X } from "lucide-vue-next";
 import AdminLayout from "../layouts/AdminLayout.vue";
-import PurchasesNav from "../components/purchases/PurchasesNav.vue";
 import AppBadge from "../components/base/AppBadge.vue";
 import TrashButton from "../components/admin/TrashButton.vue";
 import AppButton from "../components/base/AppButton.vue";
@@ -412,7 +411,6 @@ onBeforeUnmount(() => {
 
 <template>
   <AdminLayout title="Proveedores">
-    <PurchasesNav />
     <div class="mb-7 flex flex-wrap items-end justify-between gap-4">
       <div><p class="section-eyebrow">Abastecimiento</p><h1 class="page-title mt-1">Proveedores</h1><p class="page-subtitle">{{ activeCompany ? `Contactos y abastecimiento de ${activeCompany.commercialName}.` : "Directorio comercial y personas de contacto." }}</p></div>
       <div class="flex gap-2"><AppButton variant="outline" :disabled="loading" title="Actualizar" @click="load"><RefreshCw class="h-4 w-4" :class="loading && 'animate-spin'" /><span class="hidden sm:inline">Actualizar</span></AppButton><AppButton v-if="can('suppliers.create')" :disabled="loading || saving" @click="newSupplier"><Plus class="h-4 w-4" />Nuevo proveedor</AppButton></div>

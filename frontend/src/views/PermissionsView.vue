@@ -2,7 +2,6 @@
 import { computed, onMounted, reactive, ref } from "vue";
 import { Edit2, KeyRound, Plus, Power, RefreshCw, Save, Search, Trash2, X } from "lucide-vue-next";
 import AdminLayout from "../layouts/AdminLayout.vue";
-import AdministrationNav from "../components/admin/AdministrationNav.vue";
 import AppBadge from "../components/base/AppBadge.vue";
 import AppButton from "../components/base/AppButton.vue";
 import ConfirmDialog from "../components/base/ConfirmDialog.vue";
@@ -156,7 +155,6 @@ onMounted(loadAll);
 
 <template>
   <AdminLayout title="Configuración · Permisos">
-    <AdministrationNav section="permissions" />
     <div class="mb-6 flex flex-wrap items-end justify-between gap-4"><div><h1 class="page-title">Permisos</h1><p class="page-subtitle">Catalogo de acciones disponibles, organizado por modulo.</p></div><div class="flex gap-2"><AppButton variant="outline" :disabled="loading" title="Actualizar" @click="loadAll"><RefreshCw class="h-4 w-4" :class="loading && 'animate-spin'" /><span class="hidden sm:inline">Actualizar</span></AppButton><AppButton v-if="canCreatePermissions" @click="openCreate"><Plus class="h-4 w-4" />Nuevo permiso</AppButton></div></div>
     <p v-if="errorMessage" class="mb-4 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">{{ errorMessage }}</p><p v-if="successMessage" class="mb-4 rounded-lg border border-success/30 bg-success/10 px-3 py-2 text-sm text-success">{{ successMessage }}</p>
 
