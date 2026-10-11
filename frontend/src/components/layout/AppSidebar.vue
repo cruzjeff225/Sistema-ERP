@@ -3,7 +3,7 @@ import BrandLogo from '../base/BrandLogo.vue';
 import { computed, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ChevronDown, LogOut, Settings2, X } from "lucide-vue-next";
-import { navigationGroups } from "../../config/navigation.config";
+import { activeSectionRoute, navigationGroups } from "../../config/navigation.config";
 import { usePermissions } from "../../composables/usePermissions";
 import { useAuthStore } from "../../stores/auth.store";
 import { activeCompanyId } from "../../services/company-context";
@@ -18,7 +18,7 @@ defineProps<{ open: boolean }>();
 const emit = defineEmits<{ close: [] }>();
 const expanded = ref<Record<string, boolean>>({});
 const company = computed(() => authStore.user?.companies?.find(item => item.id === activeCompanyId.value)?.commercialName ?? "Apex Roofing");
-const isActive = (item: NavigationItem) => item.route === route.path || Boolean(item.activeRoutes?.includes(route.path)) || Boolean(item.activePrefixes?.some(prefix => route.path.startsWith(prefix))) || Boolean(item.sections?.some(section => section.route === route.path));
+const isActive = (item: NavigationItem) => item.route === route.path || Boolean(item.activeRoutes?.includes(route.path)) || Boolean(item.activePrefixes?.some(prefix => route.path.startsWith(prefix))) || Boolean(activeSectionRoute(item.sections, route.path));
 const isExpanded = (item: NavigationItem) => expanded.value[item.route] ?? isActive(item);
 watch(() => route.path, () => { expanded.value = {}; });
 
@@ -27,8 +27,7 @@ const visibleGroups = computed(() =>
     .map((group) => ({
       ...group,
       items: group.items.map(item => ({ ...item, sections: item.sections?.filter(section => can(section.permission)) }))
-        .filter(item => item.permissionsAny ? canAny([...item.permissionsAny]) : item.permission === null || can(item.permission) || item.sections?.length)
-        .map(item => ({ ...item, route: item.sections?.[0]?.route ?? item.route })),
+        .filter(item => item.permissionsAny ? canAny([...item.permissionsAny]) : item.permission === null || can(item.permission) || item.sections?.length),
     }))
     .filter((group) => group.items.length > 0),
 );
@@ -89,7 +88,7 @@ async function handleLogout() {
           </button>
           </div>
           <div v-if="item.sections?.length" v-show="isExpanded(item)" :id="`sections-${item.route.split('/').pop()}`" class="mb-2 ml-[21px] mt-1 space-y-0.5 border-l border-border pl-3">
-            <RouterLink v-for="section in item.sections" :key="section.route" :to="section.route" class="flex min-h-9 items-center rounded-md px-2.5 py-1.5 text-xs leading-5 text-muted-fg transition-colors hover:bg-surface-secondary hover:text-fg" exact-active-class="!text-sidebar-active-fg !bg-sidebar-active font-semibold" @click="emit('close')">{{ section.label }}</RouterLink>
+            <RouterLink v-for="section in item.sections" :key="section.route" :to="section.route" class="flex min-h-9 items-center rounded-md px-2.5 py-1.5 text-xs leading-5 text-muted-fg transition-colors hover:bg-surface-secondary hover:text-fg" :class="activeSectionRoute(item.sections, route.path) === section.route ? '!bg-sidebar-active !font-semibold !text-sidebar-active-fg' : ''" :aria-current="activeSectionRoute(item.sections, route.path) === section.route ? 'page' : undefined" @click="emit('close')">{{ section.label }}</RouterLink>
           </div>
          </div>
         </div>
