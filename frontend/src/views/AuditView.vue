@@ -2,6 +2,7 @@
 import { onMounted, reactive, ref } from "vue";
 import { Download, Eye, RefreshCw, Search, SlidersHorizontal, X } from "lucide-vue-next";
 import AdminLayout from "../layouts/AdminLayout.vue";
+import AppDrawer from "../components/base/AppDrawer.vue";
 import EmptyState from "../components/base/EmptyState.vue";
 import AppBadge from "../components/base/AppBadge.vue";
 import AppButton from "../components/base/AppButton.vue";
@@ -125,11 +126,9 @@ onMounted(async () => {
       <div class="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3 text-sm text-muted-fg"><span>{{ meta.total }} eventos</span><div class="flex items-center gap-2"><AppButton variant="outline" :disabled="meta.page <= 1" @click="load(meta.page - 1)">Anterior</AppButton><span>{{ meta.page }} / {{ Math.max(meta.totalPages, 1) }}</span><AppButton variant="outline" :disabled="meta.page >= meta.totalPages" @click="load(meta.page + 1)">Siguiente</AppButton></div></div>
     </div>
 
-    <div v-if="selected" class="fixed inset-0 z-50 flex justify-end bg-black/35" @click.self="selected = null">
-      <aside class="h-full w-full max-w-2xl overflow-y-auto bg-surface p-6 shadow-xl">
+    <AppDrawer v-if="selected" label="Detalle del evento" padded @close="selected = null">
         <div class="flex items-start justify-between"><div><AppBadge>{{ selected.action }}</AppBadge><h2 class="mt-3 text-xl font-semibold text-fg">{{ selected.controller }} #{{ selected.recordId }}</h2><p class="text-sm text-muted-fg">{{ formatDate(selected.createdAt) }} por {{ selected.user?.username ?? 'Sistema' }}</p></div><button class="grid h-9 w-9 place-items-center rounded-lg hover:bg-surface-secondary" title="Cerrar" @click="selected = null"><X class="h-5 w-5" /></button></div>
         <div class="mt-6 grid gap-4"><section><h3 class="mb-2 text-sm font-semibold text-fg">Informacion anterior</h3><pre class="max-h-72 overflow-auto rounded-lg border border-border bg-surface-secondary p-4 text-xs text-fg">{{ pretty(selected.originalData) }}</pre></section><section><h3 class="mb-2 text-sm font-semibold text-fg">Informacion modificada</h3><pre class="max-h-72 overflow-auto rounded-lg border border-border bg-surface-secondary p-4 text-xs text-fg">{{ pretty(selected.modifiedData) }}</pre></section></div>
-      </aside>
-    </div>
+      </AppDrawer>
   </AdminLayout>
 </template>

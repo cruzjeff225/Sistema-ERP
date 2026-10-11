@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref, watch } from "vue";
 import { Edit2, KeyRound, LockOpen, Plus, Power, RefreshCw, Save, Search, UserRound, X } from "lucide-vue-next";
 import { useRouter } from "vue-router";
 import AdminLayout from "../layouts/AdminLayout.vue";
+import AppDrawer from "../components/base/AppDrawer.vue";
 import EmptyState from "../components/base/EmptyState.vue";
 import AppBadge from "../components/base/AppBadge.vue";
 import TrashButton from "../components/admin/TrashButton.vue";
@@ -495,8 +496,7 @@ onMounted(loadAll);
       <div class="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3 text-sm text-muted-fg"><span>{{ userMeta.total }} usuarios</span><div class="flex items-center gap-2"><AppButton variant="outline" :disabled="userMeta.page <= 1 || loading" @click="loadAll(userMeta.page - 1)">Anterior</AppButton><span>{{ userMeta.page }} / {{ Math.max(userMeta.totalPages, 1) }}</span><AppButton variant="outline" :disabled="userMeta.page >= userMeta.totalPages || loading" @click="loadAll(userMeta.page + 1)">Siguiente</AppButton></div></div>
     </section>
 
-    <div v-if="editorOpen" class="fixed inset-0 z-50 flex justify-end bg-black/35 backdrop-blur-[2px]" @click.self="closeEditor">
-      <aside class="flex h-full w-full max-w-xl flex-col bg-surface shadow-2xl">
+    <AppDrawer v-if="editorOpen" label="Usuario" size="sm" @close="closeEditor">
         <header class="flex items-start justify-between border-b border-border px-5 py-4 sm:px-6">
           <div><p class="text-sm font-medium text-accent">{{ isEditing ? "Editar acceso" : "Nuevo acceso" }}</p><h2 class="mt-1 text-xl font-semibold text-fg">{{ isEditing ? form.employeeName : "Registrar usuario" }}</h2><p class="mt-1 text-sm text-muted-fg">Datos de la persona y permisos de entrada.</p></div>
           <button type="button" class="grid h-9 w-9 place-items-center rounded-lg text-muted-fg hover:bg-surface-secondary" title="Cerrar" @click="closeEditor"><X class="h-5 w-5" /></button>
@@ -563,8 +563,7 @@ onMounted(loadAll);
             <AppButton type="submit" :disabled="saving"><Save class="h-4 w-4" />{{ saving ? "Guardando..." : "Guardar usuario" }}</AppButton>
           </footer>
         </form>
-      </aside>
-    </div>
+      </AppDrawer>
 
     <div v-if="passwordEditorOpen" class="fixed inset-0 z-[60] flex items-center justify-center bg-black/35 p-4" @click.self="closePasswordEditor">
       <form class="w-full max-w-lg rounded-lg border border-border bg-surface p-5 shadow-2xl" novalidate @submit.prevent="changePassword">

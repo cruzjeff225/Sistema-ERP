@@ -116,7 +116,7 @@ onMounted(() => void load());
             </div>
             <p v-if="!locations.length" class="mt-4 text-sm text-muted-fg">La recepción quedará pendiente de ubicación hasta registrar un espacio.</p>
           </div>
-          <label class="block text-sm font-medium text-fg">Observaciones de recepción<textarea v-model="form.notes" class="mt-1.5 min-h-20 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-fg" maxlength="2000" /></label>
+          <label class="block text-sm font-medium text-fg">Observaciones de recepción<textarea v-model="form.notes" class="field-control h-auto py-2 min-h-20" maxlength="2000" /></label>
           <div class="flex justify-end gap-2"><AppButton variant="outline" type="button" @click="emit('close')">Cancelar</AppButton><AppButton type="submit" :disabled="saving || !form.items.some(item => Number(item.quantity) > 0)">Revisar recepción</AppButton></div>
         </fieldset>
       </form>

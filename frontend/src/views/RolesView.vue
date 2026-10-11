@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { Copy, Edit2, Plus, Power, RefreshCw, Save, ShieldCheck, Trash2, X } from "lucide-vue-next";
 import AdminLayout from "../layouts/AdminLayout.vue";
+import AppDrawer from "../components/base/AppDrawer.vue";
 import EmptyState from "../components/base/EmptyState.vue";
 import SearchField from "../components/base/SearchField.vue";
 import AppBadge from "../components/base/AppBadge.vue";
@@ -326,8 +327,7 @@ onMounted(loadAll);
       </div>
     </section>
 
-    <div v-if="editorOpen" class="fixed inset-0 z-50 flex justify-end bg-black/35 backdrop-blur-[2px]" @click.self="closeEditor">
-      <aside class="flex h-full w-full max-w-2xl flex-col bg-surface shadow-2xl">
+    <AppDrawer v-if="editorOpen" label="Rol y accesos" @close="closeEditor">
         <header class="flex items-start justify-between border-b border-border px-5 py-4 sm:px-6"><div><p class="text-sm font-medium text-accent">{{ editingId ? "Configuración de acceso" : "Nuevo perfil" }}</p><h2 class="mt-1 text-xl font-semibold text-fg">{{ editingId ? form.name : "Crear rol" }}</h2><p class="mt-1 text-sm text-muted-fg">Los permisos se guardan junto con el rol.</p></div><button type="button" class="grid h-9 w-9 place-items-center rounded-lg text-muted-fg hover:bg-surface-secondary" title="Cerrar" :disabled="saving" @click="closeEditor"><X class="h-5 w-5" /></button></header>
         <form class="flex min-h-0 flex-1 flex-col" @submit.prevent="submitRole">
           <div class="scrollbar-thin flex-1 space-y-6 overflow-y-auto px-5 py-5 sm:px-6">
@@ -338,8 +338,7 @@ onMounted(loadAll);
           </div>
           <footer class="flex justify-end gap-2 border-t border-border px-5 py-4 sm:px-6"><AppButton variant="outline" type="button" :disabled="saving" @click="closeEditor">Cancelar</AppButton><AppButton type="submit" :disabled="saving"><Save class="h-4 w-4" />{{ saving ? "Guardando..." : "Guardar rol" }}</AppButton></footer>
         </form>
-      </aside>
-    </div>
+      </AppDrawer>
     <ConfirmDialog v-if="roleToRemove" title="Eliminar rol" :description="`Se enviará el rol ${roleToRemove.name} a la papelera. Podrá recuperarse desde Configuración / Papelera durante 30 días.`" confirm-label="Eliminar rol" destructive :busy="saving" @close="roleToRemove = null" @confirm="confirmRemoveRole" />
   </AdminLayout>
 </template>

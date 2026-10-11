@@ -17,6 +17,7 @@ import {
   X,
 } from "lucide-vue-next";
 import AdminLayout from "../layouts/AdminLayout.vue";
+import AppDrawer from "../components/base/AppDrawer.vue";
 import EmptyState from "../components/base/EmptyState.vue";
 import SearchField from "../components/base/SearchField.vue";
 import AppBadge from "../components/base/AppBadge.vue";
@@ -532,8 +533,7 @@ onMounted(async () => {
       </div>
     </section>
 
-    <div v-if="editorOpen" class="fixed inset-0 z-50 flex justify-end bg-black/35 backdrop-blur-[2px]" @click.self="closeEditor">
-      <aside role="dialog" aria-modal="true" aria-label="Registro de organización" @keydown.esc="closeEditor" class="flex h-full w-full max-w-2xl flex-col bg-surface shadow-2xl">
+    <AppDrawer v-if="editorOpen" label="Registro de organización" @close="closeEditor">
         <header class="flex items-start justify-between border-b border-border px-5 py-4 sm:px-6"><div><p class="text-sm font-medium text-accent">{{ editing[activeLevel] ? "Editar" : "Nuevo registro" }}</p><h2 class="mt-1 text-xl font-semibold text-fg">{{ editing[activeLevel] ? `Editar ${activeConfig.singular}` : activeLevel === 'locations' ? 'Nuevo espacio' : `Nueva ${activeConfig.singular}` }}</h2><p class="mt-1 text-sm text-muted-fg">{{ activeLevel === 'locations' ? 'Define un espacio dentro de su almacén.' : 'Completa los datos necesarios para continuar.' }}</p></div><button type="button" class="grid h-9 w-9 place-items-center rounded-lg text-muted-fg hover:bg-surface-secondary" title="Cerrar" @click="closeEditor"><X class="h-5 w-5" /></button></header>
         <form class="scrollbar-thin flex min-h-0 flex-1 flex-col" @submit.prevent="saveActive">
           <p v-if="errorMessage" role="alert" class="px-5 pt-4 text-sm text-danger">{{ errorMessage }}</p>
@@ -563,8 +563,7 @@ onMounted(async () => {
           </fieldset>
           <footer class="flex justify-end gap-2 border-t border-border px-5 py-4 sm:px-6"><AppButton variant="outline" type="button" :disabled="saving" @click="closeEditor">Cancelar</AppButton><AppButton type="submit" :disabled="saving"><Save class="h-4 w-4" />{{ saving ? "Guardando..." : "Guardar" }}</AppButton></footer>
         </form>
-      </aside>
-    </div>
+      </AppDrawer>
     <ConfirmDialog v-if="discardChanges" title="Descartar cambios" description="Los cambios del registro no se han guardado." @confirm="discardEditor" @close="discardChanges = false" />
     <ConfirmDialog v-if="leaving" title="Salir sin guardar" description="Los cambios de organización no se han guardado." @confirm="resolveLeave(true)" @close="resolveLeave(false)" />
     <ConfirmDialog v-if="statusChange" :title="statusChange.active ? 'Activar registro' : 'Desactivar registro'" :description="statusChange.name + '. Se conservará el historial. El servidor comprobará las restricciones de sus relaciones y existencias.'" :busy="saving" :error="errorMessage" @confirm="confirmStatusChange" @close="statusChange = null" />
