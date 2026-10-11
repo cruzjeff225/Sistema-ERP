@@ -6,7 +6,7 @@ const line = (o: Partial<TrackingSnapshot['lines'][number]> = {}) => { const row
 const base = (o: Partial<TrackingSnapshot> = {}): TrackingSnapshot => ({
   generalWarehouseConfigured: true,
   requests: [{ id: 3, code: 'PR-00003', status: 'in_procurement', requested: 100, dispatched: 0, delivered: 0 }],
-  consolidations: [{ id: 1, code: 'GC-1', reviewStatus: 'approved', quantitiesApproved: true }],
+  consolidations: [{ id: 1, code: 'GC-1' }],
   rfqs: [], quotations: [], orders: [], receipts: [], transfers: [], lines: [line()], ...o,
 });
 const order = (status: string, id = 2) => ({ id, code: `OC-0000${id}`, status, consolidationId: 1 });
@@ -28,15 +28,13 @@ test('solicitud enviada sin gestión: Compras debe reunirla en una gestión', ()
   assert.deepEqual(r.nextStep!.query, { requestId: '3' });
 });
 
-test('cantidades: Compras envía, Gerencia autoriza, Compras corrige si las devuelven', () => {
-  const draft = computeTracking(base({ consolidations: [{ id: 1, code: 'GC-1', reviewStatus: 'draft', quantitiesApproved: false }] }));
-  assert.equal(draft.nextStep?.owner, 'Compras'); assert.match(draft.nextStep!.label, /Enviar las cantidades a Gerencia/);
-  const pending = computeTracking(base({ consolidations: [{ id: 1, code: 'GC-1', reviewStatus: 'pending_review', quantitiesApproved: false }] }));
-  assert.equal(pending.nextStep?.owner, 'Gerencia'); assert.match(pending.nextStep!.label, /autorizar las cantidades/);
-  const returned = computeTracking(base({ consolidations: [{ id: 1, code: 'GC-1', reviewStatus: 'returned', quantitiesApproved: false }] }));
-  assert.equal(returned.nextStep?.owner, 'Compras'); assert.match(returned.nextStep!.label, /Corregir las cantidades/);
-  assert.equal(stage(pending, 'quotation').state, 'pending', 'no se cotiza antes de autorizar');
-  assert.equal(pending.stages.find(s => s.id === 'quantities')!.owner, 'Gerencia');
+test('gestión: Compras reúne las solicitudes y cotiza sin autorización de cantidades', () => {
+  const gathered = computeTracking(base());
+  assert.equal(stage(gathered, 'quantities').state, 'complete');
+  assert.equal(gathered.stages.find(s => s.id === 'quantities')!.owner, 'Compras');
+  assert.equal(gathered.stages.find(s => s.id === 'quantities')!.label, 'Gestión');
+  assert.equal(gathered.nextStep?.owner, 'Compras'); assert.match(gathered.nextStep!.label, /Preparar la solicitud de precios/);
+  assert.ok(!computeTracking(base()).blockers.some(b => /cantidades/i.test(b.label)));
 });
 
 test('cotización: preparar solicitud, registrar ofertas pendientes y comparar', () => {
@@ -45,7 +43,7 @@ test('cotización: preparar solicitud, registrar ofertas pendientes y comparar',
   assert.match(waiting.nextStep!.label, /Registrar la oferta de 1 proveedor/);
   assert.match(waiting.alsoAvailable[0].label, /Comparar ofertas/);
   const compare = computeTracking(base({ rfqs: [{ id: 1, consolidationId: 1, hasOffer: true }] }));
-  assert.equal(compare.nextStep?.route, '/purchases/comparison');
+  assert.equal(compare.nextStep?.route, '/purchases/quotations/manage'); assert.equal(compare.nextStep?.query?.tab, 'compare', 'la comparación es una pestaña del espacio de cotizaciones');
 });
 
 test('órdenes: Gerencia aprueba, Compras marca enviada, Bodega recibe', () => {
@@ -56,6 +54,7 @@ test('órdenes: Gerencia aprueba, Compras marca enviada, Bodega recibe', () => {
   assert.match(send.nextStep!.label, /Marcar la orden OC-00002 como enviada/);
   const receive = computeTracking(base({ orders: [order('sent')], lines }));
   assert.equal(receive.nextStep?.owner, 'Bodega'); assert.match(receive.nextStep!.label, /Registrar la recepción de la orden/);
+  assert.equal(receive.nextStep!.route, '/purchases/receipts', 'recibir es trabajo de Bodega: empieza en Recepciones'); assert.deepEqual(receive.nextStep!.query, { receiveOrder: '2' });
   assert.equal(stage(receive, 'order').state, 'complete');
 });
 
@@ -107,6 +106,7 @@ test('distribución y entrega a la sucursal hasta completar el proceso', () => {
   const transit = computeTracking(base({ orders: o, receipts: closedReceipt, lines: [line({ purchased: 120, received: 120, dispatched: 100 })],
     requests: [{ id: 3, code: 'PR-00003', status: 'partially_distributed', requested: 100, dispatched: 100, delivered: 0 }] }));
   assert.equal(transit.nextStep?.owner, 'Sucursal'); assert.match(transit.nextStep!.label, /Recibir en la sucursal/);
+  assert.match(transit.nextStep!.route, /^\/purchases\/requests\/\d+$/, 'la sucursal recibe dentro de su solicitud'); assert.deepEqual(transit.nextStep!.query, { tab: 'deliveries' });
   assert.equal(stage(transit, 'distribution').state, 'complete');
 
   const done = computeTracking(base({ orders: o, receipts: closedReceipt, lines: [line({ purchased: 120, received: 120, dispatched: 100, delivered: 100 })],
@@ -122,7 +122,7 @@ test('no se despacha lo que todavía no se ha recibido', () => {
   assert.ok(!r.alsoAvailable.some(s => s.stage === 'distribution'));
 });
 
-test('flujo histórico sin gestión: la etapa de cantidades se omite', () => {
+test('flujo histórico sin gestión: la etapa de gestión se omite', () => {
   const r = computeTracking(base({ consolidations: [], quotations: [{ id: 9, code: 'COT-9', status: 'selected' }], lines: [line({ decided: null })] }));
   assert.equal(stage(r, 'quantities').state, 'skipped');
   assert.match(r.nextStep!.label, /Crear la orden de compra desde COT-9/);

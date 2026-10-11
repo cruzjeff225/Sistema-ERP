@@ -184,7 +184,7 @@ async function main() {
     console.log("OK IVA de importación excluido y porcentajes dinámicos");
     await call("Verificar retaceo", `/retaceos/${retaceo.id}/verify`, headers, { method: "POST", body: "{}" }, 201);
     const closed = await call<any>("Cerrar retaceo y actualizar costo", `/retaceos/${retaceo.id}/close`, headers, { method: "POST", body: "{}" }, 201);
-    if (closed.status !== "closed" || closed.purchase.status !== "COSTED") throw new Error("El cierre no actualizó el retaceo y la compra.");
+    if (closed.status !== "closed" || !["COSTED", "CLOSED"].includes(closed.purchase.status)) throw new Error("El cierre no actualizó el retaceo y la compra.");
 
     const otherCompany = companies.find((candidate) => candidate.id !== company!.id);
     if (otherCompany) {

@@ -41,8 +41,6 @@ async function main() {
       let request = await purchases.createRequest({ branchId: general.branchId, warehouseId: general.id, purpose: 'resale', requiredDate: future, justification: key, details: products.map((product, index) => ({ productId: product.id, unitId: buyUnit.id, quantity: index + 2 })) }, actor.id, companyId);
       request = await purchases.submitRequest(request.id, actor.id, companyId);
       let process = await supply.create({ dateFrom: day, dateTo: day, requestIds: [request.id] }, companyId, actor.id);
-      process = await supply.reviewQuantities(process.id,'submit',{expectedRevision:process.quantityRevision},companyId,actor.id);
-      process = await supply.reviewQuantities(process.id,'approve',{expectedRevision:process.quantityRevision},companyId,actor.id);
       process = await supply.rfq(process.id, { supplierId: supplier.id, lineIds: process.lines.map(line => line.id) }, companyId, actor.id);
       const rfq = process.rfqs[0]!;
       const quotation = await purchases.createQuotation({ rfqId: rfq.id, supplierId: supplier.id, requestIds: [], quotationDate: day, validUntil: future, currency: 'USD', details: rfq.lines.map((line, index) => ({ productId: line.line.productId, unitId: buyUnit.id, quantity: Number(line.quantity), availableQuantity: Number(line.quantity), unitPrice: index ? 5 : 10, discount: index ? 0 : 1, taxRate: 13, sources: [] })) }, actor.id, companyId, user);

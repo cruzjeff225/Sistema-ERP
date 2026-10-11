@@ -20,7 +20,6 @@ import { purchaseTransaction } from "./purchase-transaction";
 import { InventoryService } from "../../../inventory/inventory.service";
 import { allocateLocation } from "../../../inventory/location-allocation";
 import { generalWarehouse } from './general-warehouse';
-import { assertQuantitiesApproved } from './quantity-review';
 import { projectOrderExpenses } from './order-expense-projection';
 import { AuthenticatedUser } from '../../../auth/presentation/decorators/current-user.decorator';
 import { withOrderReceiptLifecycle } from './receipt-lifecycle';
@@ -475,7 +474,6 @@ export class PurchasesService {
   async generateOrder(quotationId: number, dto: GeneratePurchaseOrderDto, userId: number, companyId: number, actor?: AuthenticatedUser, transaction?: Tx) {
     const work = async (tx: Tx) => {
       const quotation = await this.quotation(quotationId, companyId, tx);
-      if (quotation.rfq) assertQuantitiesApproved(quotation.rfq.consolidation);
       const activeOrder = quotation.rfq ? await tx.purchaseOrder.findFirst({ where: { companyId, consolidationId: quotation.rfq.consolidationId, supplierId: quotation.supplierId, status: { notIn: ['cancelled','rejected'] } }, include: orderInclude }) : null;
       if (activeOrder && (activeOrder.deletedAt || activeOrder.status !== 'draft' || activeOrder.quotationId !== quotation.id)) throw new ConflictException('Solo puede ampliar la misma orden en borrador; si está en la papelera, restáurela primero');
       if (quotation.expenses.length) this.assertExpensePermission(actor, 'create');
@@ -603,7 +601,6 @@ export class PurchasesService {
       if (!['draft','returned'].includes(current.status)) throw new ConflictException('Devuelva la orden a Compras antes de editarla; Gerencia solo aprueba o devuelve la compra final');
       if(current.purchases.length) throw new ConflictException('No se puede editar una orden con recepciones');
       const sourceQuote=await this.quotation(dto.quotationId??current.quotationId,companyId,tx);
-      if (sourceQuote.rfq) assertQuantitiesApproved(sourceQuote.rfq.consolidation);
       if(sourceQuote.rfq?.consolidationId!==current.consolidationId) throw new BadRequestException('La oferta debe pertenecer a la misma compra');
       if(dto.quotationId&&dto.quotationId!==current.quotationId&&!dto.details?.length) throw new BadRequestException('Seleccione los productos de la nueva oferta');
       if(await tx.purchaseOrder.count({where:{id:{not:id},companyId,consolidationId:current.consolidationId,supplierId:sourceQuote.supplierId,status:{notIn:['cancelled','rejected']}}})) throw new ConflictException('Ese proveedor ya tiene otra orden en esta compra');
@@ -934,7 +931,6 @@ export class PurchasesService {
   private async assertOrderReady(order:any,companyId:number,tx:Tx){
     await this.assertRequestDetails(order.details.map((line:any) => ({ productId: line.productId, unitId: line.unitId, quantity: Number(line.quantity) })), companyId, tx);
     const quote=await this.quotation(order.quotationId,companyId,tx);
-    if (quote.rfq) assertQuantitiesApproved(quote.rfq.consolidation);
     if (!['received','selected'].includes(quote.status)) throw new ConflictException('La oferta de origen ya no está disponible para compra');
     const confirmed=(order.comparisonSnapshot as any)?.commercialConfirmation;
     if(this.isExpired(quote.validUntil)&&!confirmed?.reason)throw new ConflictException('La oferta venció: actualice o confirme sus condiciones antes de enviar o aprobar');
@@ -967,7 +963,6 @@ export class PurchasesService {
     if (dto.rfqId) {
       const rfq = await db.purchaseRfq.findFirst({ where: { id: dto.rfqId, deletedAt: null, supplierId: dto.supplierId, consolidation: { companyId, deletedAt: null } }, include: { consolidation: true, lines: { include: { line: true } } } });
       if (!rfq) throw new BadRequestException('Solicitud de cotizacion ajena al proveedor o empresa');
-      assertQuantitiesApproved(rfq.consolidation);
       if (dto.requestIds.length || dto.details.some(line => line.sources.length)) throw new BadRequestException('El origen de la oferta se obtiene del consolidado');
       if (new Set(dto.details.map(l => l.productId)).size !== dto.details.length) throw new BadRequestException('No repita productos');
       for (const line of dto.details) {

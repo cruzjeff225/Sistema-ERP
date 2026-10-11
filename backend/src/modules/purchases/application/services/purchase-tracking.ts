@@ -20,7 +20,7 @@ export type TrackingLine = {
 export type TrackingSnapshot = {
   generalWarehouseConfigured: boolean;
   requests: { id: number; code: string; status: string; requested: number; dispatched: number; delivered: number }[];
-  consolidations: { id: number; code: string; reviewStatus: string; quantitiesApproved: boolean }[];
+  consolidations: { id: number; code: string }[];
   rfqs: { id: number; consolidationId: number; hasOffer: boolean }[];
   quotations: { id: number; code: string; status: string }[];
   orders: { id: number; code: string; status: string; consolidationId: number | null }[];
@@ -46,7 +46,7 @@ const EPS = 0.0001;
 
 const STAGE_META: Record<StageId, { label: string; owner: Owner }> = {
   requests: { label: 'Solicitudes', owner: 'Sucursal' },
-  quantities: { label: 'Cantidades', owner: 'Gerencia' },
+  quantities: { label: 'Gestión', owner: 'Compras' },
   quotation: { label: 'Cotización', owner: 'Compras' },
   order: { label: 'Orden', owner: 'Gerencia' },
   reception: { label: 'Recepción', owner: 'Bodega' },
@@ -82,7 +82,7 @@ export function computeTracking(snapshot: TrackingSnapshot): TrackingResult {
   }
   const requestsReady = out.requests.state === 'complete';
 
-  // 2. Quantities (extension: consolidation) -------------------------------------------------------------------
+  // 2. Management (extension: consolidation) -------------------------------------------------------------------
   {
     const downstream = snapshot.quotations.length > 0 || orders.length > 0;
     if (!snapshot.consolidations.length) {
@@ -90,13 +90,8 @@ export function computeTracking(snapshot: TrackingSnapshot): TrackingResult {
         ? { state: downstream ? 'skipped' : 'pending', steps: [] }
         : { state: 'pending', steps: [step('quantities', 'Compras', 'Reunir las solicitudes en una gestión de cotización', '/purchases/quotations/manage', { requestId: String(requests[0]?.id ?? '') })] };
     } else {
-      const open = snapshot.consolidations.filter(c => !c.quantitiesApproved);
-      const steps = open.map(c => c.reviewStatus === 'pending_review'
-        ? step('quantities', 'Gerencia', 'Revisar y autorizar las cantidades a comprar', '/purchases/quotations/manage', { id: String(c.id) })
-        : c.reviewStatus === 'returned'
-          ? step('quantities', 'Compras', 'Corregir las cantidades devueltas por Gerencia', '/purchases/quotations/manage', { id: String(c.id) })
-          : step('quantities', 'Compras', 'Enviar las cantidades a Gerencia', '/purchases/quotations/manage', { id: String(c.id) }));
-      out.quantities = { state: open.length ? 'in_progress' : 'complete', steps, progress: { done: snapshot.consolidations.length - open.length, total: snapshot.consolidations.length } };
+      // A management exists as soon as Purchasing gathers the requests: quantities no longer wait for anyone's authorization.
+      out.quantities = { state: 'complete', steps: [], progress: { done: snapshot.consolidations.length, total: snapshot.consolidations.length } };
     }
   }
   const quantitiesReady = out.quantities.state === 'complete' || out.quantities.state === 'skipped';
@@ -117,7 +112,7 @@ export function computeTracking(snapshot: TrackingSnapshot): TrackingResult {
         if (!snapshot.rfqs.length) steps.push(step('quotation', 'Compras', 'Preparar la solicitud de precios a los proveedores', '/purchases/quotations/manage', q));
         else {
           if (waiting > 0) steps.push(step('quotation', 'Compras', `Registrar la oferta de ${waiting} ${waiting === 1 ? 'proveedor' : 'proveedores'}`, '/purchases/quotations/manage', q));
-          if (offers.length) steps.push(step('quotation', 'Compras', uncovered.length && orders.length ? 'Comparar ofertas para los productos pendientes' : 'Comparar ofertas y elegir proveedor', '/purchases/comparison', q));
+          if (offers.length) steps.push(step('quotation', 'Compras', uncovered.length && orders.length ? 'Comparar ofertas para los productos pendientes' : 'Comparar ofertas y elegir proveedor', '/purchases/quotations/manage', { ...q, tab: 'compare' }));
         }
         state = snapshot.rfqs.length ? 'in_progress' : 'pending';
       } else {
@@ -156,7 +151,7 @@ export function computeTracking(snapshot: TrackingSnapshot): TrackingResult {
       else if (r.status === 'RECEIVED') stepsHere.push(step('reception', 'Bodega', `Verificar la recepción ${r.code}`, '/purchases/receipts', { id: String(r.id) }));
     }
     for (const o of sent.filter(o => !ORDER_RECEIVED.includes(o.status))) {
-      stepsHere.push(step('reception', 'Bodega', `Registrar la recepción de la orden ${o.code}`, '/purchases/orders', { id: String(o.id) }));
+      stepsHere.push(step('reception', 'Bodega', `Registrar la recepción de la orden ${o.code}`, '/purchases/receipts', { receiveOrder: String(o.id) }));
     }
     const allReceived = sent.length > 0 && sent.length === orders.length && sent.every(o => ORDER_RECEIVED.includes(o.status));
     const receiptsSettled = receipts.every(r => !r.pendingPlacement && r.status !== 'RECEIVED');
@@ -195,7 +190,7 @@ export function computeTracking(snapshot: TrackingSnapshot): TrackingResult {
     const needing = snapshot.lines.filter(l => l.requested > 0);
     const deliveredAll = needing.length > 0 && needing.every(l => l.delivered + EPS >= l.requested);
     const inTransit = requests.find(r => r.dispatched > r.delivered + EPS);
-    const steps = inTransit ? [step('delivery', 'Sucursal', 'Recibir en la sucursal los productos en tránsito', '/inventory/warehouse', { requestId: String(inTransit.id) })] : [];
+    const steps = inTransit ? [step('delivery', 'Sucursal', 'Recibir en la sucursal los productos en tránsito', `/purchases/requests/${inTransit.id}`, { tab: 'deliveries' })] : [];
     const state: StageState = !requests.length || !requestedTotal ? 'skipped' : deliveredAll ? 'complete' : inTransit ? 'in_progress' : 'pending';
     out.delivery = { state, steps, progress: requestedTotal ? { done: Math.min(sum(needing.map(l => l.delivered)), requestedTotal), total: requestedTotal } : undefined };
   }

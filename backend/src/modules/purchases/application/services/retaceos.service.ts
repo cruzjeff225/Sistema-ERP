@@ -221,8 +221,10 @@ export class RetaceosService {
       if (current.status !== "verified") throw new ConflictException("El retaceo debe estar verificado antes de cerrarse");
       if (current.purchase.purchaseOrderId && (current.purchase.status !== 'VERIFIED' || current.purchase.items.some((item) => item.locationId === null))) throw new ConflictException('Ubique y verifique la recepción antes de cerrar el retaceo');
       // Inventory reads this closed cost through the receipt; no stock is posted again.
-      const purchase = await tx.purchase.update({ where: { id: current.purchaseId }, data: { status: "COSTED" } });
-      await this.audit.record(tx, { controller: "purchases", action: "COST", recordId: purchase.id, originalData: current.purchase, modifiedData: purchase, userId });
+      // A receipt that comes from an order is finished once its costs are final: closing the retaceo closes the receipt too.
+      const closesReceipt = !!current.purchase.purchaseOrderId;
+      const purchase = await tx.purchase.update({ where: { id: current.purchaseId }, data: { status: closesReceipt ? "CLOSED" : "COSTED" } });
+      await this.audit.record(tx, { controller: "purchases", action: closesReceipt ? "CLOSE" : "COST", recordId: purchase.id, originalData: current.purchase, modifiedData: purchase, userId });
       const record = await tx.retaceo.update({ where: { id }, data: { status: "closed" }, include: retaceoInclude });
       await this.audit.record(tx, { controller: "retaceos", action: "CLOSE", recordId: id, originalData: current, modifiedData: record, userId });
       return this.withRates(record);

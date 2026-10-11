@@ -72,7 +72,7 @@ export class PurchaseTrackingService {
         const result = computeTracking(built.snapshot);
         if ((options.scope === 'open' && result.completed) || (options.scope === 'done' && !result.completed)) continue;
         rows.push({
-          anchor: this.anchorOf(ids), documents: built.documents, nextStep: result.nextStep, blockers: result.blockers.length,
+          anchor: this.anchorOf(ids), documents: built.documents, nextStep: result.nextStep, alsoAvailable: result.alsoAvailable, blockers: result.blockers.length,
           completed: result.completed, ...summarizeTracking(result), updatedAt: new Date(group.updatedAt).toISOString(),
         });
         if (rows.length >= options.limit) break;
@@ -162,7 +162,7 @@ export class PurchaseTrackingService {
         select: { id: true, code: true, status: true, details: { select: { id: true, productId: true, quantity: true, product: { select: { name: true } }, unit: { select: { name: true } },
           transferItems: { select: { quantity: true, receivedQuantity: true, transfer: { select: { id: true, documentNumber: true, status: true, deletedAt: true } } } } } } } }),
       p.purchaseConsolidation.findMany({ where: { id: { in: arr(ids.consolidations) }, companyId, ...alive }, orderBy: { id: 'asc' },
-        select: { id: true, code: true, quantityReviewStatus: true, quantityRevision: true, quantityApprovedRevision: true, lines: { select: { productId: true, purchaseQuantity: true } } } }),
+        select: { id: true, code: true, lines: { select: { productId: true, purchaseQuantity: true } } } }),
       p.purchaseRfq.findMany({ where: { consolidationId: { in: arr(ids.consolidations) }, ...alive }, select: { id: true, consolidationId: true, quotation: { select: { id: true, deletedAt: true } } } }),
       p.purchaseQuotation.findMany({ where: { id: { in: arr(ids.quotations) }, companyId, ...alive }, orderBy: { id: 'asc' }, select: { id: true, code: true, status: true } }),
       p.purchaseOrder.findMany({ where: { id: { in: arr(ids.orders) }, companyId, ...alive }, orderBy: { id: 'asc' },
@@ -229,7 +229,7 @@ export class PurchaseTrackingService {
     const snapshot: TrackingSnapshot = {
       generalWarehouseConfigured: !!config?.generalWarehouseId,
       requests: requestTotals,
-      consolidations: consolidations.map(c => ({ id: c.id, code: c.code, reviewStatus: c.quantityReviewStatus, quantitiesApproved: c.quantityReviewStatus === 'approved' && c.quantityApprovedRevision === c.quantityRevision })),
+      consolidations: consolidations.map(c => ({ id: c.id, code: c.code })),
       rfqs: rfqs.map(r => ({ id: r.id, consolidationId: r.consolidationId, hasOffer: !!r.quotation && !r.quotation.deletedAt })),
       quotations: quotations.map(q => ({ id: q.id, code: q.code, status: q.status })),
       orders: orders.map(o => ({ id: o.id, code: o.code, status: o.status, consolidationId: o.consolidationId })),
@@ -242,7 +242,7 @@ export class PurchaseTrackingService {
     };
     const documents = {
       requests: requestTotals.map(r => ({ id: r.id, code: r.code, status: r.status })),
-      consolidations: consolidations.map(c => ({ id: c.id, code: c.code, status: c.quantityReviewStatus })),
+      consolidations: consolidations.map(c => ({ id: c.id, code: c.code, status: 'created' })),
       quotations: quotations.map(q => ({ id: q.id, code: q.code, status: q.status })),
       orders: orders.map(o => ({ id: o.id, code: o.code, status: o.status })),
       receipts: receipts.map(r => ({ id: r.id, code: r.documentNumber, status: r.status })),

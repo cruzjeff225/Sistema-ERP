@@ -85,13 +85,9 @@ async function main() {
 
   // --- 2. Quantities ---------------------------------------------------------------------------------------------
   let c = await api('/supply/consolidations', 'POST', { dateFrom: date, dateTo: date, requestIds: [request.id] }); created.consolidations.push(c.id);
-  await expectNext('3. gestión creada', 'request', request.id, 'Compras', /Enviar las cantidades a Gerencia/);
+  await expectNext('3. gestión creada', 'request', request.id, 'Compras', /Preparar la solicitud de precios/, t => assert.equal(stageOf(t, 'quantities').state, 'complete'));
   c = await api(`/supply/consolidations/${c.id}/lines`, 'PATCH', { productId: product.id, purchaseQuantity: 120, reason: 'E2E reserva de stock' });
   assert.equal(Number(c.lines[0].requestedQuantity), 100); assert.equal(Number(c.lines[0].purchaseQuantity), 120);
-  c = await api(`/supply/consolidations/${c.id}/quantities/submit`, 'POST', { expectedRevision: c.quantityRevision });
-  await expectNext('4. cantidades enviadas', 'consolidation', c.id, 'Gerencia', /autorizar las cantidades/);
-  c = await api(`/supply/consolidations/${c.id}/quantities/approve`, 'POST', { expectedRevision: c.quantityRevision });
-  await expectNext('5. cantidades autorizadas', 'request', request.id, 'Compras', /Preparar la solicitud de precios/, t => assert.equal(stageOf(t, 'quantities').state, 'complete'));
 
   // --- 3. Quotation ----------------------------------------------------------------------------------------------
   for (let n = 0; n < 2; n++) c = await api(`/supply/consolidations/${c.id}/rfqs`, 'POST', { supplierId: suppliers[n]!.id, lineIds: c.lines.map((l: any) => l.id) });

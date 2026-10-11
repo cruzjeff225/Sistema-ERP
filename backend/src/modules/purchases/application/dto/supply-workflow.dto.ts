@@ -15,10 +15,6 @@ export class ConsolidationLineDto {
   @IsInt({ message: "La cantidad de productos debe ser un número entero" }) @Min(0) @Max(9999999999) purchaseQuantity: number;
   @IsString() @MaxLength(1000) reason: string;
 }
-export class QuantityReviewDto {
-  @IsInt() @Min(1) expectedRevision: number;
-  @IsOptional() @IsString() @MaxLength(1000) notes?: string;
-}
 export class RfqDto {
   @IsInt() @Min(1) supplierId: number;
   @IsArray() @ArrayMinSize(1) @ArrayUnique() @IsInt({ each: true }) @Min(1, { each: true }) lineIds: number[];

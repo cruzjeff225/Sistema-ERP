@@ -3,7 +3,7 @@ import type { Response } from 'express';
 import { RequireAnyPermission, RequirePermissions } from '../../../common/decorators/permissions.decorator';
 import { CompanyScopeService } from '../../../common/services/company-scope.service';
 import { AuthenticatedUser, CurrentUser } from '../../auth/presentation/decorators/current-user.decorator';
-import { ActualExpenseDto, AwardDto, ComparePurchaseDto, ConsolidationDto, ConsolidationLineDto, QuantityReviewDto, GeneralWarehouseDto, PlacementDto, RfqDto, TransferDto, TransferReceiptDto } from '../application/dto/supply-workflow.dto';
+import { ActualExpenseDto, AwardDto, ComparePurchaseDto, ConsolidationDto, ConsolidationLineDto, GeneralWarehouseDto, PlacementDto, RfqDto, TransferDto, TransferReceiptDto } from '../application/dto/supply-workflow.dto';
 import { SupplyWorkflowService } from '../application/services/supply-workflow.service';
 import { rfqPdf } from '../application/services/rfq-pdf';
 
@@ -24,14 +24,8 @@ export class SupplyWorkflowController {
   async one(@Param('id', ParseIntPipe) id: number, @CurrentUser() u: AuthenticatedUser, @Headers('x-company-id') h?: string) { return { data: await this.service.one(id, await this.company(u,h)) }; }
   @Post('consolidations') @RequirePermissions('purchase_quotations.create', 'purchase_requests.view')
   async create(@Body() dto: ConsolidationDto, @CurrentUser() u: AuthenticatedUser, @Headers('x-company-id') h?: string) { return { data: await this.service.create(dto, await this.company(u,h), u.sub) }; }
-  @Patch('consolidations/:id/lines') @RequireAnyPermission('purchase_quotations.update','purchase_orders.approve')
+  @Patch('consolidations/:id/lines') @RequirePermissions('purchase_quotations.update')
   async line(@Param('id', ParseIntPipe) id: number, @Body() dto: ConsolidationLineDto, @CurrentUser() u: AuthenticatedUser, @Headers('x-company-id') h?: string) { return { data: await this.service.editLine(id, dto, await this.company(u,h), u.sub, u) }; }
-  @Post('consolidations/:id/quantities/submit') @RequirePermissions('purchase_quotations.update')
-  async submitQuantities(@Param('id', ParseIntPipe) id: number, @Body() dto: QuantityReviewDto, @CurrentUser() u: AuthenticatedUser, @Headers('x-company-id') h?: string) { return { data: await this.service.reviewQuantities(id,'submit',dto,await this.company(u,h),u.sub) }; }
-  @Post('consolidations/:id/quantities/approve') @RequirePermissions('purchase_orders.approve')
-  async approveQuantities(@Param('id', ParseIntPipe) id: number, @Body() dto: QuantityReviewDto, @CurrentUser() u: AuthenticatedUser, @Headers('x-company-id') h?: string) { return { data: await this.service.reviewQuantities(id,'approve',dto,await this.company(u,h),u.sub) }; }
-  @Post('consolidations/:id/quantities/return') @RequirePermissions('purchase_orders.approve')
-  async returnQuantities(@Param('id', ParseIntPipe) id: number, @Body() dto: QuantityReviewDto, @CurrentUser() u: AuthenticatedUser, @Headers('x-company-id') h?: string) { return { data: await this.service.reviewQuantities(id,'return',dto,await this.company(u,h),u.sub) }; }
   @Post('consolidations/:id/rfqs') @RequirePermissions('purchase_quotations.create')
   async rfq(@Param('id', ParseIntPipe) id: number, @Body() dto: RfqDto, @CurrentUser() u: AuthenticatedUser, @Headers('x-company-id') h?: string) { return { data: await this.service.rfq(id, dto, await this.company(u,h), u.sub) }; }
   @Get('rfqs/:id/pdf') @RequirePermissions('purchase_quotations.view')

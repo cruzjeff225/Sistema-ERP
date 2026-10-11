@@ -9,8 +9,7 @@ import { PurchasesService } from './purchases.service';
 import { purchaseTransaction } from './purchase-transaction';
 import { generalWarehouse } from './general-warehouse';
 import { comparePurchase,purchaseComparisonHash } from './purchase-comparison';
-import { assertQuantitiesApproved } from './quantity-review';
-import { ActualExpenseDto, AwardDto, ConsolidationDto, ConsolidationLineDto, QuantityReviewDto, PlacementDto, RfqDto, TransferDto, TransferReceiptDto } from '../dto/supply-workflow.dto';
+import { ActualExpenseDto, AwardDto, ConsolidationDto, ConsolidationLineDto, PlacementDto, RfqDto, TransferDto, TransferReceiptDto } from '../dto/supply-workflow.dto';
 
 const include = {
   lines: {
@@ -111,10 +110,7 @@ export class SupplyWorkflowService {
       const current = await this.one(id, companyId, tx);
       if (dto.expectedRevision !== undefined && dto.expectedRevision !== current.quantityRevision) throw new ConflictException('Las cantidades cambiaron. Actualice la compra antes de guardar');
       if (await tx.purchaseRfq.count({ where: { consolidationId: id } }) || current.orders.length) throw new ConflictException('Las cantidades ya fueron consultadas al proveedor y no pueden modificarse en esta compra');
-      const manager = actor?.roles?.includes('superadmin') || actor?.permissions?.includes('purchase_orders.approve');
-      if (current.quantityReviewStatus === 'approved') throw new ConflictException('Las cantidades están autorizadas. Devuelva la propuesta antes de modificarlas');
-      if (current.quantityReviewStatus === 'pending_review' && !manager) throw new ForbiddenException('Gerencia está revisando las cantidades; espere su decisión');
-      if (current.quantityReviewStatus !== 'pending_review' && actor && !actor.roles?.includes('superadmin') && !actor.permissions?.includes('purchase_quotations.update')) throw new ForbiddenException('Compras prepara la propuesta; Gerencia modifica las cantidades durante su revisión');
+      if (actor && !actor.roles?.includes('superadmin') && !actor.permissions?.includes('purchase_quotations.update')) throw new ForbiddenException('Solo Compras modifica las cantidades de la compra');
       if (!dto.reason.trim()) throw new BadRequestException('Indique el motivo de la decision de compra');
       if (current.orders.some(o=>['sent','partially_received','received','closed'].includes(o.status))) throw new ConflictException('No puede cambiar las cantidades después de enviar o recibir la compra');
       const allocated=current.lines.find(l=>l.productId===dto.productId)?.purchasedQuantity??new Prisma.Decimal(0);
@@ -124,36 +120,14 @@ export class SupplyWorkflowService {
       const line = await tx.purchaseConsolidationLine.upsert({ where: { consolidationId_productId: { consolidationId: id, productId: dto.productId } },
         create: { consolidationId: id, productId: dto.productId, unitId: product.purchaseUnitId, requestedQuantity: 0, purchaseQuantity: dto.purchaseQuantity, reason: dto.reason.trim(),decidedBy:userId,decidedAt:new Date() },
         update: { purchaseQuantity: dto.purchaseQuantity, reason: dto.reason.trim(),decidedBy:userId,decidedAt:new Date() } });
-      await tx.purchaseConsolidation.update({ where: { id }, data: { quantityRevision: { increment: 1 }, quantityApprovedRevision: null, quantityApprovedBy: null, quantityApprovedAt: null } });
+      await tx.purchaseConsolidation.update({ where: { id }, data: { quantityRevision: { increment: 1 } } });
       await this.log(tx, 'DECIDE_QUANTITY', id, userId, { before: current.lines.find(l => l.productId === dto.productId), after: line });
-      return this.one(id, companyId, tx);
-    });
-  }
-  reviewQuantities(id: number, action: 'submit' | 'approve' | 'return', dto: QuantityReviewDto, companyId: number, userId: number) {
-    return purchaseTransaction(this.prisma, companyId, async tx => {
-      const current = await this.one(id, companyId, tx);
-      if (current.quantityRevision !== dto.expectedRevision) throw new ConflictException('La propuesta cambió. Actualice y revise las cantidades antes de continuar');
-      if (await tx.purchaseRfq.count({ where: { consolidationId: id } }) || current.orders.length) throw new ConflictException('La revisión de cantidades debe realizarse antes de consultar proveedores');
-      const expected = action === 'submit' ? ['draft', 'returned'] : action === 'approve' ? ['pending_review'] : ['pending_review', 'approved'];
-      if (!expected.includes(current.quantityReviewStatus)) throw new ConflictException('La propuesta no está disponible para esta acción');
-      if (action === 'return' && !dto.notes?.trim()) throw new BadRequestException('Indique las observaciones para devolver las cantidades');
-      if (action !== 'return' && !current.lines.some(line => line.purchaseQuantity.gt(0))) throw new BadRequestException('Debe proponerse al menos un producto con cantidad mayor a cero');
-      if (action !== 'return' && current.lines.some(line => !line.purchaseQuantity.eq(line.requestedQuantity) && !line.reason?.trim())) throw new BadRequestException('Registre el motivo de cada diferencia respecto a lo solicitado');
-      const after = await tx.purchaseConsolidation.update({ where: { id }, data: {
-        quantityReviewStatus: action === 'submit' ? 'pending_review' : action === 'approve' ? 'approved' : 'returned',
-        quantityApprovedRevision: action === 'approve' ? current.quantityRevision : null,
-        quantityApprovedBy: action === 'approve' ? userId : null,
-        quantityApprovedAt: action === 'approve' ? new Date() : null,
-        quantityReviewNotes: dto.notes?.trim() || (action === 'return' ? null : current.quantityReviewNotes),
-      } });
-      await this.audit.record(tx, { controller: 'purchase_consolidations', action: 'QUANTITIES_' + action.toUpperCase(), recordId: id, userId, originalData: current, modifiedData: after });
       return this.one(id, companyId, tx);
     });
   }
   rfq(id: number, dto: RfqDto, companyId: number, userId: number) {
     return purchaseTransaction(this.prisma, companyId, async tx => {
       const current = await this.one(id, companyId, tx);
-      assertQuantitiesApproved(current);
       const supplier = await tx.supplier.findFirst({ where: { id: dto.supplierId, companyId, isActive: true, deletedAt: null } });
       if (!supplier) throw new BadRequestException('Proveedor no disponible');
       if (await tx.purchaseRfq.count({ where: { consolidationId: id, supplierId: supplier.id } })) throw new ConflictException('Este proveedor ya tiene una solicitud en el proceso');
@@ -170,7 +144,6 @@ export class SupplyWorkflowService {
   async rfqDocument(id: number, companyId: number) {
     const rfq = await this.prisma.purchaseRfq.findFirst({ where: { id, deletedAt: null, consolidation: { companyId, deletedAt: null } }, include: { supplier: true, consolidation: { include: { company: true } }, lines: { include: { line: { include: { product: true, unit: true } } }, orderBy: { id: 'asc' } } } });
     if (!rfq) throw new NotFoundException('Solicitud de cotizacion no encontrada');
-    assertQuantitiesApproved(rfq.consolidation);
     return rfq;
   }
   award(id: number, dto: AwardDto, companyId: number, user: AuthenticatedUser) {
@@ -195,7 +168,6 @@ export class SupplyWorkflowService {
           return current;
         }
       }
-      assertQuantitiesApproved(current);
       const groups = new Map<number, AwardDto['details']>();
       if(dto.expectedComparisonHash&&dto.expectedComparisonHash!==purchaseComparisonHash(current,dto.details))throw new ConflictException('Las ofertas o cantidades cambiaron. Actualice la comparación antes de enviar a Gerencia');
       const comparison=comparePurchase(current,dto.details,new Intl.DateTimeFormat('en-CA',{timeZone:'America/El_Salvador'}).format(new Date()));
@@ -218,7 +190,7 @@ export class SupplyWorkflowService {
         const quotation = current.rfqs.find(r => r.quotation?.id === quotationId)!.quotation!;
         const deliveryDays = Math.max(...details.map(selected => quotation.details.find(line => line.id === selected.quotationDetailId)?.deliveryDays ?? quotation.deliveryDays));
         const order=await this.purchases.generateOrder(quotationId, { ...dto, details, expectedDate: new Date(Date.now() + deliveryDays * 86400000).toISOString() }, user.sub, companyId, user, tx);
-        await tx.purchaseOrder.update({where:{id:order.id},data:{comparisonSnapshot:JSON.parse(JSON.stringify({processId:id,quantityAuthorization:{revision:current.quantityApprovedRevision,userId:current.quantityApprovedBy,approvedAt:current.quantityApprovedAt},selected:dto.details,comparison,proposal:current.lines.map(l=>({productId:l.productId,requestedQuantity:l.requestedQuantity,purchaseQuantity:l.purchaseQuantity,reason:l.reason,decidedBy:l.decidedBy,decidedAt:l.decidedAt,sources:l.sources})),partialAccepted:dto.acceptPartialComparison??false}))}});
+        await tx.purchaseOrder.update({where:{id:order.id},data:{comparisonSnapshot:JSON.parse(JSON.stringify({processId:id,selected:dto.details,comparison,proposal:current.lines.map(l=>({productId:l.productId,requestedQuantity:l.requestedQuantity,purchaseQuantity:l.purchaseQuantity,reason:l.reason,decidedBy:l.decidedBy,decidedAt:l.decidedAt,sources:l.sources})),partialAccepted:dto.acceptPartialComparison??false}))}});
         orders.push(dto.submitForApproval?await this.purchases.submitOrder(order.id,user.sub,companyId,tx):order);
       }
       const updated = await this.one(id, companyId, tx);

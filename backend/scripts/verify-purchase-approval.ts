@@ -1,2 +1,2 @@
-// The approval contract now includes quantity review before quoting and a read-only final decision.
+// Quantities are decided by Purchasing; Management only approves the final order, which is read-only afterwards.
 import './verify-quantity-review-workflow';

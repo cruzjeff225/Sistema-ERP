@@ -44,16 +44,11 @@ async function main() {
       }
       let process=await supply.create({dateFrom:day,dateTo:day,requestIds:requests.map(r=>r.id)},companyId,actor.id);
       assert(process.lines.every(l=>Number(l.requestedQuantity)===10&&l.sources.length===2));
-      await assert.rejects(supply.rfq(process.id,{supplierId:suppliers[0].id,lineIds:process.lines.map(l=>l.id)},companyId,actor.id),conflict);
-      process=await supply.reviewQuantities(process.id,'submit',{expectedRevision:process.quantityRevision},companyId,actor.id);
-      await assert.rejects(supply.editLine(process.id,{productId:products[0].id,purchaseQuantity:15,reason:'Reserva'},companyId,actor.id,buyer),(e:any)=>e.getStatus()===403);
-      const oldRevision=process.quantityRevision;
-      for(const [index,quantity] of [[0,15],[1,8],[2,2]])process=await supply.editLine(process.id,{productId:products[index].id,purchaseQuantity:quantity,reason:'Gerencia ajusta necesidad y reserva',expectedRevision:process.quantityRevision},companyId,actor.id,manager);
-      await assert.rejects(supply.reviewQuantities(process.id,'approve',{expectedRevision:oldRevision},companyId,actor.id),conflict);
-      process=await supply.reviewQuantities(process.id,'approve',{expectedRevision:process.quantityRevision},companyId,actor.id);
-      assert.equal(process.quantityApprovedBy,actor.id);assert.equal(Number(process.lines[0].requestedQuantity),10);assert.equal(Number(process.lines[2].requestedQuantity),0);
+      await assert.rejects(supply.editLine(process.id,{productId:products[0].id,purchaseQuantity:15,reason:'Reserva'},companyId,actor.id,manager),(e:any)=>e.getStatus()===403);
+      for(const [index,quantity] of [[0,15],[1,8],[2,2]])process=await supply.editLine(process.id,{productId:products[index].id,purchaseQuantity:quantity,reason:'Compras ajusta necesidad y reserva',expectedRevision:process.quantityRevision},companyId,actor.id,buyer);
+      assert.equal(Number(process.lines[0].requestedQuantity),10);assert.equal(Number(process.lines[2].requestedQuantity),0);
       const original=await purchases.request(requests[0].id,companyId);assert.equal(Number(original.details[0].quantity),4);
-      console.log('PASS solicitudes de sucursales: borrador/enviado, agrupación 4+6, autorización previa, más/menos/adicionales sin sobrescribir originales, revisión obsoleta bloqueada');
+      console.log('PASS solicitudes de sucursales: borrador/enviado, agrupación 4+6, Compras ajusta más/menos/adicionales sin sobrescribir originales y Gerencia ya no interviene en las cantidades');
       const quotes=[];
       for(let n=0;n<2;n++){
         process=await supply.rfq(process.id,{supplierId:suppliers[n].id,lineIds:process.lines.map(l=>l.id)},companyId,actor.id);
@@ -63,8 +58,7 @@ async function main() {
         if(n===0){await assert.rejects(purchases.createQuotation({...payload,details:payload.details.map((l:any)=>({...l,availableQuantity:0}))},actor.id,companyId,admin));const incomplete=await purchases.createQuotation({...payload,details:payload.details.map((l:any,index:number)=>({...l,availabilityStatus:index?'unavailable':'available',availableQuantity:index?0:l.quantity}))},actor.id,companyId,admin);await purchases.updateQuotation(incomplete.id,payload,actor.id,companyId,admin);quotes.push(await purchases.receiveQuotation(incomplete.id,actor.id,companyId));}
         else{const quote=await purchases.createQuotation(payload,actor.id,companyId,admin);quotes.push(await purchases.receiveQuotation(quote.id,actor.id,companyId));}
       }
-      await assert.rejects(supply.editLine(process.id,{productId:products[0].id,purchaseQuantity:20,reason:'Tarde'},companyId,actor.id,manager),conflict);
-      await assert.rejects(supply.reviewQuantities(process.id,'return',{expectedRevision:process.quantityRevision,notes:'Tarde'},companyId,actor.id),conflict);
+      await assert.rejects(supply.editLine(process.id,{productId:products[0].id,purchaseQuantity:20,reason:'Tarde'},companyId,actor.id,buyer),conflict);
       quotes[1]=await purchases.updateQuotation(quotes[1].id,{costsConfirmed:false},actor.id,companyId,admin);
       const incompleteAward:any={requestId:randomUUID(),submitForApproval:true,branchId:general.branchId,warehouseId:general.id,details:quotes[1].details.map(d=>({quotationDetailId:d.id,quantity:Number(d.quantity)}))};
       await assert.rejects(supply.award(process.id,incompleteAward,companyId,admin),(e:any)=>e.getStatus()===400&&/comparación/.test(e.message));

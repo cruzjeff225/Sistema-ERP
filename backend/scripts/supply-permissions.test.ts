@@ -17,9 +17,6 @@ function allowed(controller: any, method: string, permissions: string[]) {
 for (const [method, permissions] of [
   ['create', ['purchase_quotations.create', 'purchase_requests.view']],
   ['line', ['purchase_quotations.update']], ['rfq', ['purchase_quotations.create']],
-  ['submitQuantities', ['purchase_quotations.update']],
-  ['approveQuantities', ['purchase_orders.approve']],
-  ['returnQuantities', ['purchase_orders.approve']],
   ['award', ['purchase_quotations.select', 'purchase_orders.create']],
   ['awardAndSubmit', ['purchase_quotations.select', 'purchase_orders.create', 'purchase_orders.update']],
   ['place', ['inventory.adjust']], ['dispatch', ['inventory.adjust', 'purchase_requests.view']],
@@ -59,12 +56,9 @@ test('centro general se consulta por compras o por administración; editar sigue
   assert.equal(allowed(SupplyWorkflowController, 'configure', ['warehouses.update']), true);
 });
 
-test('Gerencia revisa cantidades sin permisos de edición de cotizaciones y Compras no puede autorizarlas', () => {
-  for (const method of ['list','one','line','approveQuantities','returnQuantities']) {
-    assert.equal(allowed(SupplyWorkflowController,method,['purchase_orders.approve']),true);
-  }
-  for (const method of ['approveQuantities','returnQuantities']) {
-    assert.throws(()=>allowed(SupplyWorkflowController,method,['purchase_quotations.update']),(e:any)=>e.getStatus()===403);
-  }
-  assert.throws(()=>allowed(SupplyWorkflowController,'submitQuantities',['purchase_orders.approve']),(e:any)=>e.getStatus()===403);
+test('Gerencia ya no revisa cantidades: solo Compras las ajusta y la autorización no existe', () => {
+  assert.equal(allowed(SupplyWorkflowController,'line',['purchase_quotations.update']),true);
+  assert.throws(()=>allowed(SupplyWorkflowController,'line',['purchase_orders.approve']),(e:any)=>e.getStatus()===403);
+  for (const method of ['submitQuantities','approveQuantities','returnQuantities']) assert.equal((SupplyWorkflowController.prototype as any)[method], undefined, method);
+  for (const method of ['list','one']) assert.equal(allowed(SupplyWorkflowController,method,['purchase_orders.approve']),true);
 });

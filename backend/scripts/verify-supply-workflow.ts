@@ -62,8 +62,6 @@ async function main() {
   assert.equal(Number(c.lines.find((l:any)=>l.productId===productIds[0]).requestedQuantity),500);
   assert.equal(Number(c.lines.find((l:any)=>l.productId===productIds[1]).requestedQuantity),0);
   console.log('PASS centro general fijo, borradores excluidos, consolidado 100+400=500, compra 600 y producto adicional');
-  c=await api(`/supply/consolidations/${c.id}/quantities/submit`,'POST',{expectedRevision:c.quantityRevision});
-  c=await api(`/supply/consolidations/${c.id}/quantities/approve`,'POST',{expectedRevision:c.quantityRevision});
   const hiddenRequest=await api('/trash/purchase_requests/'+requestIds[0],'DELETE');trashIds.push(hiddenRequest.id);
   await api(`/supply/consolidations/${c.id}/rfqs`,'POST',{supplierId:supplierIds[0],lineIds:c.lines.map((l:any)=>l.id)},409);
   await api('/trash/'+hiddenRequest.id+'/restore','POST',{});
@@ -110,8 +108,6 @@ async function main() {
   const extraRequest=await api('/purchase-requests','POST',{branchId:branchIds[0],warehouseId:general.id,purpose:'operations',requiredDate:future,justification:'QA ampliación por producto',details:productIds.map((productId,index)=>({productId,unitId:template.purchaseUnitId,quantity:index===0?1:5}))});requestIds.push(extraRequest.id);
   await api(`/purchase-requests/${extraRequest.id}/submit`,'POST');
   let extraProcess=await api('/supply/consolidations','POST',{dateFrom:date,dateTo:date,requestIds:[extraRequest.id]});extraConsolidationIds.push(extraProcess.id);
-  extraProcess=await api(`/supply/consolidations/${extraProcess.id}/quantities/submit`,'POST',{expectedRevision:extraProcess.quantityRevision});
-  extraProcess=await api(`/supply/consolidations/${extraProcess.id}/quantities/approve`,'POST',{expectedRevision:extraProcess.quantityRevision});
   extraProcess=await api(`/supply/consolidations/${extraProcess.id}/rfqs`,'POST',{supplierId:supplierIds[0],lineIds:extraProcess.lines.map((l:any)=>l.id)});
   const extraRfq=extraProcess.rfqs[0];
   const extraQuote=await api('/purchase-quotations','POST',{rfqId:extraRfq.id,supplierId:supplierIds[0],requestIds:[],quotationDate:date,validUntil:future,currency:'USD',expenses:[{expenseTypeId,description:'Flete',amount:.03}],details:extraRfq.lines.map((l:any)=>({productId:l.line.productId,unitId:l.line.unitId,quantity:Number(l.quantity),availableQuantity:Number(l.quantity),unitPrice:1,discount:0,taxRate:0,sources:[]}))});quoteIds.push(extraQuote.id);

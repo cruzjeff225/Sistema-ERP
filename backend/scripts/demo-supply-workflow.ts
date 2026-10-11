@@ -68,8 +68,6 @@ async function main() {
  assert.equal(Number(procurement.lines.find((l: any) => l.productId === products[0].id).requestedQuantity), 500);
  assert.equal(Number(procurement.lines.find((l: any) => l.productId === products[1].id).requestedQuantity), 0);
  pass('Dos solicitudes enviadas directamente a Compras: 100 + 400 solicitadas; Compras decide 600 y agrega 10 láminas');
- procurement = await api(`/supply/consolidations/${procurement.id}/quantities/submit`, 'POST', { expectedRevision: procurement.quantityRevision });
- procurement = await api(`/supply/consolidations/${procurement.id}/quantities/approve`, 'POST', { expectedRevision: procurement.quantityRevision });
  for (let n = 0; n < 2; n++) {
   procurement = await api(`/supply/consolidations/${procurement.id}/rfqs`, 'POST', { supplierId: suppliers[n].id, lineIds: procurement.lines.filter((l: any) => n === 1 || l.productId === products[0].id).map((l: any) => l.id) });
  }
