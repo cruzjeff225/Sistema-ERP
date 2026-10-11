@@ -61,6 +61,9 @@ const levels: Array<{ id: Level; label: string; singular: string; icon: any; per
 ];
 
 const activeLevel = ref<Level>("companies");
+// "Nuevo almacén" / "Nuevo espacio" but "Nueva sucursal" / "Nueva categoría": the article follows the noun.
+const MASCULINE_LEVELS: Level[] = ["warehouses", "locations"];
+const newLabel = computed(() => `${MASCULINE_LEVELS.includes(activeLevel.value) ? "Nuevo" : "Nueva"} ${levels.find(level => level.id === activeLevel.value)?.singular ?? "registro"}`);
 let loadVersion = 0;
 let initialForm = '';
 const discardChanges = ref(false);
@@ -438,7 +441,7 @@ onMounted(async () => {
       <div><p v-if="activeLevel === 'locations'" class="section-eyebrow">Estructura de almacenamiento</p><h1 class="page-title" :class="activeLevel === 'locations' && 'mt-1'">{{ activeConfig.label }}</h1><p v-if="activeLevel === 'locations'" class="mt-2 text-sm text-muted-fg">Organiza cada almacén por pasillo, estante, nivel y posición.</p></div>
       <div class="flex gap-2">
         <AppButton variant="outline" :disabled="loading || saving || editorOpen" title="Actualizar" @click="loadAll"><RefreshCw class="h-4 w-4" :class="loading && 'animate-spin'" /><span class="hidden sm:inline">Actualizar</span></AppButton>
-        <AppButton v-if="activeLevel !== 'companies' && can(`${activeConfig.permission}.create`)" :disabled="loading || saving || editorOpen" @click="openCreate"><Plus class="h-4 w-4" />{{ activeLevel === 'locations' ? 'Nuevo espacio' : `Nueva ${activeConfig.singular}` }}</AppButton>
+        <AppButton v-if="activeLevel !== 'companies' && can(`${activeConfig.permission}.create`)" :disabled="loading || saving || editorOpen" @click="openCreate"><Plus class="h-4 w-4" />{{ newLabel }}</AppButton>
       </div>
     </div>
 
@@ -514,7 +517,7 @@ onMounted(async () => {
 
       <div class="hidden overflow-x-auto md:block">
         <table class="w-full min-w-[720px] text-left text-sm">
-          <thead class="data-thead"><tr><th class="px-4 py-3">{{ activeConfig.singular }}</th><th class="px-4 py-3">Contexto</th><th class="px-4 py-3">Estado</th><th class="px-4 py-3 text-right">Acciones</th></tr></thead>
+          <thead class="data-thead"><tr><th class="px-4 py-3 capitalize">{{ activeConfig.singular }}</th><th class="px-4 py-3">Contexto</th><th class="px-4 py-3">Estado</th><th class="px-4 py-3 text-right">Acciones</th></tr></thead>
           <tbody class="divide-y divide-border">
             <tr v-for="item in filteredRows" :key="item.id" class="group hover:bg-surface-secondary/50">
               <td class="px-4 py-3"><button type="button" class="flex items-center gap-2 text-left font-medium text-fg" :class="['companies','branches','warehouses'].includes(activeLevel) && 'hover:text-accent'" @click="drillDown(item)">{{ entityName(activeLevel, item) }}<ChevronRight v-if="['companies','branches','warehouses'].includes(activeLevel)" class="h-4 w-4 opacity-0 transition group-hover:opacity-100" /></button></td>
@@ -534,7 +537,7 @@ onMounted(async () => {
     </section>
 
     <AppDrawer v-if="editorOpen" label="Registro de organización" @close="closeEditor">
-        <header class="flex items-start justify-between border-b border-border px-5 py-4 sm:px-6"><div><p class="text-sm font-medium text-accent">{{ editing[activeLevel] ? "Editar" : "Nuevo registro" }}</p><h2 class="mt-1 text-xl font-semibold text-fg">{{ editing[activeLevel] ? `Editar ${activeConfig.singular}` : activeLevel === 'locations' ? 'Nuevo espacio' : `Nueva ${activeConfig.singular}` }}</h2><p class="mt-1 text-sm text-muted-fg">{{ activeLevel === 'locations' ? 'Define un espacio dentro de su almacén.' : 'Completa los datos necesarios para continuar.' }}</p></div><button type="button" class="grid h-9 w-9 place-items-center rounded-lg text-muted-fg hover:bg-surface-secondary" title="Cerrar" @click="closeEditor"><X class="h-5 w-5" /></button></header>
+        <header class="flex items-start justify-between border-b border-border px-5 py-4 sm:px-6"><div><p class="text-sm font-medium text-accent">{{ editing[activeLevel] ? "Editar" : "Nuevo registro" }}</p><h2 class="mt-1 text-xl font-semibold text-fg">{{ editing[activeLevel] ? `Editar ${activeConfig.singular}` : newLabel }}</h2><p class="mt-1 text-sm text-muted-fg">{{ activeLevel === 'locations' ? 'Define un espacio dentro de su almacén.' : 'Completa los datos necesarios para continuar.' }}</p></div><button type="button" class="grid h-9 w-9 place-items-center rounded-lg text-muted-fg hover:bg-surface-secondary" title="Cerrar" @click="closeEditor"><X class="h-5 w-5" /></button></header>
         <form class="scrollbar-thin flex min-h-0 flex-1 flex-col" @submit.prevent="saveActive">
           <p v-if="errorMessage" role="alert" class="px-5 pt-4 text-sm text-danger">{{ errorMessage }}</p>
           <fieldset :disabled="saving" class="flex-1 overflow-y-auto px-5 py-5 sm:px-6">

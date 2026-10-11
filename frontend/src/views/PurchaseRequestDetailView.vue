@@ -135,7 +135,9 @@ const stepDate = (key: string) => key === 'draft' && request.value?.createdAt ? 
 // A request that already left the branch says so, and Purchasing gets the way in to its quotation.
 const awaitingPurchasing = computed(() => !!request.value && isAwaitingPurchasing(request.value.status));
 const bannerAction = computed(() => awaitingPurchasing.value ? mainAction.value : null);
-const headerAction = computed(() => bannerAction.value ? null : mainAction.value);
+// Receiving at the branch happens in the Deliveries tab; once the user is there, a header button that only leads there is redundant.
+const onOwnDeliveryStep = computed(() => tab.value === 'deliveries' && ownStep.value?.stage === 'delivery');
+const headerAction = computed(() => bannerAction.value || onOwnDeliveryStep.value ? null : mainAction.value);
 const stageText = computed(() => request.value ? purchaseStage('requests', request.value.status) : '');
 
 const goEdit = (options: { addLine?: boolean } = {}) => void router.push(requestEditLocation(request.value.id, options));
