@@ -122,6 +122,13 @@ const usableSlots = (p: any): any[] => (p.locationOptions ?? []).filter((l: any)
 const blockedSlots = (p: any): any[] => (p.locationOptions ?? []).filter((l: any) => !l.compatible);
 const slotNote: Record<string, string> = { free: 'libre', same_product: 'ya tiene este producto', other_product: 'tiene otros productos' };
 const slotLabel = (l: any, p?: any) => `${l.code} · ${l.aisle} / ${l.rack} / ${l.level} / ${l.position}${l.compatible ? ` · ${slotNote[l.availability]} · quedan ${l.free}` : ` · ${l.reason}`}${p && l.id === p.recommendedLocationId ? ' (recomendado)' : ''}`;
+// Managing spaces opens with this warehouse already chosen, so the user does not pick branch and warehouse again.
+const spacesLocation = (p: any) => {
+  const branch = Number(p.purchase?.branchId), warehouse = Number(p.purchase?.warehouseId);
+  return Number.isInteger(branch) && branch > 0 && Number.isInteger(warehouse) && warehouse > 0
+    ? { path: '/organization/locations', query: { branch: String(branch), warehouse: String(warehouse) } }
+    : { path: '/organization/locations' };
+};
 function place(p: any) { void run(async current => { await http.post(`/supply/placements/${p.id}/confirm`, placement[p.id], headers()); if (!current()) return; delete placement[p.id]; await load(); if (current()) success.value = 'Ubicación física confirmada. El mapa y las existencias ya muestran este producto.'; }); }
 function printLabel(p: any) {
   error.value = '';
@@ -246,8 +253,8 @@ onBeforeUnmount(() => { loadVersion++; stockVersion++; expenseVersion++; destina
           <div class="my-4"><AppButton variant="outline" @click="printLabel(p)">Imprimir viñeta de código de barras</AppButton></div>
           <form v-if="can('inventory.adjust')" class="grid gap-4 sm:grid-cols-2" @submit.prevent="place(p)"><label>Leer código de barras colocado<input v-model="placement[p.id]!.barcode" required autocomplete="off" class="field-control" /></label><label>Ubicación física<select v-model.number="placement[p.id]!.locationId" required class="field-control"><option :value="0" disabled>Seleccione espacio</option><optgroup v-if="usableSlots(p).length" label="Espacios disponibles"><option v-for="l in usableSlots(p)" :key="l.id" :value="l.id">{{ slotLabel(l, p) }}</option></optgroup><optgroup v-if="blockedSlots(p).length" label="No disponibles para este producto"><option v-for="l in blockedSlots(p)" :key="l.id" :value="l.id" disabled>{{ slotLabel(l) }}</option></optgroup></select></label><label class="sm:col-span-2"><input v-model="placement[p.id]!.confirmed" type="checkbox" required /> Confirmo que coloqué la viñeta y dejé los productos en este espacio.</label><AppButton type="submit" :disabled="busy || !placement[p.id]!.locationId">Confirmar colocación</AppButton></form>
           <p v-if="p.recommendedLocationId" class="mt-3 text-xs text-muted-fg">El espacio recomendado no se considera ocupado por estos productos hasta que confirme su colocación.</p>
-          <p v-if="(p.locationOptions ?? []).length && !usableSlots(p).length" role="alert" class="mt-3 text-sm text-warning">Ningún espacio de este almacén puede recibir este producto ahora: {{ blockedSlots(p).length === 1 ? 'el único espacio está ocupado con otra unidad o sin capacidad' : 'los ' + blockedSlots(p).length + ' espacios están ocupados con otra unidad o sin capacidad' }}. Registre un espacio nuevo o libere uno. <RouterLink to="/organization/locations" class="font-medium text-accent">Administrar espacios</RouterLink></p>
-          <p v-if="!(p.locationOptions ?? []).length" class="mt-3 text-sm">Este almacén aún no tiene espacios definidos. <RouterLink to="/organization/locations" class="text-accent">Registrar los espacios físicos</RouterLink></p>
+          <p v-if="(p.locationOptions ?? []).length && !usableSlots(p).length" role="alert" class="mt-3 text-sm text-warning">Ningún espacio de este almacén puede recibir este producto ahora: {{ blockedSlots(p).length === 1 ? 'el único espacio está ocupado con otra unidad o sin capacidad' : 'los ' + blockedSlots(p).length + ' espacios están ocupados con otra unidad o sin capacidad' }}. Registre un espacio nuevo o libere uno. <RouterLink :to="spacesLocation(p)" class="font-medium text-accent">Administrar espacios</RouterLink></p>
+          <p v-if="!(p.locationOptions ?? []).length" class="mt-3 text-sm">Este almacén aún no tiene espacios definidos. <RouterLink :to="spacesLocation(p)" class="text-accent">Registrar los espacios físicos</RouterLink></p>
         </article>
       </section>
       <template v-if="tab === 'transfers'">
