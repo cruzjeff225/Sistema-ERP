@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { RouterLink } from 'vue-router';
-import { RefreshCw, Search, TriangleAlert } from 'lucide-vue-next';
+import { RefreshCw, TriangleAlert } from 'lucide-vue-next';
 import AdminLayout from '../layouts/AdminLayout.vue';
-import PurchasesNav from '../components/purchases/PurchasesNav.vue';
-import PurchaseSectionHeader from '../components/purchases/PurchaseSectionHeader.vue';
+import SearchField from '../components/base/SearchField.vue';
+import PageHeader from '../components/base/PageHeader.vue';
 import AppBadge from '../components/base/AppBadge.vue';
 import AppButton from '../components/base/AppButton.vue';
 import AppCard from '../components/base/AppCard.vue';
@@ -52,23 +52,18 @@ watch(search, () => { clearTimeout(timer); timer = setTimeout(() => void load(),
 <template>
   <AdminLayout title="Seguimiento de compras">
     <div class="mx-auto max-w-[1440px] space-y-6">
-      <PurchasesNav />
-      <PurchaseSectionHeader title="Seguimiento de compras" description="Cada compra con su etapa actual y lo que sigue. Entra a una para ver el detalle.">
+      <PageHeader title="Seguimiento de compras" description="Cada compra con su etapa actual y lo que sigue. Entra a una para ver el detalle.">
         <template #actions>
           <AppButton variant="outline" :disabled="loading" @click="load()"><RefreshCw class="h-4 w-4" :class="loading && 'animate-spin'" aria-hidden="true" />Actualizar</AppButton>
         </template>
-      </PurchaseSectionHeader>
+      </PageHeader>
 
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div class="inline-flex rounded-lg bg-surface-secondary p-1" role="tablist" aria-label="Estado de las compras">
           <button v-for="option in PROCESS_SCOPES" :key="option.id" type="button" role="tab" :aria-selected="scope === option.id"
-            class="min-h-8 rounded-md px-3 text-sm font-medium transition-colors" :class="scope === option.id ? 'bg-surface text-fg shadow-sm' : 'text-muted-fg hover:text-fg'" @click="scope = option.id">{{ option.label }}</button>
+            class="min-h-8 rounded-md px-3 text-sm font-medium transition-colors" :class="scope === option.id ? 'bg-surface text-fg' : 'text-muted-fg hover:text-fg'" @click="scope = option.id">{{ option.label }}</button>
         </div>
-        <label class="relative block w-full sm:w-80">
-          <span class="sr-only">Buscar por código de solicitud, orden o recepción</span>
-          <Search class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-fg" aria-hidden="true" />
-          <input v-model="search" type="search" maxlength="60" placeholder="Buscar por código (PR-, OC-, RC-…)" class="h-9 w-full rounded-lg border border-border bg-surface pl-9 pr-3 text-sm text-fg placeholder:text-muted-fg" />
-        </label>
+        <SearchField v-model="search" maxlength="60" placeholder="Buscar por código (PR-, OC-, RC-…)" aria-label="Buscar por código de solicitud, orden o recepción" class="w-full sm:w-80" />
       </div>
 
       <p v-if="error" role="alert" class="rounded-lg border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">{{ error }}</p>

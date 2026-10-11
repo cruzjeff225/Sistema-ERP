@@ -1,24 +1,23 @@
 <script setup lang="ts">
 import BrandLogo from '../base/BrandLogo.vue';
 import { computed, ref, watch } from "vue";
-import { useRoute, useRouter } from "vue-router";
-import { ChevronDown, LogOut, Settings2, X } from "lucide-vue-next";
-import { activeSectionRoute, navigationGroups } from "../../config/navigation.config";
+import { useRoute } from "vue-router";
+import { ChevronDown, X } from "lucide-vue-next";
+import { activeSectionRoute, isItemActive, navigationGroups } from "../../config/navigation.config";
 import { usePermissions } from "../../composables/usePermissions";
 import { useAuthStore } from "../../stores/auth.store";
 import { activeCompanyId } from "../../services/company-context";
 import type { NavigationItem } from "../../config/navigation.config";
 
-const router = useRouter();
 const route = useRoute();
 const authStore = useAuthStore();
-const { can, canAny, currentUser } = usePermissions();
+const { can, canAny } = usePermissions();
 
 defineProps<{ open: boolean }>();
 const emit = defineEmits<{ close: [] }>();
 const expanded = ref<Record<string, boolean>>({});
 const company = computed(() => authStore.user?.companies?.find(item => item.id === activeCompanyId.value)?.commercialName ?? "Apex Roofing");
-const isActive = (item: NavigationItem) => item.route === route.path || Boolean(item.activeRoutes?.includes(route.path)) || Boolean(item.activePrefixes?.some(prefix => route.path.startsWith(prefix))) || Boolean(activeSectionRoute(item.sections, route.path));
+const isActive = (item: NavigationItem) => isItemActive(item, route.path);
 const isExpanded = (item: NavigationItem) => expanded.value[item.route] ?? isActive(item);
 watch(() => route.path, () => { expanded.value = {}; });
 
@@ -32,21 +31,12 @@ const visibleGroups = computed(() =>
     .filter((group) => group.items.length > 0),
 );
 
-const initials = computed(() => {
-  const name = currentUser.value?.username ?? "";
-  return name.slice(0, 1).toUpperCase() || "?";
-});
-
-async function handleLogout() {
-  await authStore.logout();
-  router.push({ name: "login" });
-}
 </script>
 
 <template>
   <aside
     aria-label="Barra lateral"
-    class="sidebar fixed inset-y-0 left-0 z-40 flex w-[280px] max-w-[calc(100vw-32px)] shrink-0 flex-col border-r border-border/70 bg-sidebar shadow-2xl transition-transform duration-200 ease-out lg:visible lg:static lg:z-auto lg:w-[272px] lg:translate-x-0 lg:shadow-none"
+    class="sidebar fixed inset-y-0 left-0 z-40 flex w-[280px] max-w-[calc(100vw-32px)] shrink-0 flex-col border-r border-border/70 bg-sidebar shadow-[var(--shadow-float)] transition-transform duration-200 ease-out lg:visible lg:static lg:z-auto lg:w-[272px] lg:translate-x-0 lg:shadow-none"
     :class="open ? 'visible translate-x-0' : 'invisible -translate-x-full'"
     @keydown.esc="emit('close')"
   >
@@ -94,28 +84,6 @@ async function handleLogout() {
         </div>
       </div>
     </nav>
-
-    <div class="shrink-0 border-t border-border/70 bg-sidebar p-3">
-      <div class="flex items-center gap-2.5 px-2 py-2">
-        <div class="flex h-8 w-8 items-center justify-center rounded-full bg-accent-soft text-sm font-semibold text-accent">
-          {{ initials }}
-        </div>
-        <div class="min-w-0 flex-1">
-          <p class="truncate text-sm font-medium text-fg">{{ currentUser?.username }}</p>
-          <p class="truncate text-xs text-muted-fg">{{ currentUser?.email }}</p>
-        </div>
-        <RouterLink to="/account/security" class="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-muted-fg hover:bg-surface-secondary hover:text-fg" title="Seguridad de mi cuenta" aria-label="Seguridad de mi cuenta" @click="emit('close')"><Settings2 class="h-4 w-4" /></RouterLink>
-        <button
-          type="button"
-          class="flex h-8 w-8 items-center justify-center rounded-lg text-muted-fg transition-colors hover:bg-surface hover:text-fg"
-          title="Cerrar sesion"
-          aria-label="Cerrar sesión"
-          @click="handleLogout"
-        >
-          <LogOut class="h-4 w-4" />
-        </button>
-      </div>
-    </div>
   </aside>
 </template>
 

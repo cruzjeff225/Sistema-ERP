@@ -36,7 +36,7 @@ const inputType = computed(() => props.type === "password" && passwordVisible.va
         </label>
         <div class="relative">
             <input :id="inputId" :type="inputType" :value="props.modelValue" :placeholder="props.placeholder" :autocomplete="props.autocomplete" :disabled="props.disabled" :required="props.required" :min="props.min" :max="props.max" :step="props.step" :pattern="props.pattern" :inputmode="props.inputmode" :minlength="props.minlength" :maxlength="props.maxlength"
-                class="h-10 w-full rounded-lg border bg-surface px-3 text-sm text-fg shadow-sm transition placeholder:text-muted-fg focus:border-accent focus:outline-none focus:ring-4 focus:ring-accent/15 disabled:cursor-not-allowed disabled:bg-surface-secondary disabled:text-muted-fg"
+                class="h-9 w-full rounded-lg border bg-surface px-3 text-sm text-fg transition placeholder:text-muted-fg focus:border-accent focus:outline-none focus:ring-4 focus:ring-accent/15 disabled:cursor-not-allowed disabled:bg-surface-secondary disabled:text-muted-fg"
                 :class="[props.error ? 'border-danger' : 'border-border', props.revealPassword && props.type === 'password' ? 'pr-10' : '']"
                 @input="$emit('update:modelValue', ($event.target as HTMLInputElement).value)" />
             <button v-if="props.revealPassword && props.type === 'password'" type="button" class="absolute inset-y-0 right-0 grid w-10 place-items-center text-muted-fg transition hover:text-fg focus:outline-none" :title="passwordVisible ? 'Ocultar contraseña' : 'Mostrar contraseña'" :aria-label="passwordVisible ? 'Ocultar contraseña' : 'Mostrar contraseña'" @click="passwordVisible = !passwordVisible">

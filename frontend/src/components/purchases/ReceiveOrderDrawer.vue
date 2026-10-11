@@ -5,7 +5,7 @@ import { computed, onMounted, reactive, ref } from 'vue';
 import { Check } from 'lucide-vue-next';
 import AppButton from '../base/AppButton.vue';
 import AppInput from '../base/AppInput.vue';
-import PurchaseActionDialog from '../base/PurchaseActionDialog.vue';
+import ConfirmDialog from '../base/ConfirmDialog.vue';
 import { http } from '../../services/http.service';
 import { activeCompanyId } from '../../services/company-context';
 import { useFeedbackStore } from '../../stores/feedback.store';
@@ -88,7 +88,7 @@ onMounted(() => void load());
 
 <template>
   <div class="fixed inset-0 z-50 flex justify-end bg-black/35" @click.self="!saving && emit('close')">
-    <aside role="dialog" aria-modal="true" aria-label="Registrar recepción" class="h-full w-full max-w-3xl overflow-y-auto bg-surface p-4 shadow-xl sm:p-6" @keydown.esc="!saving && emit('close')">
+    <aside role="dialog" aria-modal="true" aria-label="Registrar recepción" class="h-full w-full max-w-3xl overflow-y-auto bg-surface p-4 shadow-[var(--shadow-float)] sm:p-6" @keydown.esc="!saving && emit('close')">
       <div><p class="section-eyebrow">Proceso de compras</p><h2 class="mt-1 text-xl font-semibold text-fg">Registrar recepción</h2></div>
       <p v-if="error" role="alert" class="sticky top-0 z-10 mt-4 rounded-lg border border-danger/30 bg-surface p-3 text-sm text-danger">{{ error }}</p>
       <p v-if="loading" role="status" class="mt-6 text-sm text-muted-fg">Consultando las cantidades pendientes…</p>
@@ -116,12 +116,12 @@ onMounted(() => void load());
             </div>
             <p v-if="!locations.length" class="mt-4 text-sm text-muted-fg">La recepción quedará pendiente de ubicación hasta registrar un espacio.</p>
           </div>
-          <label class="block text-sm font-medium text-fg">Observaciones de recepción<textarea v-model="form.notes" class="mt-1.5 min-h-20 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-fg" maxlength="2000" /></label>
+          <label class="block text-sm font-medium text-fg">Observaciones de recepción<textarea v-model="form.notes" class="field-control h-auto py-2 min-h-20" maxlength="2000" /></label>
           <div class="flex justify-end gap-2"><AppButton variant="outline" type="button" @click="emit('close')">Cancelar</AppButton><AppButton type="submit" :disabled="saving || !form.items.some(item => Number(item.quantity) > 0)">Revisar recepción</AppButton></div>
         </fieldset>
       </form>
       <div v-else-if="!loading" class="mt-6 flex justify-end"><AppButton variant="outline" @click="emit('close')">Cerrar</AppButton></div>
     </aside>
-    <PurchaseActionDialog v-if="review" title="Confirmar recepción" :description="review.description" :busy="saving" :error="error" @confirm="confirm" @close="review = null" />
+    <ConfirmDialog v-if="review" title="Confirmar recepción" :description="review.description" :busy="saving" :error="error" @confirm="confirm" @close="review = null" />
   </div>
 </template>

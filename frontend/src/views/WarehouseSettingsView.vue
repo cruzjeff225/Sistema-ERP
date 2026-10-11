@@ -2,9 +2,8 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { RouterLink } from 'vue-router';
 import AdminLayout from '../layouts/AdminLayout.vue';
-import AdministrationNav from '../components/admin/AdministrationNav.vue';
 import AppButton from '../components/base/AppButton.vue';
-import PurchaseActionDialog from '../components/base/PurchaseActionDialog.vue';
+import ConfirmDialog from '../components/base/ConfirmDialog.vue';
 import { http } from '../services/http.service';
 import { activeCompanyId } from '../services/company-context';
 import { usePermissions } from '../composables/usePermissions';
@@ -60,9 +59,8 @@ onBeforeUnmount(() => { mounted = false; ++version; ++operation; });
 
 <template>
   <AdminLayout title="Centro de recepción de compras">
-    <AdministrationNav section="warehouse" />
     <div class="mx-auto max-w-3xl space-y-6">
-      <header><h1 class="text-3xl font-semibold tracking-tight">Centro de recepción</h1><p class="mt-3 max-w-xl text-sm leading-6 text-muted-fg">El almacén general recibe las compras. Desde allí se distribuyen a las sucursales.</p></header>
+      <header><h1 class="page-title">Centro de recepción</h1><p class="page-subtitle">El almacén general recibe las compras. Desde allí se distribuyen a las sucursales.</p></header>
       <p v-if="error" role="alert" class="rounded-xl bg-danger-soft p-4 text-sm text-danger">{{ error }}</p>
       <p v-if="success" role="status" class="rounded-xl bg-success-soft p-4 text-sm">{{ success }}</p>
       <p v-if="loading" role="status" class="py-8 text-sm text-muted-fg">Cargando configuración…</p>
@@ -73,6 +71,6 @@ onBeforeUnmount(() => { mounted = false; ++version; ++operation; });
       <p v-else-if="!error" class="text-sm text-muted-fg">No hay almacenes disponibles para esta empresa.</p>
       <RouterLink v-if="general && can('locations.view')" :to="{path:'/organization/locations',query:{warehouse:String(general.id),branch:String(general.branchId)}}" class="inline-block text-sm text-muted-fg hover:text-fg">Gestionar espacios del almacén general</RouterLink>
     </div>
-    <PurchaseActionDialog v-if="leaving" title="Descartar cambio" description="El cambio del centro de recepción no se ha guardado." @close="resolveLeave(false)" @confirm="resolveLeave(true)" />
+    <ConfirmDialog v-if="leaving" title="Descartar cambio" description="El cambio del centro de recepción no se ha guardado." @close="resolveLeave(false)" @confirm="resolveLeave(true)" />
   </AdminLayout>
 </template>

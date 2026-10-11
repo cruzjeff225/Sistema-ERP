@@ -41,21 +41,21 @@ function onMunicipalityChange(event: Event) {
   <div class="contents">
     <label class="text-sm font-medium text-fg">
       Departamento
-      <select :value="departmentId" required class="mt-1.5 h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-fg" @change="onDepartmentChange">
+      <select :value="departmentId" required class="control mt-1.5 w-full" @change="onDepartmentChange">
         <option value="" disabled>Seleccione un departamento</option>
         <option v-for="department in departments" :key="department.id" :value="String(department.id)">{{ department.name }}</option>
       </select>
     </label>
     <label class="text-sm font-medium text-fg">
       Municipio
-      <select :value="municipalityId" required :disabled="!departmentId" class="mt-1.5 h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-fg disabled:cursor-not-allowed disabled:bg-surface-secondary" @change="onMunicipalityChange">
+      <select :value="municipalityId" required :disabled="!departmentId" class="control mt-1.5 w-full" @change="onMunicipalityChange">
         <option value="" disabled>Seleccione un municipio</option>
         <option v-for="municipality in municipalities" :key="municipality.id" :value="String(municipality.id)">{{ municipality.name }}</option>
       </select>
     </label>
     <label class="text-sm font-medium text-fg">
       Distrito
-      <select :value="districtId" required :disabled="!municipalityId" class="mt-1.5 h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-fg disabled:cursor-not-allowed disabled:bg-surface-secondary" @change="emit('update:districtId', ($event.target as HTMLSelectElement).value)">
+      <select :value="districtId" required :disabled="!municipalityId" class="control mt-1.5 w-full" @change="emit('update:districtId', ($event.target as HTMLSelectElement).value)">
         <option value="" disabled>Seleccione un distrito</option>
         <option v-for="district in districts" :key="district.id" :value="String(district.id)">{{ district.name }}</option>
       </select>

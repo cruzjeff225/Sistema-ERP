@@ -4,7 +4,7 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { Check, PackageCheck } from 'lucide-vue-next';
 import AppButton from '../base/AppButton.vue';
 import AppBadge from '../base/AppBadge.vue';
-import PurchaseActionDialog from '../base/PurchaseActionDialog.vue';
+import ConfirmDialog from '../base/ConfirmDialog.vue';
 import { http } from '../../services/http.service';
 import { activeCompanyId } from '../../services/company-context';
 import { useFeedbackStore } from '../../stores/feedback.store';
@@ -103,6 +103,6 @@ watch([() => props.requestId, activeCompanyId], () => { receiving.value = null; 
         </form>
       </li>
     </ul>
-    <PurchaseActionDialog v-if="confirming" title="Confirmar recepción de sucursal" description="Confirma las cantidades recibidas y los espacios donde quedaron físicamente los productos." :busy="saving" :error="error" @confirm="confirm" @close="confirming = false" />
+    <ConfirmDialog v-if="confirming" title="Confirmar recepción de sucursal" description="Confirma las cantidades recibidas y los espacios donde quedaron físicamente los productos." :busy="saving" :error="error" @confirm="confirm" @close="confirming = false" />
   </section>
 </template>

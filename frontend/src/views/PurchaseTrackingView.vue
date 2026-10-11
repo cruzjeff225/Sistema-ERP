@@ -3,8 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { ArrowRight, Check, Lock, Minus, RefreshCw, TriangleAlert } from 'lucide-vue-next';
 import AdminLayout from '../layouts/AdminLayout.vue';
-import PurchasesNav from '../components/purchases/PurchasesNav.vue';
-import PurchaseSectionHeader from '../components/purchases/PurchaseSectionHeader.vue';
+import PageHeader from '../components/base/PageHeader.vue';
 import AppBadge from '../components/base/AppBadge.vue';
 import AppButton from '../components/base/AppButton.vue';
 import AppCard from '../components/base/AppCard.vue';
@@ -64,12 +63,11 @@ watch(() => [route.params.type, route.params.id, activeCompanyId.value], () => {
 <template>
   <AdminLayout title="Seguimiento de compra">
     <div class="mx-auto max-w-[1440px] space-y-6">
-      <PurchasesNav />
-      <PurchaseSectionHeader title="Seguimiento de la compra" :description="data ? processSummary(data.documents) || 'Proceso de compra' : 'Revisa en qué etapa va la compra y qué sigue.'">
+      <PageHeader title="Seguimiento de la compra" :description="data ? processSummary(data.documents) || 'Proceso de compra' : 'Revisa en qué etapa va la compra y qué sigue.'">
         <template #actions>
           <AppButton variant="outline" :disabled="loading" @click="load()"><RefreshCw class="h-4 w-4" :class="loading && 'animate-spin'" aria-hidden="true" />Actualizar</AppButton>
         </template>
-      </PurchaseSectionHeader>
+      </PageHeader>
 
       <p v-if="error" role="alert" class="rounded-lg border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">{{ error }}</p>
 
@@ -172,7 +170,7 @@ watch(() => [route.params.type, route.params.id, activeCompanyId.value], () => {
             <div v-if="!data.lines.length" class="px-5 pb-5 pt-3 text-sm text-muted-fg">Todavía no hay productos en esta compra.</div>
             <div v-else class="overflow-x-auto">
               <table class="mt-3 w-full min-w-[640px] text-left text-sm">
-                <thead class="border-y border-border/70 bg-surface-secondary text-xs text-muted-fg">
+                <thead class="data-thead">
                   <tr>
                     <th scope="col" class="px-5 py-2 font-medium">Producto</th>
                     <th scope="col" class="px-3 py-2 text-right font-medium">Solicitado</th>

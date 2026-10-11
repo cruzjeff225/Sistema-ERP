@@ -13,12 +13,13 @@ import {
   Power,
   RefreshCw,
   Save,
-  Search,
   Warehouse,
   X,
 } from "lucide-vue-next";
 import AdminLayout from "../layouts/AdminLayout.vue";
-import OperationsNav from '../components/operations/OperationsNav.vue';
+import AppDrawer from "../components/base/AppDrawer.vue";
+import EmptyState from "../components/base/EmptyState.vue";
+import SearchField from "../components/base/SearchField.vue";
 import AppBadge from "../components/base/AppBadge.vue";
 import TrashButton from "../components/admin/TrashButton.vue";
 import AppButton from "../components/base/AppButton.vue";
@@ -26,7 +27,7 @@ import AppInput from "../components/base/AppInput.vue";
 import { http } from "../services/http.service";
 import { usePermissions } from "../composables/usePermissions";
 import { activeCompanyId } from "../services/company-context";
-import PurchaseActionDialog from "../components/base/PurchaseActionDialog.vue";
+import ConfirmDialog from "../components/base/ConfirmDialog.vue";
 import { useUnsavedChanges } from "../composables/useUnsavedChanges";
 import { onlyOptionId } from "../utils/purchase-workflow";
 import { organizationLocations, organizationPayload } from "../utils/organization-form";
@@ -60,6 +61,9 @@ const levels: Array<{ id: Level; label: string; singular: string; icon: any; per
 ];
 
 const activeLevel = ref<Level>("companies");
+// "Nuevo almacén" / "Nuevo espacio" but "Nueva sucursal" / "Nueva categoría": the article follows the noun.
+const MASCULINE_LEVELS: Level[] = ["warehouses", "locations"];
+const newLabel = computed(() => `${MASCULINE_LEVELS.includes(activeLevel.value) ? "Nuevo" : "Nueva"} ${levels.find(level => level.id === activeLevel.value)?.singular ?? "registro"}`);
 let loadVersion = 0;
 let initialForm = '';
 const discardChanges = ref(false);
@@ -433,12 +437,11 @@ onMounted(async () => {
 
 <template>
   <AdminLayout :title="`Organización · ${activeConfig.label}`">
-    <OperationsNav />
     <div class="mb-7 flex flex-wrap items-end justify-between gap-4">
       <div><p v-if="activeLevel === 'locations'" class="section-eyebrow">Estructura de almacenamiento</p><h1 class="page-title" :class="activeLevel === 'locations' && 'mt-1'">{{ activeConfig.label }}</h1><p v-if="activeLevel === 'locations'" class="mt-2 text-sm text-muted-fg">Organiza cada almacén por pasillo, estante, nivel y posición.</p></div>
       <div class="flex gap-2">
         <AppButton variant="outline" :disabled="loading || saving || editorOpen" title="Actualizar" @click="loadAll"><RefreshCw class="h-4 w-4" :class="loading && 'animate-spin'" /><span class="hidden sm:inline">Actualizar</span></AppButton>
-        <AppButton v-if="activeLevel !== 'companies' && can(`${activeConfig.permission}.create`)" :disabled="loading || saving || editorOpen" @click="openCreate"><Plus class="h-4 w-4" />{{ activeLevel === 'locations' ? 'Nuevo espacio' : `Nueva ${activeConfig.singular}` }}</AppButton>
+        <AppButton v-if="activeLevel !== 'companies' && can(`${activeConfig.permission}.create`)" :disabled="loading || saving || editorOpen" @click="openCreate"><Plus class="h-4 w-4" />{{ newLabel }}</AppButton>
       </div>
     </div>
 
@@ -472,7 +475,7 @@ onMounted(async () => {
         <div class="border-b border-border p-4 sm:px-5">
           <div class="grid gap-3 lg:grid-cols-[minmax(0,1fr)_11rem_11rem]">
             <label for="spaces-search" class="text-xs font-medium text-muted-fg">Buscar espacio
-              <div class="relative mt-1.5"><Search class="pointer-events-none absolute left-3 top-3 h-4 w-4 text-muted-fg" /><input id="spaces-search" v-model="search" class="h-10 w-full rounded-lg border border-border bg-surface pl-9 pr-3 text-sm text-fg outline-none focus:border-accent focus:ring-4 focus:ring-accent/15" placeholder="Código, coordenadas o notas" /></div>
+              <SearchField id="spaces-search" v-model="search" placeholder="Código, coordenadas o notas" class="mt-1.5" />
             </label>
             <label for="spaces-aisle" class="text-xs font-medium text-muted-fg">Pasillo<select id="spaces-aisle" v-model="spaceAisle" class="field-control"><option :value="null">Todos los pasillos</option><option v-for="aisle in spaceAisles" :key="aisle" :value="aisle">{{ aisle || 'Sin pasillo' }}</option></select></label>
             <label for="spaces-status" class="text-xs font-medium text-muted-fg">Estado<select id="spaces-status" v-model="spaceStatus" class="field-control"><option value="all">Todos los estados</option><option value="active">Activos</option><option value="inactive">Inactivos</option></select></label>
@@ -508,13 +511,13 @@ onMounted(async () => {
 
     <section v-else class="surface-panel overflow-hidden">
       <div class="flex flex-col gap-3 border-b border-border p-3 sm:flex-row sm:items-center sm:justify-between">
-        <div class="relative w-full sm:max-w-sm"><Search class="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-fg" /><input v-model="search" class="h-9 w-full rounded-lg border border-border bg-surface pl-9 pr-3 text-sm outline-none focus:border-accent focus:ring-4 focus:ring-accent/15" :placeholder="`Buscar ${activeConfig.label.toLowerCase()}`" /></div>
+        <SearchField v-model="search" :placeholder="`Buscar ${activeConfig.label.toLowerCase()}`" class="w-full sm:max-w-sm" />
         <p class="text-sm text-muted-fg">{{ filteredRows.length }} {{ filteredRows.length === 1 ? "registro" : "registros" }}</p>
       </div>
 
       <div class="hidden overflow-x-auto md:block">
         <table class="w-full min-w-[720px] text-left text-sm">
-          <thead class="border-b border-border bg-surface-secondary/70 text-xs uppercase text-muted-fg"><tr><th class="px-4 py-3">{{ activeConfig.singular }}</th><th class="px-4 py-3">Contexto</th><th class="px-4 py-3">Estado</th><th class="px-4 py-3 text-right">Acciones</th></tr></thead>
+          <thead class="data-thead"><tr><th class="px-4 py-3 capitalize">{{ activeConfig.singular }}</th><th class="px-4 py-3">Contexto</th><th class="px-4 py-3">Estado</th><th class="px-4 py-3 text-right">Acciones</th></tr></thead>
           <tbody class="divide-y divide-border">
             <tr v-for="item in filteredRows" :key="item.id" class="group hover:bg-surface-secondary/50">
               <td class="px-4 py-3"><button type="button" class="flex items-center gap-2 text-left font-medium text-fg" :class="['companies','branches','warehouses'].includes(activeLevel) && 'hover:text-accent'" @click="drillDown(item)">{{ entityName(activeLevel, item) }}<ChevronRight v-if="['companies','branches','warehouses'].includes(activeLevel)" class="h-4 w-4 opacity-0 transition group-hover:opacity-100" /></button></td>
@@ -522,20 +525,19 @@ onMounted(async () => {
               <td class="px-4 py-3"><AppBadge :variant="item.isActive ? 'success' : 'neutral'">{{ item.isActive ? "Activo" : "Inactivo" }}</AppBadge></td>
               <td class="px-4 py-3"><div class="flex justify-end gap-1"><button v-if="can(`${activeConfig.permission}.update`)" type="button" class="grid h-8 w-8 place-items-center rounded-lg text-muted-fg hover:bg-surface-secondary hover:text-fg" title="Editar" @click="editItem(item)"><Edit2 class="h-4 w-4" /></button><button v-if="activeLevel !== 'companies' && can(`${activeConfig.permission}.${item.isActive ? 'deactivate' : 'activate'}`)" type="button" class="grid h-8 w-8 place-items-center rounded-lg text-muted-fg hover:bg-surface-secondary hover:text-fg" :title="item.isActive ? 'Desactivar' : 'Activar'" @click="toggleStatus(item)"><Power class="h-4 w-4" /></button><TrashButton compact v-if="activeLevel !== 'companies'" :entity="activeLevel === 'categories' ? 'warehouse_categories' : activeLevel" :record-id="item.id" :label="entityName(activeLevel, item)" :disabled="saving" @deleted="loadAll" /></div></td>
             </tr>
-            <tr v-if="!loading && !filteredRows.length"><td colspan="4" class="px-4 py-12 text-center text-muted-fg">No hay registros para esta seleccion.</td></tr>
+            <tr v-if="!loading && !filteredRows.length"><td colspan="4"><EmptyState title="No hay registros para esta seleccion." /></td></tr>
           </tbody>
         </table>
       </div>
 
       <div class="divide-y divide-border md:hidden">
         <article v-for="item in filteredRows" :key="item.id" class="p-4"><div class="flex items-start justify-between gap-3"><button type="button" class="min-w-0 text-left" @click="drillDown(item)"><p class="truncate font-medium text-fg">{{ entityName(activeLevel, item) }}</p><p class="mt-1 text-xs leading-5 text-muted-fg">{{ entityDetail(activeLevel, item) }}</p></button><AppBadge :variant="item.isActive ? 'success' : 'neutral'">{{ item.isActive ? "Activo" : "Inactivo" }}</AppBadge></div><div class="mt-3 flex justify-end gap-2 border-t border-border pt-3"><AppButton v-if="can(`${activeConfig.permission}.update`)" size="sm" variant="ghost" @click="editItem(item)"><Edit2 class="h-4 w-4" />Editar</AppButton><button v-if="activeLevel !== 'companies' && can(`${activeConfig.permission}.${item.isActive ? 'deactivate' : 'activate'}`)" type="button" class="grid h-8 w-8 place-items-center rounded-lg text-muted-fg hover:bg-surface-secondary" :title="item.isActive ? 'Desactivar' : 'Activar'" @click="toggleStatus(item)"><Power class="h-4 w-4" /></button><TrashButton v-if="activeLevel !== 'companies'" :entity="activeLevel === 'categories' ? 'warehouse_categories' : activeLevel" :record-id="item.id" :label="entityName(activeLevel, item)" :disabled="saving" @deleted="loadAll" /></div></article>
-        <p v-if="!loading && !filteredRows.length" class="px-4 py-12 text-center text-sm text-muted-fg">No hay registros para esta seleccion.</p>
+        <EmptyState v-if="!loading && !filteredRows.length" title="No hay registros para esta seleccion." />
       </div>
     </section>
 
-    <div v-if="editorOpen" class="fixed inset-0 z-50 flex justify-end bg-black/35 backdrop-blur-[2px]" @click.self="closeEditor">
-      <aside role="dialog" aria-modal="true" aria-label="Registro de organización" @keydown.esc="closeEditor" class="flex h-full w-full max-w-2xl flex-col bg-surface shadow-2xl">
-        <header class="flex items-start justify-between border-b border-border px-5 py-4 sm:px-6"><div><p class="text-sm font-medium text-accent">{{ editing[activeLevel] ? "Editar" : "Nuevo registro" }}</p><h2 class="mt-1 text-xl font-semibold text-fg">{{ editing[activeLevel] ? `Editar ${activeConfig.singular}` : activeLevel === 'locations' ? 'Nuevo espacio' : `Nueva ${activeConfig.singular}` }}</h2><p class="mt-1 text-sm text-muted-fg">{{ activeLevel === 'locations' ? 'Define un espacio dentro de su almacén.' : 'Completa los datos necesarios para continuar.' }}</p></div><button type="button" class="grid h-9 w-9 place-items-center rounded-lg text-muted-fg hover:bg-surface-secondary" title="Cerrar" @click="closeEditor"><X class="h-5 w-5" /></button></header>
+    <AppDrawer v-if="editorOpen" label="Registro de organización" @close="closeEditor">
+        <header class="flex items-start justify-between border-b border-border px-5 py-4 sm:px-6"><div><p class="text-sm font-medium text-accent">{{ editing[activeLevel] ? "Editar" : "Nuevo registro" }}</p><h2 class="mt-1 text-xl font-semibold text-fg">{{ editing[activeLevel] ? `Editar ${activeConfig.singular}` : newLabel }}</h2><p class="mt-1 text-sm text-muted-fg">{{ activeLevel === 'locations' ? 'Define un espacio dentro de su almacén.' : 'Completa los datos necesarios para continuar.' }}</p></div><button type="button" class="grid h-9 w-9 place-items-center rounded-lg text-muted-fg hover:bg-surface-secondary" title="Cerrar" @click="closeEditor"><X class="h-5 w-5" /></button></header>
         <form class="scrollbar-thin flex min-h-0 flex-1 flex-col" @submit.prevent="saveActive">
           <p v-if="errorMessage" role="alert" class="px-5 pt-4 text-sm text-danger">{{ errorMessage }}</p>
           <fieldset :disabled="saving" class="flex-1 overflow-y-auto px-5 py-5 sm:px-6">
@@ -564,10 +566,9 @@ onMounted(async () => {
           </fieldset>
           <footer class="flex justify-end gap-2 border-t border-border px-5 py-4 sm:px-6"><AppButton variant="outline" type="button" :disabled="saving" @click="closeEditor">Cancelar</AppButton><AppButton type="submit" :disabled="saving"><Save class="h-4 w-4" />{{ saving ? "Guardando..." : "Guardar" }}</AppButton></footer>
         </form>
-      </aside>
-    </div>
-    <PurchaseActionDialog v-if="discardChanges" title="Descartar cambios" description="Los cambios del registro no se han guardado." @confirm="discardEditor" @close="discardChanges = false" />
-    <PurchaseActionDialog v-if="leaving" title="Salir sin guardar" description="Los cambios de organización no se han guardado." @confirm="resolveLeave(true)" @close="resolveLeave(false)" />
-    <PurchaseActionDialog v-if="statusChange" :title="statusChange.active ? 'Activar registro' : 'Desactivar registro'" :description="statusChange.name + '. Se conservará el historial. El servidor comprobará las restricciones de sus relaciones y existencias.'" :busy="saving" :error="errorMessage" @confirm="confirmStatusChange" @close="statusChange = null" />
+      </AppDrawer>
+    <ConfirmDialog v-if="discardChanges" title="Descartar cambios" description="Los cambios del registro no se han guardado." @confirm="discardEditor" @close="discardChanges = false" />
+    <ConfirmDialog v-if="leaving" title="Salir sin guardar" description="Los cambios de organización no se han guardado." @confirm="resolveLeave(true)" @close="resolveLeave(false)" />
+    <ConfirmDialog v-if="statusChange" :title="statusChange.active ? 'Activar registro' : 'Desactivar registro'" :description="statusChange.name + '. Se conservará el historial. El servidor comprobará las restricciones de sus relaciones y existencias.'" :busy="saving" :error="errorMessage" @confirm="confirmStatusChange" @close="statusChange = null" />
   </AdminLayout>
 </template>

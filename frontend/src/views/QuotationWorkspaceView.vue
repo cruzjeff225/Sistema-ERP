@@ -1,16 +1,16 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
-import { Building2, CalendarDays, ChevronLeft, ChevronRight, FileText, Search, ShoppingCart, Tag, Trash2, ArrowRight, Check } from 'lucide-vue-next';
+import { Building2, CalendarDays, ChevronLeft, ChevronRight, FileText, ShoppingCart, Tag, Trash2, ArrowRight, Check } from 'lucide-vue-next';
 import AdminLayout from '../layouts/AdminLayout.vue';
-import PurchasesNav from '../components/purchases/PurchasesNav.vue';
-import PurchaseSectionHeader from '../components/purchases/PurchaseSectionHeader.vue';
+import SearchField from '../components/base/SearchField.vue';
+import PageHeader from '../components/base/PageHeader.vue';
 import PurchaseTabs from '../components/purchases/PurchaseTabs.vue';
 import TrashButton from '../components/admin/TrashButton.vue';
 import AppButton from '../components/base/AppButton.vue';
 import TrackingLink from '../components/purchases/TrackingLink.vue';
 import QuotationComparison from './QuotationComparisonView.vue';
-import PurchaseActionDialog from '../components/base/PurchaseActionDialog.vue';
+import ConfirmDialog from '../components/base/ConfirmDialog.vue';
 import { http } from '../services/http.service';
 import { activeCompanyId } from '../services/company-context';
 import { usePermissions } from '../composables/usePermissions';
@@ -274,15 +274,14 @@ onBeforeUnmount(() => { mounted = false; ++companyEpoch; ++loadVersion; ++openVe
 <template>
   <AdminLayout title="Gestionar cotizaciones">
     <div class="mx-auto max-w-[1440px] space-y-6">
-      <PurchasesNav />
-      <PurchaseSectionHeader :title="offer ? 'Registrar oferta' : 'Cotizaciones'" :description="offer ? 'Complete la respuesta del proveedor para poder compararla.' : 'Reúna solicitudes, consulte a los proveedores y compare sus ofertas en un mismo lugar.'">
+      <PageHeader :title="offer ? 'Registrar oferta' : 'Cotizaciones'" :description="offer ? 'Complete la respuesta del proveedor para poder compararla.' : 'Reúna solicitudes, consulte a los proveedores y compare sus ofertas en un mismo lugar.'">
         <template #actions>
           <template v-if="!offer">
             <AppButton variant="outline" :disabled="loading || opening || busy || changed" @click="load">Actualizar</AppButton>
             <AppButton v-if="can('purchase_quotations.create') && can('purchase_requests.view')" :variant="!current && !showNew ? 'primary' : 'outline'" :disabled="busy || loading || opening" @click="toggleNew">{{ showNew ? 'Volver a la gestión' : 'Nueva gestión' }}</AppButton>
           </template>
         </template>
-      </PurchaseSectionHeader>
+      </PageHeader>
 
       <ol class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" aria-label="Pasos de la gestión de cotización">
         <li v-for="(step, index) in processSteps" :key="step.title" class="flex items-start gap-3" :aria-current="processStepIndex === index + 1 ? 'step' : undefined">
@@ -336,13 +335,13 @@ onBeforeUnmount(() => { mounted = false; ++companyEpoch; ++loadVersion; ++openVe
           </div>
           <div class="mt-5"><PurchaseTabs variant="pill" :model-value="requestAgeTab" :items="[{ value: 'recent', label: 'Esta semana' }, { value: 'older', label: 'Anteriores' }]" label="Antigüedad de las solicitudes" :disabled="busy" @update:model-value="selectRequestPeriod" /></div>
           <div class="mt-4 grid gap-3 md:grid-cols-[minmax(0,1.4fr)_1fr_1fr]">
-            <label class="relative block"><span class="sr-only">Buscar solicitud</span><Search class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-fg" aria-hidden="true" /><input v-model="requestSearch" type="search" class="field-control !pl-9" placeholder="Buscar por código, sucursal o motivo…" /></label>
+            <SearchField v-model="requestSearch" placeholder="Buscar por código, sucursal o motivo…" aria-label="Buscar solicitud" />
             <label class="relative block"><span class="sr-only">Sucursal</span><Building2 class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-fg" aria-hidden="true" /><select v-model.number="requestBranch" class="field-control !pl-9"><option :value="0">Todas las sucursales</option><option v-for="branch in branchOptions" :key="branch.id" :value="branch.id">{{ branch.name }}</option></select></label>
             <label class="relative block"><span class="sr-only">Finalidad</span><Tag class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-fg" aria-hidden="true" /><select v-model="requestPurpose" class="field-control !pl-9"><option value="">Todas las finalidades</option><option v-for="purpose in purposeOptions" :key="purpose.value" :value="purpose.value">{{ purpose.label }}</option></select></label>
           </div>
           <div class="mt-4 overflow-x-auto rounded-xl border border-border/70">
             <table class="w-full min-w-[720px] text-left text-sm">
-              <thead class="bg-surface-secondary text-xs text-muted-fg"><tr>
+              <thead class="data-thead"><tr>
                 <th class="w-10 px-4 py-3"><input type="checkbox" class="h-4 w-4" aria-label="Seleccionar las solicitudes de esta página" :checked="pageAllSelected" :disabled="busy || !pickerPage.length" @change="togglePage" /></th>
                 <th class="px-3 py-3 font-medium">Código</th><th class="px-3 py-3 font-medium">Sucursal</th><th class="px-3 py-3 font-medium">Fecha</th><th class="px-3 py-3 font-medium">Finalidad de la compra</th><th class="px-3 py-3 font-medium">Productos</th><th class="px-3 py-3 font-medium">Estado</th>
               </tr></thead>
@@ -423,7 +422,7 @@ onBeforeUnmount(() => { mounted = false; ++companyEpoch; ++loadVersion; ++openVe
           </div>
           <div class="overflow-x-auto">
             <table class="w-full min-w-[600px] text-left text-sm">
-              <thead class="border-y border-border bg-surface-secondary text-xs text-muted-fg"><tr><th class="px-5 py-3 font-medium sm:px-6">Producto</th><th class="px-4 py-3 text-right font-medium">Solicitado</th><th class="px-4 py-3 text-right font-medium">A cotizar</th><th class="px-5 py-3 sm:px-6"><span class="sr-only">Acciones</span></th></tr></thead>
+              <thead class="data-thead"><tr><th class="px-5 py-3 font-medium sm:px-6">Producto</th><th class="px-4 py-3 text-right font-medium">Solicitado</th><th class="px-4 py-3 text-right font-medium">A cotizar</th><th class="px-5 py-3 sm:px-6"><span class="sr-only">Acciones</span></th></tr></thead>
               <tbody>
                 <tr v-for="l in current.lines" :key="l.id" class="border-b border-border last:border-b-0">
                   <td class="px-5 py-4 sm:px-6">
@@ -531,7 +530,7 @@ onBeforeUnmount(() => { mounted = false; ++companyEpoch; ++loadVersion; ++openVe
         </section>
       </template>
     </div>
-    <PurchaseActionDialog v-if="confirm" title="Confirmar adjudicación" description="Se generará una orden por proveedor con los productos y cantidades seleccionados. Revise cada orden antes de aprobarla." :busy="busy" :error="error" @close="confirm = false" @confirm="award" />
-    <PurchaseActionDialog v-if="leaving || discardChanges" title="Descartar cambios" description="Tiene datos sin guardar en este proceso." :busy="false" @close="resolveDiscard(false)" @confirm="resolveDiscard(true)" />
+    <ConfirmDialog v-if="confirm" title="Confirmar adjudicación" description="Se generará una orden por proveedor con los productos y cantidades seleccionados. Revise cada orden antes de aprobarla." :busy="busy" :error="error" @close="confirm = false" @confirm="award" />
+    <ConfirmDialog v-if="leaving || discardChanges" title="Descartar cambios" description="Tiene datos sin guardar en este proceso." :busy="false" @close="resolveDiscard(false)" @confirm="resolveDiscard(true)" />
   </AdminLayout>
 </template>

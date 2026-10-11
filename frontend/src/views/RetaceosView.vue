@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, onBeforeUnmount, reactive, ref, watch } from "vue";
-import { Calculator, Settings2, LockKeyhole, Pencil, Plus, RefreshCw, Search, ShieldCheck, X, XCircle } from "lucide-vue-next";
+import { Calculator, Settings2, LockKeyhole, Pencil, Plus, RefreshCw, ShieldCheck, X, XCircle } from "lucide-vue-next";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 import ExpenseTypesManager from '../components/purchases/ExpenseTypesManager.vue';
-import PurchaseActionDialog from "../components/base/PurchaseActionDialog.vue";
+import ConfirmDialog from "../components/base/ConfirmDialog.vue";
 import AdminLayout from "../layouts/AdminLayout.vue";
-import PurchasesNav from "../components/purchases/PurchasesNav.vue";
-import PurchaseSectionHeader from "../components/purchases/PurchaseSectionHeader.vue";
+import AppDrawer from "../components/base/AppDrawer.vue";
+import SearchField from "../components/base/SearchField.vue";
+import PageHeader from "../components/base/PageHeader.vue";
 import PurchaseTabs from "../components/purchases/PurchaseTabs.vue";
 import AppBadge from "../components/base/AppBadge.vue";
 import TrashButton from "../components/admin/TrashButton.vue";
@@ -367,13 +368,12 @@ onMounted(load);
 <template>
   <AdminLayout title="Retaceo">
     <div class="mx-auto max-w-[1440px] space-y-6">
-    <PurchasesNav />
-    <PurchaseSectionHeader title="Retaceo y costos" description="Distribuye los gastos de cada recepción y confirma el costo de sus productos.">
+    <PageHeader title="Retaceo y costos" description="Distribuye los gastos de cada recepción y confirma el costo de sus productos.">
       <template #actions>
         <AppButton v-if="can('expense_types.view')" variant="outline" :disabled="saving || drawerOpen" @click="expenseSettingsOpen = true"><Settings2 class="h-4 w-4" />Configurar gastos</AppButton>
         <AppButton v-if="can('retaceos.create')" :disabled="loading || saving || !eligiblePurchases.length" @click="newRetaceo"><Plus class="h-4 w-4" />Nuevo retaceo</AppButton>
       </template>
-    </PurchaseSectionHeader>
+    </PageHeader>
 
     <nav v-if="contextPurchaseId" class="mb-5 flex flex-wrap items-center justify-between gap-3 text-sm" aria-label="Recepción de origen">
       <RouterLink v-if="can('purchases.view')" :to="'/purchases/receipts?id=' + contextPurchaseId" class="text-accent">Volver a {{ contextPurchase?.documentNumber || 'la recepción' }}</RouterLink>
@@ -389,7 +389,7 @@ onMounted(load);
         <div class="space-y-3 border-b border-border p-4">
           <div class="flex items-center justify-between gap-3"><strong class="text-sm">Retaceos</strong><div class="flex items-center gap-2"><span class="text-xs text-muted-fg">{{ filteredRecords.length }} registros</span><button type="button" class="icon-button" title="Actualizar" aria-label="Actualizar retaceos" :disabled="loading || saving || drawerOpen" @click="load"><RefreshCw class="h-4 w-4" :class="loading && 'animate-spin'" /></button></div></div>
           <PurchaseTabs :model-value="ageTab" :items="[{ value: 'recent', label: 'Esta semana' }, { value: 'older', label: 'Anteriores' }]" label="Período de retaceos" :disabled="loading || saving || drawerOpen || expenseSettingsOpen" @update:model-value="changeTab" />
-          <label class="relative block"><Search class="pointer-events-none absolute left-3 top-3 h-4 w-4 text-muted-fg" /><input v-model="search" :disabled="saving || drawerOpen" type="search" aria-label="Buscar retaceos" class="mt-0 h-10 w-full rounded-lg border border-border bg-surface pl-9 pr-3 text-sm text-fg" placeholder="Código, proveedor o recepción" /></label>
+          <SearchField v-model="search" :disabled="saving || drawerOpen" aria-label="Buscar retaceos" placeholder="Código, proveedor o recepción" />
           <details><summary class="cursor-pointer text-xs text-muted-fg">Filtros{{ filterCount ? ' (' + filterCount + ')' : '' }}</summary><div class="mt-3 space-y-3"><label class="block text-sm">Estado<select v-model="statusFilter" :disabled="saving || drawerOpen" class="field-control"><option value="">Todos los estados</option><option v-for="status in ['draft','calculated','verified','closed','cancelled']" :key="status" :value="status">{{ statusLabel(status) }}</option></select></label><div v-if="ageTab === 'older'" class="grid grid-cols-2 gap-2"><AppInput v-model="historyFrom" label="Desde" type="date" :disabled="saving || drawerOpen" :max="historyTo || undefined" /><AppInput v-model="historyTo" label="Hasta" type="date" :disabled="saving || drawerOpen" :min="historyFrom || undefined" /></div><button type="button" class="text-xs font-medium text-accent" :disabled="saving || drawerOpen" @click="clearFilters">Limpiar filtros</button></div></details>
         </div>
         <div class="scrollbar-thin max-h-[250px] lg:max-h-[650px] overflow-y-auto p-2">
@@ -441,7 +441,7 @@ onMounted(load);
 
         <section v-if="detailView === 'products'" class="p-5 sm:p-6">
           <div class="mb-3 flex flex-wrap items-center justify-between gap-3"><h3 class="font-semibold text-fg">Costo por producto</h3><label class="flex items-center gap-2 text-sm text-muted-fg"><input v-model="showBreakdown" type="checkbox" class="h-4 w-4" />Ver desglose de gastos</label></div>
-          <div class="overflow-x-auto rounded-lg border border-border"><table class="w-full min-w-[580px] text-left text-sm"><thead class="border-b border-border bg-surface-secondary text-xs text-muted-fg"><tr><th class="px-4 py-3">Producto</th><th class="px-4 py-3 text-right">Cantidad</th><th class="px-4 py-3 text-right">FOB</th><th v-if="showBreakdown" class="px-4 py-3 text-right">Distribución</th><th v-if="showBreakdown" class="px-4 py-3 text-right">Flete</th><th v-if="showBreakdown" class="px-4 py-3 text-right">Gastos</th><th v-if="showBreakdown" class="px-4 py-3 text-right">DAI</th><th class="px-4 py-3 text-right">Costo unitario</th><th class="px-4 py-3 text-right">Costo total</th></tr></thead><tbody class="divide-y divide-border"><tr v-for="detail in selected.details" :key="detail.id"><td class="px-4 py-3"><strong class="text-fg">{{ detail.product.name }}</strong><span class="block text-xs text-muted-fg">{{ detail.product.internalCode }} · {{ detail.purchaseItem?.location?.code ?? 'Sin ubicación' }}</span></td><td class="px-4 py-3 text-right">{{ Number(detail.quantity) }}</td><td class="px-4 py-3 text-right">{{ money(detail.costFob) }}</td><td v-if="showBreakdown" class="px-4 py-3 text-right">{{ Number(detail.distributionPercent).toFixed(2) }}%</td><td v-if="showBreakdown" class="px-4 py-3 text-right">{{ money(detail.freightAmount) }}</td><td v-if="showBreakdown" class="px-4 py-3 text-right">{{ money(detail.expenseAmount) }}</td><td v-if="showBreakdown" class="px-4 py-3 text-right">{{ money(detail.daiAmount) }}</td><td class="px-4 py-3 text-right font-medium">{{ selected.status === 'draft' ? 'Pendiente' : money(detail.unitCost) }}</td><td class="px-4 py-3 text-right font-semibold text-fg">{{ selected.status === 'draft' ? 'Pendiente' : money(detail.totalCost) }}</td></tr></tbody></table></div>
+          <div class="overflow-x-auto rounded-lg border border-border"><table class="w-full min-w-[580px] text-left text-sm"><thead class="data-thead"><tr><th class="px-4 py-3">Producto</th><th class="px-4 py-3 text-right">Cantidad</th><th class="px-4 py-3 text-right">FOB</th><th v-if="showBreakdown" class="px-4 py-3 text-right">Distribución</th><th v-if="showBreakdown" class="px-4 py-3 text-right">Flete</th><th v-if="showBreakdown" class="px-4 py-3 text-right">Gastos</th><th v-if="showBreakdown" class="px-4 py-3 text-right">DAI</th><th class="px-4 py-3 text-right">Costo unitario</th><th class="px-4 py-3 text-right">Costo total</th></tr></thead><tbody class="divide-y divide-border"><tr v-for="detail in selected.details" :key="detail.id"><td class="px-4 py-3"><strong class="text-fg">{{ detail.product.name }}</strong><span class="block text-xs text-muted-fg">{{ detail.product.internalCode }} · {{ detail.purchaseItem?.location?.code ?? 'Sin ubicación' }}</span></td><td class="px-4 py-3 text-right">{{ Number(detail.quantity) }}</td><td class="px-4 py-3 text-right">{{ money(detail.costFob) }}</td><td v-if="showBreakdown" class="px-4 py-3 text-right">{{ Number(detail.distributionPercent).toFixed(2) }}%</td><td v-if="showBreakdown" class="px-4 py-3 text-right">{{ money(detail.freightAmount) }}</td><td v-if="showBreakdown" class="px-4 py-3 text-right">{{ money(detail.expenseAmount) }}</td><td v-if="showBreakdown" class="px-4 py-3 text-right">{{ money(detail.daiAmount) }}</td><td class="px-4 py-3 text-right font-medium">{{ selected.status === 'draft' ? 'Pendiente' : money(detail.unitCost) }}</td><td class="px-4 py-3 text-right font-semibold text-fg">{{ selected.status === 'draft' ? 'Pendiente' : money(detail.totalCost) }}</td></tr></tbody></table></div>
           <div class="mt-5 flex items-center justify-between gap-4 border-t border-border pt-4 text-sm"><span class="text-muted-fg">{{ selected.status === 'draft' ? 'Costo previsto' : 'Costo de adquisición' }}</span><strong class="text-lg">{{ money(selected.totalCost) }}</strong></div>
         </section>
         <section v-if="detailView === 'documents'" :key="'import-' + selected.id" class="p-5 sm:p-6">
@@ -463,7 +463,7 @@ onMounted(load);
 
     </div>
 
-    <div v-if="drawerOpen" class="fixed inset-0 z-50 bg-black/45" @click.self="closeDrawer()"><aside role="dialog" aria-modal="true" aria-label="Retaceo de importación" class="ml-auto h-full w-full max-w-3xl overflow-y-auto bg-surface p-4 shadow-2xl sm:p-6" @keydown.esc="closeDrawer()"><div class="flex items-start justify-between"><div><p class="section-eyebrow">{{ editingId ? 'Modificar borrador' : 'Nueva distribución' }}</p><h2 class="mt-1 text-xl font-semibold text-fg">Retaceo de importación</h2></div><button class="icon-button" title="Cerrar" @click="closeDrawer()"><X class="h-5 w-5" /></button></div>
+    <AppDrawer v-if="drawerOpen" label="Retaceo de importación" size="lg" padded @close="closeDrawer()"><div class="flex items-start justify-between"><div><p class="section-eyebrow">{{ editingId ? 'Modificar borrador' : 'Nueva distribución' }}</p><h2 class="mt-1 text-xl font-semibold text-fg">Retaceo de importación</h2></div><button class="icon-button" title="Cerrar" @click="closeDrawer()"><X class="h-5 w-5" /></button></div>
       <p v-if="errorMessage" role="alert" class="sticky top-0 z-10 mt-4 rounded-lg border border-danger/30 bg-surface p-3 text-sm text-danger">{{ errorMessage }}</p>
       <ol aria-label="Etapas del retaceo" class="mt-5 grid grid-cols-3 gap-2 border-b border-border pb-4">
         <li v-for="(step, index) in steps" :key="step" :aria-current="formStep === index + 1 ? 'step' : undefined" class="flex items-center gap-2 text-sm" :class="formStep === index + 1 ? 'font-semibold text-accent' : 'text-muted-fg'"><span class="grid h-6 w-6 shrink-0 place-items-center rounded-full border border-current text-xs">{{ index + 1 }}</span>{{ step }}</li>
@@ -506,15 +506,13 @@ onMounted(load);
           <AppButton type="submit" :disabled="saving || !form.purchaseId || !form.details.length">{{ saving ? 'Guardando...' : formStep === 1 ? 'Continuar a gastos' : formStep === 2 ? 'Revisar importes' : 'Guardar borrador' }}</AppButton>
         </footer>
       </fieldset></form>
-    </aside></div>
-    <PurchaseActionDialog v-if="confirmation" :title="confirmation.title" :description="confirmation.description" :require-reason="confirmation.reason" :busy="saving" :error="errorMessage" @confirm="confirmWorkflow" @close="confirmation = null" />
-    <PurchaseActionDialog v-if="discardChanges" title="Descartar cambios" description="Los cambios del retaceo no se han guardado." @confirm="closeDrawer(true)" @close="discardChanges = false" />
-    <PurchaseActionDialog v-if="pendingPurchaseId !== null" title="Cambiar recepción" description="Se reemplazarán los productos y la factura. Se borrarán los gastos y datos de importación capturados para la recepción anterior." @confirm="confirmPurchaseChange" @close="pendingPurchaseId = null" />
-    <PurchaseActionDialog v-if="leaving" title="Salir sin guardar" description="Los cambios del retaceo no se han guardado." @confirm="resolveLeave(true)" @close="resolveLeave(false)" />
-    <div v-if="expenseSettingsOpen" class="fixed inset-0 z-50 flex justify-end bg-black/40" @click.self="expenseSettings?.requestClose()">
-      <aside role="dialog" aria-modal="true" aria-label="Configurar tipos de gasto" class="h-full w-full max-w-2xl overflow-y-auto bg-surface p-5 shadow-xl sm:p-7" @keydown.esc.stop="expenseSettings?.requestClose()">
+    </AppDrawer>
+    <ConfirmDialog v-if="confirmation" :title="confirmation.title" :description="confirmation.description" :require-reason="confirmation.reason" :busy="saving" :error="errorMessage" @confirm="confirmWorkflow" @close="confirmation = null" />
+    <ConfirmDialog v-if="discardChanges" title="Descartar cambios" description="Los cambios del retaceo no se han guardado." @confirm="closeDrawer(true)" @close="discardChanges = false" />
+    <ConfirmDialog v-if="pendingPurchaseId !== null" title="Cambiar recepción" description="Se reemplazarán los productos y la factura. Se borrarán los gastos y datos de importación capturados para la recepción anterior." @confirm="confirmPurchaseChange" @close="pendingPurchaseId = null" />
+    <ConfirmDialog v-if="leaving" title="Salir sin guardar" description="Los cambios del retaceo no se han guardado." @confirm="resolveLeave(true)" @close="resolveLeave(false)" />
+    <AppDrawer v-if="expenseSettingsOpen" label="Configurar tipos de gasto" @close="expenseSettings?.requestClose()">
         <ExpenseTypesManager ref="expenseSettings" embedded @close="expenseSettingsOpen = false" />
-      </aside>
-    </div>
+      </AppDrawer>
   </AdminLayout>
 </template>

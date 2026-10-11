@@ -4,9 +4,9 @@ import { RouterLink, useRoute } from 'vue-router';
 import JsBarcode from 'jsbarcode';
 import { ArrowLeft, ArrowRight, ScanLine, Truck, ReceiptText, RefreshCw } from 'lucide-vue-next';
 import AdminLayout from '../layouts/AdminLayout.vue';
-import OperationsNav from '../components/operations/OperationsNav.vue';
+import EmptyState from '../components/base/EmptyState.vue';
 import AppButton from '../components/base/AppButton.vue';
-import PurchaseActionDialog from '../components/base/PurchaseActionDialog.vue';
+import ConfirmDialog from '../components/base/ConfirmDialog.vue';
 import { http } from '../services/http.service';
 import { activeCompanyId } from '../services/company-context';
 import { usePermissions } from '../composables/usePermissions';
@@ -122,6 +122,13 @@ const usableSlots = (p: any): any[] => (p.locationOptions ?? []).filter((l: any)
 const blockedSlots = (p: any): any[] => (p.locationOptions ?? []).filter((l: any) => !l.compatible);
 const slotNote: Record<string, string> = { free: 'libre', same_product: 'ya tiene este producto', other_product: 'tiene otros productos' };
 const slotLabel = (l: any, p?: any) => `${l.code} · ${l.aisle} / ${l.rack} / ${l.level} / ${l.position}${l.compatible ? ` · ${slotNote[l.availability]} · quedan ${l.free}` : ` · ${l.reason}`}${p && l.id === p.recommendedLocationId ? ' (recomendado)' : ''}`;
+// Managing spaces opens with this warehouse already chosen, so the user does not pick branch and warehouse again.
+const spacesLocation = (p: any) => {
+  const branch = Number(p.purchase?.branchId), warehouse = Number(p.purchase?.warehouseId);
+  return Number.isInteger(branch) && branch > 0 && Number.isInteger(warehouse) && warehouse > 0
+    ? { path: '/organization/locations', query: { branch: String(branch), warehouse: String(warehouse) } }
+    : { path: '/organization/locations' };
+};
 function place(p: any) { void run(async current => { await http.post(`/supply/placements/${p.id}/confirm`, placement[p.id], headers()); if (!current()) return; delete placement[p.id]; await load(); if (current()) success.value = 'Ubicación física confirmada. El mapa y las existencias ya muestran este producto.'; }); }
 function printLabel(p: any) {
   error.value = '';
@@ -219,7 +226,6 @@ onBeforeUnmount(() => { loadVersion++; stockVersion++; expenseVersion++; destina
 
 <template>
   <AdminLayout title="Bodega">
-    <OperationsNav />
     <div class="mx-auto max-w-5xl space-y-6">
       <p v-if="error" role="alert" class="rounded-lg bg-danger-soft p-4 text-danger">{{ error }}</p><p v-if="success" role="status" class="rounded-lg bg-success-soft p-4">{{ success }}</p>
       <section v-if="context" class="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-border bg-surface p-5">
@@ -227,11 +233,11 @@ onBeforeUnmount(() => { loadVersion++; stockVersion++; expenseVersion++; destina
         <div class="flex flex-wrap gap-4 text-sm"><RouterLink v-if="backToDocument" :to="backToDocument" class="font-medium text-accent">Volver al documento</RouterLink><RouterLink to="/inventory/warehouse" class="text-muted-fg">Ver toda la bodega</RouterLink></div>
       </section>
       <header class="flex flex-wrap items-start justify-between gap-4">
-        <div><RouterLink v-if="!context && tab!=='home'" to="/inventory/warehouse" class="mb-4 inline-flex items-center gap-2 text-sm text-muted-fg hover:text-fg"><ArrowLeft class="h-4 w-4" />Bodega</RouterLink><h1 class="text-3xl font-semibold tracking-tight">{{ context ? activeTask?.name ?? 'Bodega' : tab==='home' ? 'Bodega' : activeTask?.name }}</h1><p v-if="!context && tab==='home'" class="mt-2 text-sm leading-6 text-muted-fg">Ubica lo recibido y prepara las entregas a tus sucursales.</p></div>
+        <div><RouterLink v-if="!context && tab!=='home'" to="/inventory/warehouse" class="mb-4 inline-flex items-center gap-2 text-sm text-muted-fg hover:text-fg"><ArrowLeft class="h-4 w-4" />Bodega</RouterLink><h1 class="page-title">{{ context ? activeTask?.name ?? 'Bodega' : tab==='home' ? 'Bodega' : activeTask?.name }}</h1><p v-if="!context && tab==='home'" class="page-subtitle">Ubica lo recibido y prepara las entregas a tus sucursales.</p></div>
         <div class="flex items-center gap-3"><RouterLink to="/inventory" class="text-sm text-muted-fg hover:text-fg">Existencias y mapa</RouterLink><AppButton variant="outline" size="sm" :disabled="busy || loading" aria-label="Actualizar bodega" title="Actualizar" @click="load"><RefreshCw class="h-4 w-4" /></AppButton></div>
       </header>
       <div v-if="context && tabs.length>1" class="flex flex-wrap gap-2"><RouterLink v-for="task in tabs" :key="task.id" :to="taskLink(task.id)" :aria-current="tab===task.id?'page':undefined" class="rounded-lg px-4 py-2 text-sm" :class="tab===task.id?'bg-surface-secondary font-medium text-fg':'text-muted-fg hover:text-fg'">{{ task.name }}</RouterLink></div>
-      <p v-if="loading" role="status" class="py-8 text-center text-sm text-muted-fg">Cargando bodega…</p>
+      <EmptyState v-if="loading" title="Cargando bodega…" />
       <template v-else-if="!contextNotice && !loadFailed">
       <section v-if="tab==='home'" aria-label="Tareas de bodega" class="space-y-6">
         <div class="grid gap-4 sm:grid-cols-2">
@@ -247,12 +253,13 @@ onBeforeUnmount(() => { loadVersion++; stockVersion++; expenseVersion++; destina
           <div class="my-4"><AppButton variant="outline" @click="printLabel(p)">Imprimir viñeta de código de barras</AppButton></div>
           <form v-if="can('inventory.adjust')" class="grid gap-4 sm:grid-cols-2" @submit.prevent="place(p)"><label>Leer código de barras colocado<input v-model="placement[p.id]!.barcode" required autocomplete="off" class="field-control" /></label><label>Ubicación física<select v-model.number="placement[p.id]!.locationId" required class="field-control"><option :value="0" disabled>Seleccione espacio</option><optgroup v-if="usableSlots(p).length" label="Espacios disponibles"><option v-for="l in usableSlots(p)" :key="l.id" :value="l.id">{{ slotLabel(l, p) }}</option></optgroup><optgroup v-if="blockedSlots(p).length" label="No disponibles para este producto"><option v-for="l in blockedSlots(p)" :key="l.id" :value="l.id" disabled>{{ slotLabel(l) }}</option></optgroup></select></label><label class="sm:col-span-2"><input v-model="placement[p.id]!.confirmed" type="checkbox" required /> Confirmo que coloqué la viñeta y dejé los productos en este espacio.</label><AppButton type="submit" :disabled="busy || !placement[p.id]!.locationId">Confirmar colocación</AppButton></form>
           <p v-if="p.recommendedLocationId" class="mt-3 text-xs text-muted-fg">El espacio recomendado no se considera ocupado por estos productos hasta que confirme su colocación.</p>
-          <p v-if="(p.locationOptions ?? []).length && !usableSlots(p).length" role="alert" class="mt-3 text-sm text-warning">Ningún espacio de este almacén puede recibir este producto ahora: {{ blockedSlots(p).length === 1 ? 'el único espacio está ocupado con otra unidad o sin capacidad' : 'los ' + blockedSlots(p).length + ' espacios están ocupados con otra unidad o sin capacidad' }}. Registre un espacio nuevo o libere uno. <RouterLink to="/organization/locations" class="font-medium text-accent">Administrar espacios</RouterLink></p>
-          <p v-if="!(p.locationOptions ?? []).length" class="mt-3 text-sm">Este almacén aún no tiene espacios definidos. <RouterLink to="/organization/locations" class="text-accent">Registrar los espacios físicos</RouterLink></p>
+          <p v-if="(p.locationOptions ?? []).length && !usableSlots(p).length" role="alert" class="mt-3 text-sm text-warning">Ningún espacio de este almacén puede recibir este producto ahora: {{ blockedSlots(p).length === 1 ? 'el único espacio está ocupado con otra unidad o sin capacidad' : 'los ' + blockedSlots(p).length + ' espacios están ocupados con otra unidad o sin capacidad' }}. Registre un espacio nuevo o libere uno. <RouterLink :to="spacesLocation(p)" class="font-medium text-accent">Administrar espacios</RouterLink></p>
+          <p v-if="!(p.locationOptions ?? []).length" class="mt-3 text-sm">Este almacén aún no tiene espacios definidos. <RouterLink :to="spacesLocation(p)" class="text-accent">Registrar los espacios físicos</RouterLink></p>
         </article>
       </section>
       <template v-if="tab === 'transfers'">
         <section v-if="can('purchase_requests.view')" class="rounded-xl border border-border bg-surface p-5"><h2 class="text-lg font-semibold">{{ context?.kind === 'request' ? 'Entrega de la solicitud' : 'Despachar desde el centro general' }}</h2><div v-if="!context || canDispatch" class="my-4 grid gap-4 sm:grid-cols-2"><label v-if="!context">Solicitud original<select v-model.number="selectedRequest" class="field-control" :disabled="busy" @change="chooseRequest"><option :value="0" disabled>Seleccione solicitud</option><option v-for="r in visibleRequests" :key="r.id" :value="r.id">{{ r.code }} · {{ r.branch.name }}</option></select></label><label v-if="canDispatch">Almacén de la sucursal destino<select v-model.number="toWarehouse" :disabled="busy" class="field-control"><option :value="0" disabled>Seleccione destino</option><option v-for="w in destinationWarehouses" :key="w.id" :value="w.id">{{ w.name }}</option></select></label></div>
+          <p v-if="canDispatch && request && !destinationWarehouses.length" role="status" class="my-4 text-sm text-warning">Esta sucursal no tiene un almacén de destino para recibir los productos. Hace falta registrar uno antes de despachar. <RouterLink :to="{ path: '/organization/warehouses', query: { branch: String(request.branchId) } }" class="font-medium text-accent">Ir a Almacenes</RouterLink></p>
           <div v-if="canDispatch && can('inventory.adjust')" class="my-4 flex flex-wrap items-center gap-3"><AppButton variant="outline" :disabled="busy || loading || stockLoading || destinationLoading || !toWarehouse || !!dispatchLines.length" @click="prepareDispatch">Preparar con existencias disponibles</AppButton><span class="text-xs text-muted-fg">{{ stockLoading || destinationLoading ? 'Revisando existencias y espacios…' : dispatchLines.length ? 'Revisa y ajusta el despacho antes de confirmar.' : !toWarehouse ? 'Selecciona el almacén destino.' : 'Sugiere cantidades y espacios; tú confirmas el despacho.' }}</span></div>
           <p v-if="request && !canDispatch" class="my-4 text-sm text-muted-fg">{{ request.status === 'fulfilled' ? 'La sucursal recibió todos los productos solicitados.' : ['draft', 'rejected', 'cancelled'].includes(request.status) ? 'Esta solicitud todavía no está disponible para distribución.' : 'Todo lo solicitado ya fue despachado. Revisa abajo la recepción de la sucursal.' }}</p>
           <div v-if="request" class="overflow-x-auto"><table class="w-full min-w-[650px] text-left text-sm"><thead><tr><th>Producto</th><th>Solicitado</th><th>Despachado</th><th>Entregado</th><th>Pendiente de entregar</th><th></th></tr></thead><tbody><tr v-for="d in request.details" :key="d.id"><td class="py-3">{{ d.product.name }}</td><td>{{ d.quantity }} {{ d.unit?.name }}</td><td>{{ d.dispatchedQuantity }}</td><td>{{ d.distributedQuantity }}</td><td>{{ d.pendingQuantity }}</td><td><AppButton v-if="canDispatch && can('inventory.adjust')" variant="outline" :disabled="busy || Number(d.dispatchedQuantity) >= Number(d.quantity)" @click="addDispatch(d)">Agregar al traslado</AppButton></td></tr></tbody></table></div>
@@ -270,7 +277,7 @@ onBeforeUnmount(() => { loadVersion++; stockVersion++; expenseVersion++; destina
 
       </template>
     </div>
-    <PurchaseActionDialog v-if="confirmDispatch" title="Confirmar despacho" description="Los productos saldrán del centro general y quedarán en tránsito, vinculados a la solicitud original." :busy="busy" :error="error" @close="confirmDispatch = false" @confirm="dispatch" />
-    <PurchaseActionDialog v-if="leaving" title="Descartar cambios" description="Hay datos sin guardar en bodega." :busy="false" @close="resolveLeave(false)" @confirm="resolveLeave(true)" />
+    <ConfirmDialog v-if="confirmDispatch" title="Confirmar despacho" description="Los productos saldrán del centro general y quedarán en tránsito, vinculados a la solicitud original." :busy="busy" :error="error" @close="confirmDispatch = false" @confirm="dispatch" />
+    <ConfirmDialog v-if="leaving" title="Descartar cambios" description="Hay datos sin guardar en bodega." :busy="false" @close="resolveLeave(false)" @confirm="resolveLeave(true)" />
   </AdminLayout>
 </template>

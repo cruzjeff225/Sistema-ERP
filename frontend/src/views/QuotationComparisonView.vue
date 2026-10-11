@@ -3,11 +3,11 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { ArrowLeft, ArrowRight, Check, CheckCircle2, ChevronDown, ChevronRight, FileSearch, Package, ShoppingCart, SlidersHorizontal, X } from 'lucide-vue-next';
 import { RouterLink, useRoute } from 'vue-router';
 import AdminLayout from '../layouts/AdminLayout.vue';
-import PurchasesNav from '../components/purchases/PurchasesNav.vue';
-import PurchaseSectionHeader from '../components/purchases/PurchaseSectionHeader.vue';
+import EmptyState from '../components/base/EmptyState.vue';
+import PageHeader from '../components/base/PageHeader.vue';
 import PurchaseTabs from '../components/purchases/PurchaseTabs.vue';
 import AppButton from '../components/base/AppButton.vue';
-import PurchaseActionDialog from '../components/base/PurchaseActionDialog.vue';
+import ConfirmDialog from '../components/base/ConfirmDialog.vue';
 import { usePermissions } from '../composables/usePermissions';
 import { useUnsavedChanges } from '../composables/useUnsavedChanges';
 import { http } from '../services/http.service';
@@ -292,10 +292,9 @@ onBeforeUnmount(() => { ++version;++comparisonVersion;clearTimeout(comparisonTim
   <component :is="embedded ? 'div' : AdminLayout" :title="embedded ? undefined : 'Comparar cotizaciones'">
     <div class="comparison-page space-y-6" :class="embedded ? '' : 'mx-auto max-w-[1440px]'">
       <div v-if="embedded && current" class="flex items-center justify-between gap-3"><div><h2 class="text-lg font-semibold">Comparar ofertas</h2><p class="mt-1 text-sm text-muted-fg">Compare por producto. Revise su selección antes de crear las órdenes.</p></div><AppButton variant="outline" size="sm" :disabled="busy||loading" @click="refreshOffers">Actualizar ofertas</AppButton></div>
-      <PurchasesNav v-if="!embedded" />
-      <PurchaseSectionHeader v-if="!embedded" title="Elegir ofertas" description="Compare por producto. Revise su selección antes de crear las órdenes.">
+      <PageHeader v-if="!embedded" title="Elegir ofertas" description="Compare por producto. Revise su selección antes de crear las órdenes.">
         <template #actions><div class="flex items-center gap-4"><AppButton v-if="current" variant="outline" size="sm" :disabled="busy||loading" @click="refreshOffers">Actualizar ofertas</AppButton><RouterLink :to="selectedId ? '/purchases/quotations/manage?id=' + selectedId : '/purchases/quotations'" class="inline-flex items-center gap-2 text-sm font-medium text-muted-fg hover:text-fg"><ArrowLeft class="h-4 w-4" />Cotizaciones</RouterLink></div></template>
-      </PurchaseSectionHeader>
+      </PageHeader>
 
       <section v-if="!embedded" aria-label="Compra y filtros" class="flex flex-wrap items-end gap-4 rounded-2xl border border-border bg-surface p-4 sm:px-5">
         <label class="min-w-0 flex-[1_1_280px] text-xs font-medium text-muted-fg">Compra
@@ -319,7 +318,7 @@ onBeforeUnmount(() => { ++version;++comparisonVersion;clearTimeout(comparisonTim
       <p v-if="error" role="alert" class="rounded-xl bg-danger/10 p-4 text-sm text-danger">{{ error }}</p>
       <p v-if="success" role="status" class="rounded-xl bg-success/10 p-4 text-sm text-success">{{ success }}</p>
 
-      <p v-if="loading" role="status" class="py-12 text-center text-sm text-muted-fg">Cargando ofertas…</p>
+      <EmptyState v-if="loading" title="Cargando ofertas…" />
       <template v-else-if="current">
         <div v-if="!allOrdered && pendingProducts.length" class="flex flex-wrap items-center justify-between gap-3">
           <nav aria-label="Pasos para elegir ofertas" class="flex items-center gap-3 text-sm">
@@ -388,7 +387,7 @@ onBeforeUnmount(() => { ++version;++comparisonVersion;clearTimeout(comparisonTim
                 <div class="mb-4 flex flex-wrap items-center justify-between gap-2"><h3 class="text-sm font-semibold">Ofertas de proveedores</h3><p class="text-xs text-muted-fg">Impuestos y cargos registrados incluidos</p></div>
                 <div class="offer-table overflow-x-auto">
                   <table :aria-label="'Ofertas para ' + product.product.name" class="w-full text-left text-sm">
-                    <thead class="text-xs text-muted-fg"><tr><th scope="col" class="pb-3 font-medium">Proveedor</th><th scope="col" class="pb-3 text-right font-medium">Precio unitario</th><th scope="col" class="pb-3 text-right font-medium">Total estimado</th><th scope="col" class="pb-3 text-right font-medium">Disponible</th><th scope="col" class="pb-3 text-right font-medium">Entrega</th><th scope="col" class="pb-3 text-right font-medium"><span class="sr-only">Condiciones de la oferta</span></th></tr></thead>
+                    <thead class="data-thead"><tr><th scope="col" class="pb-3 font-medium">Proveedor</th><th scope="col" class="pb-3 text-right font-medium">Precio unitario</th><th scope="col" class="pb-3 text-right font-medium">Total estimado</th><th scope="col" class="pb-3 text-right font-medium">Disponible</th><th scope="col" class="pb-3 text-right font-medium">Entrega</th><th scope="col" class="pb-3 text-right font-medium"><span class="sr-only">Condiciones de la oferta</span></th></tr></thead>
                     <tbody v-for="offer in availableOffers" :key="offer.detail.id" :class="selections[productId]?.detailId === offer.detail.id ? 'chosen-offer' : ''">
                       <tr class="offer-row border-t border-border">
                         <td class="offer-supplier py-5 pr-4 align-top">
@@ -452,8 +451,8 @@ onBeforeUnmount(() => { ++version;++comparisonVersion;clearTimeout(comparisonTim
       </template>
       <div v-else-if="!error" class="rounded-2xl border border-dashed border-border py-14 text-center"><FileSearch class="mx-auto mb-4 h-8 w-8 text-muted-fg" /><h2 class="text-base font-semibold">{{ activeFilterCount ? 'No hay compras con estos filtros' : history ? 'Elija una compra para comparar' : 'No hay compras de esta semana' }}</h2><RouterLink to="/purchases/quotations" class="mt-4 inline-block text-sm font-medium text-accent">Ir a cotizaciones</RouterLink></div>
     </div>
-    <PurchaseActionDialog v-if="discardSelection" title="Descartar selección" description="Tiene productos seleccionados sin guardar. Confirme si desea descartarlos y continuar." :busy="false" @close="resolveSelectionDiscard(false)" @confirm="resolveSelectionDiscard(true)" />
-    <PurchaseActionDialog v-if="leaving" title="Descartar selección" description="Tiene productos seleccionados sin guardar en sus órdenes." :busy="false" @close="resolveLeave(false)" @confirm="resolveLeave(true)" />
+    <ConfirmDialog v-if="discardSelection" title="Descartar selección" description="Tiene productos seleccionados sin guardar. Confirme si desea descartarlos y continuar." :busy="false" @close="resolveSelectionDiscard(false)" @confirm="resolveSelectionDiscard(true)" />
+    <ConfirmDialog v-if="leaving" title="Descartar selección" description="Tiene productos seleccionados sin guardar en sus órdenes." :busy="false" @close="resolveLeave(false)" @confirm="resolveLeave(true)" />
   </component>
 </template>
 

@@ -94,7 +94,7 @@ const DOCUMENT_STATUS: Record<string, string> = {
   partially_ordered: 'Ordenada parcialmente', completed: 'Completada', cancelled: 'Cancelada', received: 'Recibida', in_procurement: 'En Compras',
   partially_distributed: 'Distribución parcial', fulfilled: 'Entregada a sucursal', under_review: 'En evaluación', selected: 'Seleccionada', expired: 'Vencida',
   pending_approval: 'Pendiente de aprobación', sent: 'Enviada al proveedor', partially_received: 'Recepción parcial', closed: 'Cerrada', pending_review: 'En revisión de Gerencia',
-  calculated: 'Calculado', verified: 'Verificado',
+  calculated: 'Calculado', verified: 'Verificado', created: 'Creada',
   RECEIVED: 'Recibida', VERIFIED: 'Verificada', COSTED: 'Retaceada', CLOSED: 'Cerrada', CANCELLED: 'Cancelada',
   IN_TRANSIT: 'En tránsito', PARTIALLY_RECEIVED: 'Recibido parcialmente', COMPLETED: 'Entregado',
 };

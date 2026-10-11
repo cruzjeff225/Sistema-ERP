@@ -3,14 +3,13 @@ import { computed, onBeforeUnmount, reactive, ref, watch } from "vue";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 import { Check, ChevronLeft, PackagePlus, ChevronRight, LockKeyhole, Pencil, RefreshCw, Search, X } from "lucide-vue-next";
 import AdminLayout from "../layouts/AdminLayout.vue";
-import PurchasesNav from "../components/purchases/PurchasesNav.vue";
-import PurchaseSectionHeader from "../components/purchases/PurchaseSectionHeader.vue";
+import PageHeader from "../components/base/PageHeader.vue";
 import PurchaseTabs from "../components/purchases/PurchaseTabs.vue";
 import TrashButton from "../components/admin/TrashButton.vue";
 import AppButton from "../components/base/AppButton.vue";
 import TrackingLink from "../components/purchases/TrackingLink.vue";
 import AppInput from "../components/base/AppInput.vue";
-import PurchaseActionDialog from "../components/base/PurchaseActionDialog.vue";
+import ConfirmDialog from "../components/base/ConfirmDialog.vue";
 import ReceiveOrderDrawer from "../components/purchases/ReceiveOrderDrawer.vue";
 import { http } from "../services/http.service";
 import { activeCompanyId } from "../services/company-context";
@@ -183,12 +182,11 @@ async function mutate(reason?: string) {
 <template>
   <AdminLayout title="Recepciones de mercadería">
     <div class="mx-auto max-w-[1440px] space-y-6">
-    <PurchasesNav />
-    <PurchaseSectionHeader title="Recepciones" description="Registra lo que llega, ubícalo y verifícalo antes del costo final.">
+    <PageHeader title="Recepciones" description="Registra lo que llega, ubícalo y verifícalo antes del costo final.">
       <template #actions>
       <AppButton variant="outline" :disabled="loading || busy || editing" @click="load(meta.page)"><RefreshCw class="h-4 w-4" :class="loading && 'animate-spin'" />Actualizar</AppButton>
       </template>
-    </PurchaseSectionHeader>
+    </PageHeader>
     <p v-if="error" role="alert" class="mb-4 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">{{ error }}</p>
     <p v-if="success" role="status" class="mb-4 rounded-lg border border-success/30 bg-success/10 px-3 py-2 text-sm text-success">{{ success }}</p>
     <div class="grid items-start gap-5 lg:grid-cols-[300px_minmax(0,1fr)]">
@@ -256,17 +254,17 @@ async function mutate(reason?: string) {
           <section v-if="detailView === 'products'">
           <div class="mb-4 flex items-center justify-between gap-3"><h3 class="font-semibold">Productos recibidos</h3><span class="text-xs text-muted-fg">{{ selected.items.length }} líneas</span></div>
           <div class="overflow-x-auto rounded-lg border border-border"><table class="w-full min-w-[460px] text-left text-sm">
-            <thead class="border-b border-border bg-surface-secondary text-xs text-muted-fg"><tr><th class="px-4 py-3">Producto</th><th class="px-4 py-3 text-right">Recibido</th><th class="px-4 py-3">Ubicación confirmada</th></tr></thead>
+            <thead class="data-thead"><tr><th class="px-4 py-3">Producto</th><th class="px-4 py-3 text-right">Recibido</th><th class="px-4 py-3">Ubicación confirmada</th></tr></thead>
             <tbody class="divide-y divide-border"><tr v-for="line in selected.items" :key="line.id"><td class="px-4 py-3"><p class="font-medium">{{ line.product.name }}</p><p class="mt-1 text-xs text-muted-fg">{{ line.product.sku }} · {{ line.unit.name }}</p></td><td class="px-4 py-3 text-right font-medium">{{ Number(line.quantity) }}</td><td class="px-4 py-3"><template v-if="line.location"><strong class="block">{{ line.location.code }}</strong><span class="mt-1 block text-xs text-muted-fg">{{ line.location.aisle }} / {{ line.location.rack }} / {{ line.location.level }} / {{ line.location.position }}</span></template><RouterLink v-else-if="selected.status !== 'CANCELLED' && can('inventory.view')" :to="placementPath" class="text-accent">Ubicar producto</RouterLink><span v-else class="text-muted-fg">Sin ubicación confirmada</span></td></tr></tbody>
           </table></div>
-          <details :key="'quantities-' + selected.id" class="mt-5 border-t border-border pt-4"><summary class="cursor-pointer text-sm text-muted-fg">Cantidades de la orden</summary><div class="mt-4 overflow-x-auto"><table class="w-full min-w-[600px] text-left text-sm"><thead class="border-b border-border text-xs text-muted-fg"><tr><th class="p-3">Producto</th><th class="p-3 text-right">Comprado</th><th class="p-3 text-right">Recibido antes</th><th class="p-3 text-right">Esta recepción</th><th class="p-3 text-right">Pendiente de recibir</th></tr></thead><tbody class="divide-y divide-border"><tr v-for="line in selected.items" :key="line.id"><td class="p-3">{{ line.product.name }}<span class="block text-xs text-muted-fg">{{ line.unit.name }}</span></td><td class="p-3 text-right">{{ Number(line.quantityOrdered) }}</td><td class="p-3 text-right">{{ line.receivedBefore !== null ? Number(line.receivedBefore) : 'Sin registro' }}</td><td class="p-3 text-right">{{ Number(line.quantity) }}</td><td class="p-3 text-right">{{ line.purchaseOrderDetail ? Math.max(0, Number(line.purchaseOrderDetail.quantity) - Number(line.purchaseOrderDetail.receivedQuantity)).toFixed(2) : '—' }}</td></tr></tbody></table></div></details>
+          <details :key="'quantities-' + selected.id" class="mt-5 border-t border-border pt-4"><summary class="cursor-pointer text-sm text-muted-fg">Cantidades de la orden</summary><div class="mt-4 overflow-x-auto"><table class="w-full min-w-[600px] text-left text-sm"><thead class="data-thead"><tr><th class="p-3">Producto</th><th class="p-3 text-right">Comprado</th><th class="p-3 text-right">Recibido antes</th><th class="p-3 text-right">Esta recepción</th><th class="p-3 text-right">Pendiente de recibir</th></tr></thead><tbody class="divide-y divide-border"><tr v-for="line in selected.items" :key="line.id"><td class="p-3">{{ line.product.name }}<span class="block text-xs text-muted-fg">{{ line.unit.name }}</span></td><td class="p-3 text-right">{{ Number(line.quantityOrdered) }}</td><td class="p-3 text-right">{{ line.receivedBefore !== null ? Number(line.receivedBefore) : 'Sin registro' }}</td><td class="p-3 text-right">{{ Number(line.quantity) }}</td><td class="p-3 text-right">{{ line.purchaseOrderDetail ? Math.max(0, Number(line.purchaseOrderDetail.quantity) - Number(line.purchaseOrderDetail.receivedQuantity)).toFixed(2) : '—' }}</td></tr></tbody></table></div></details>
           </section>
           <section v-if="detailView === 'documents'" class="space-y-6">
           <section v-if="!editing" :key="'invoice-' + selected.id"><h3 class="font-semibold">Factura y datos de recepción</h3><dl class="mt-4 grid gap-4 text-sm sm:grid-cols-2"><div><dt class="text-xs text-muted-fg">Factura</dt><dd class="mt-1 font-medium">{{ selected.supplierInvoiceNumber || 'Sin factura' }}</dd></div><div><dt class="text-xs text-muted-fg">Fecha de factura</dt><dd class="mt-1 font-medium">{{ selected.supplierInvoiceDate ? new Date(selected.supplierInvoiceDate.slice(0, 10) + 'T12:00:00').toLocaleDateString('es-SV') : 'Sin fecha' }}</dd></div><div><dt class="text-xs text-muted-fg">Almacén</dt><dd class="mt-1 font-medium">{{ selected.warehouse?.name || selected.branch.name }}</dd></div><div><dt class="text-xs text-muted-fg">Fecha de recepción</dt><dd class="mt-1 font-medium">{{ new Date(selected.purchaseDate).toLocaleDateString('es-SV', { timeZone: 'America/El_Salvador' }) }}</dd></div></dl><p v-if="selected.notes" class="mt-4 whitespace-pre-wrap text-sm text-muted-fg">{{ selected.notes }}</p></section>
           <section :key="'origin-' + selected.id" class="border-t border-border pt-5"><h3 class="font-semibold">Documentos relacionados</h3><nav class="mt-4 flex flex-wrap gap-4 text-sm text-accent" aria-label="Trazabilidad de compra"><RouterLink v-if="selected.purchaseOrder && can('purchase_orders.view')" :to="'/purchases/orders?id=' + selected.purchaseOrder.id">{{ selected.purchaseOrder.code }}</RouterLink><RouterLink v-if="selected.purchaseOrder?.quotation && can('purchase_quotations.view')" :to="'/purchases/quotations?id=' + selected.purchaseOrder.quotation.id">{{ selected.purchaseOrder.quotation.code }}</RouterLink><template v-if="can('purchase_requests.view')"><RouterLink v-for="request in originRequests" :key="request.id" :to="'/purchases/requests?id=' + request.id">{{ request.code }}</RouterLink></template><RouterLink v-if="can('retaceos.view') && selected.status !== 'CANCELLED' && !selected.retaceoArchived && (selected.hasActiveRetaceo || ['VERIFIED','COSTED'].includes(selected.status))" :to="'/purchases/retaceos?purchaseId=' + selected.id">{{ selected.hasActiveRetaceo ? (retaceoPending ? 'Continuar retaceo' : 'Ver retaceo') : 'Preparar retaceo' }}</RouterLink></nav></section>
           </section>
           <section v-if="detailView === 'costs'">
-          <section :key="'amounts-' + selected.id"><h3 class="font-semibold">Importes de la recepción</h3><div class="mt-4 overflow-x-auto"><table class="w-full min-w-[560px] text-left text-sm"><thead class="border-b border-border text-xs text-muted-fg"><tr><th class="p-3">Producto</th><th class="p-3 text-right">Precio unitario</th><th class="p-3 text-right">Descuento</th><th class="p-3 text-right">Impuesto</th><th class="p-3 text-right">Total</th></tr></thead><tbody class="divide-y divide-border"><tr v-for="line in selected.items" :key="line.id"><td class="p-3">{{ line.product.name }}</td><td class="p-3 text-right">{{ Number(line.unitPrice).toFixed(4) }} {{ selected.currency }}</td><td class="p-3 text-right">{{ money(line.discount, selected.currency) }}</td><td class="p-3 text-right">{{ money(line.taxAmount, selected.currency) }}</td><td class="p-3 text-right font-medium">{{ money(line.total, selected.currency) }}</td></tr></tbody></table></div></section>
+          <section :key="'amounts-' + selected.id"><h3 class="font-semibold">Importes de la recepción</h3><div class="mt-4 overflow-x-auto"><table class="w-full min-w-[560px] text-left text-sm"><thead class="data-thead"><tr><th class="p-3">Producto</th><th class="p-3 text-right">Precio unitario</th><th class="p-3 text-right">Descuento</th><th class="p-3 text-right">Impuesto</th><th class="p-3 text-right">Total</th></tr></thead><tbody class="divide-y divide-border"><tr v-for="line in selected.items" :key="line.id"><td class="p-3">{{ line.product.name }}</td><td class="p-3 text-right">{{ Number(line.unitPrice).toFixed(4) }} {{ selected.currency }}</td><td class="p-3 text-right">{{ money(line.discount, selected.currency) }}</td><td class="p-3 text-right">{{ money(line.taxAmount, selected.currency) }}</td><td class="p-3 text-right font-medium">{{ money(line.total, selected.currency) }}</td></tr></tbody></table></div></section>
           <div class="mt-6 flex items-center justify-between border-t border-border pt-4 text-sm"><span class="text-muted-fg">Total de la recepción</span><strong class="text-lg">{{ money(selected.total, selected.currency) }}</strong></div>
           </section>
         </div>
@@ -274,9 +272,9 @@ async function mutate(reason?: string) {
       <section aria-label="Detalle de recepción" v-else class="flex min-h-[420px] min-w-0 items-center justify-center rounded-2xl border border-border bg-surface p-8 text-center text-sm text-muted-fg">{{ loading ? 'Cargando…' : rows.length ? 'Selecciona una recepción.' : 'Las recepciones se registran desde una orden de compra.' }}</section>
     </div>
     </div>
-    <PurchaseActionDialog v-if="action && selected" :title="action === 'cancel' ? 'Cancelar recepción' : action === 'verify' ? 'Verificar recepción' : 'Cerrar recepción'" :description="actionDescription" :require-reason="action === 'cancel'" :busy="busy" :error="error" @close="action = null" @confirm="mutate" />
+    <ConfirmDialog v-if="action && selected" :title="action === 'cancel' ? 'Cancelar recepción' : action === 'verify' ? 'Verificar recepción' : 'Cerrar recepción'" :description="actionDescription" :require-reason="action === 'cancel'" :busy="busy" :error="error" @close="action = null" @confirm="mutate" />
     <ReceiveOrderDrawer v-if="receivingOrderId" :order-id="receivingOrderId" @close="closeReceive" @received="afterReceived" />
-    <PurchaseActionDialog v-if="discardInvoice" title="Descartar cambios de factura" description="Los cambios de factura no se han guardado." @confirm="editing = false; discardInvoice = false" @close="discardInvoice = false" />
-    <PurchaseActionDialog v-if="leaving" title="Salir sin guardar" description="Los cambios de factura no se han guardado." @confirm="resolveLeave(true)" @close="resolveLeave(false)" />
+    <ConfirmDialog v-if="discardInvoice" title="Descartar cambios de factura" description="Los cambios de factura no se han guardado." @confirm="editing = false; discardInvoice = false" @close="discardInvoice = false" />
+    <ConfirmDialog v-if="leaving" title="Salir sin guardar" description="Los cambios de factura no se han guardado." @confirm="resolveLeave(true)" @close="resolveLeave(false)" />
   </AdminLayout>
 </template>
