@@ -48,7 +48,9 @@ test('el resumen del proceso toma la etapa del siguiente paso o la primera sin c
     { id: 'order', label: 'Orden', owner: 'Gerencia' as const, state: 'pending' as const },
   ];
   const step = { stage: 'quotation', owner: 'Compras' as const, label: 'Registrar la oferta', route: '/purchases/quotations/manage' };
-  assert.deepEqual(processSnapshot({ stages, nextStep: step }), { step, info: { stage: 'Cotización', done: 1, total: 3 } });
+  assert.deepEqual(processSnapshot({ stages, nextStep: step }), { step, also: [], info: { stage: 'Cotización', done: 1, total: 3 } });
+  const parallel = { stage: 'delivery', owner: 'Sucursal' as const, label: 'Recibir', route: '/inventory/warehouse' };
+  assert.deepEqual(processSnapshot({ stages, nextStep: step, alsoAvailable: [parallel] }).also, [parallel]);
   assert.deepEqual(processSnapshot({ stages, nextStep: null }).info, { stage: 'Cotización', done: 1, total: 3 });
   const finished = stages.map(stage => ({ ...stage, state: stage.state === 'skipped' ? stage.state : ('complete' as const) }));
   assert.equal(processSnapshot({ stages: finished, nextStep: null }).info, null, 'una compra terminada no tiene etapa en curso');

@@ -2,7 +2,6 @@
 import { computed, onMounted, onBeforeUnmount, reactive, ref, watch } from "vue";
 import {
   CalendarDays,
-  Check,
   ChevronDown,
   ChevronRight,
   ClipboardCheck,
@@ -50,7 +49,7 @@ import { documentAction, needsProcessStep, type ActionSection } from "../utils/p
 import { formatQuantity, type TrackingStep } from "../utils/purchase-tracking";
 import { isEditableRequest, requestDetailPath } from "../utils/purchase-request";
 import { useFeedbackStore } from "../stores/feedback.store";
-import { receiptProgress, purchasePurposeLabel, onlyOptionId, quotationPendingLines, receiptNextStep, orderNeedsAttention, orderReceiptStage } from "../utils/purchase-workflow";
+import { purchasePurposeLabel, onlyOptionId, quotationPendingLines, receiptNextStep, orderNeedsAttention, orderReceiptStage } from "../utils/purchase-workflow";
 
 type Section = "requests" | "quotations" | "orders";
 type Catalogs = {
@@ -92,7 +91,7 @@ const loading = ref(false);
 const saving = ref(false);
 const errorMessage = ref("");
 const successMessage = ref("");
-const drawer = ref<"request" | "quotation" | "order" | "receive" | null>(null);
+const drawer = ref<"request" | "quotation" | "order" | null>(null);
 const editingId = ref<number | null>(null);
 const orderQuotation = ref<any | null>(null);
 const discardChanges = ref(false);
@@ -107,7 +106,6 @@ const quotationForm = reactive({ supplierId: 0, requestIds: [] as number[], quot
 const orderForm = reactive({ branchId: 0, warehouseId: 0, expectedDate: "", paymentTerms: "", notes: "",quotationId:0,confirmationReason:'',confirmOfferChanges:false,managementReview:false,details:[] as any[],expenses: [] as ExpenseLine[] });
 const editableOrderQuotes=ref<any[]>([]);
 const canEditOrder = computed(() => props.section==='orders' && !!selected.value && ['draft','returned'].includes(selected.value.status) && can('purchase_orders.update'));
-const pendingQuantityReviews = ref<any[]>([]);
 const orderEditTotals = computed(() => {
   let gross=0,subtotal=0,tax=0;
   for(const line of orderForm.details){const g=roundMoney(Number(line.quantity)*Number(line.unitPrice));const net=roundMoney(g-Number(line.discount||0));gross+=g;subtotal+=net;tax+=roundMoney(net*Number(line.taxRate||0)/100);}
@@ -117,14 +115,11 @@ const orderEditTotals = computed(() => {
   if(current&&quote?.expenses&&unchanged&&orderForm.quotationId===current.quotationId){const before=current.details.reduce((n:number,d:any)=>n+Number(d.subtotal)+Number(d.discount),0);expenses=projectComparisonExpenses({...quote,orders:[{status:'draft',expenses:current.expenses}]},before,gross-before,Number(quote.subtotal)).total;}
   return {subtotal:roundMoney(subtotal),tax:roundMoney(tax),expenses,total:roundMoney(subtotal+tax+expenses)};
 });
-const receiveForm = reactive({ requestId: '', supplierInvoiceNumber: "", supplierInvoiceDate: "", notes: "", items: [] as Array<{ orderDetailId: number; locationId: number; quantity: any }> });
-const preparingReceipt = ref(false);
-const receiptReview = ref<{ payload: { requestId: string; supplierInvoiceNumber?: string; supplierInvoiceDate?: string; notes?: string; items: { orderDetailId: number; locationId?: number; quantity: number }[] }; description: string } | null>(null);
 
 const sectionMeta = computed(() => ({
   requests: { title: "Solicitudes de compra", eyebrow: "Abastecimiento de proveedores", subtitle: "Prepara la solicitud de tu sucursal y envíala a Compras.", icon: ClipboardCheck, create: "Nueva solicitud" },
   quotations: { title: "Cotizaciones", eyebrow: "Evaluación de proveedores", subtitle: "Compara costos, disponibilidad y tiempos antes de decidir.", icon: FileSearch, create: "Registrar cotización" },
-  orders: { title: "Órdenes de compra", eyebrow: "Compra autorizada", subtitle: "Revisa la compra, envíala al proveedor y registra lo recibido.", icon: ShoppingCart, create: "" },
+  orders: { title: "Órdenes de compra", eyebrow: "Compra autorizada", subtitle: "Revisa la compra y envíala al proveedor.", icon: ShoppingCart, create: "" },
 })[props.section]);
 const records = computed(() => [...(props.section === "requests" ? requests.value : props.section === "quotations" ? quotations.value : orders.value)].sort((a, b) => new Date(b.requestDate || b.quotationDate || b.orderDate || b.createdAt).getTime() - new Date(a.requestDate || a.quotationDate || a.orderDate || a.createdAt).getTime() || b.id - a.id));
 const selected = computed(() => filteredRecords.value.find((record) => record.id === selectedId.value) ?? null);
@@ -178,7 +173,6 @@ const nextAction = computed(() => {
       case 'workflow': return void workflow(chosen.path, chosen.message);
       case 'new-quotation': return newQuotation(record);
       case 'new-order': return newOrder(record);
-      case 'receive': return void openReceive(record);
       case 'approval-tab': detailView.value = 'approval'; return;
       case 'navigate': return void router.push({ path: chosen.path, query: chosen.query ?? {} });
     }
@@ -211,15 +205,6 @@ const detailTabItems = computed(() => detailTabs.value.map(tab => ({ ...tab, ico
 const inboxTitle = computed(() => ({ requests: 'Solicitudes', quotations: 'Ofertas recibidas', orders: 'Órdenes' })[props.section]);
 const requestWarehouses = computed(() => catalogs.value.generalWarehouse ? [catalogs.value.generalWarehouse] : []);
 const orderWarehouses = computed(() => catalogs.value.branches.find((branch) => branch.id === orderForm.branchId)?.warehouses ?? []);
-const receiveLocations = computed(() => {
-  const order = orders.value.find((item) => item.id === editingId.value);
-  return catalogs.value.branches.flatMap((branch) => branch.warehouses).find((warehouse) => warehouse.id === order?.warehouseId)?.locations ?? [];
-});
-const receiptRows = computed(() => receiveForm.items.map(item => {
-  const line = selected.value?.details.find((detail: any) => detail.id === item.orderDetailId);
-  const pending = line ? roundMoney(Number(line.quantity) - Number(line.receivedQuantity)) : 0;
-  return { item, line, pending, remaining: Math.max(0, roundMoney(pending - Number(item.quantity || 0))) };
-}));
 const eligibleRequests = computed(() => requests.value.filter((request) => ["approved", "in_quotation", "partially_ordered"].includes(request.status)));
 const pendingOrderLines = computed(() => props.section === 'quotations' && selected.value ? quotationPendingLines(selected.value) : []);
 const quoteExpired = computed(() => props.section === 'quotations' && selected.value?.validUntil.slice(0, 10) < dateValue());
@@ -310,19 +295,17 @@ async function load() {
   const config = { headers: { "X-Company-Id": String(companyId) } };
   loading.value = true;
   try {
-    const [catalogResponse, requestResponse, quotationResponse, orderResponse, quantityReviews] = await Promise.all([
+    const [catalogResponse, requestResponse, quotationResponse, orderResponse] = await Promise.all([
       http.get("/purchase-catalogs", config),
       can("purchase_requests.view") ? http.get("/purchase-requests", config) : Promise.resolve({ data: { data: [] } }),
       can("purchase_quotations.view") ? http.get("/purchase-quotations", config) : Promise.resolve({ data: { data: [] } }),
       can("purchase_orders.view") ? http.get("/purchase-orders", config) : Promise.resolve({ data: { data: [] } }),
-      props.section === "orders" && can("purchase_orders.approve") ? http.get("/supply/consolidations", config) : Promise.resolve({ data: { data: [] } }),
     ]);
     if (!mounted || version !== loadVersion || companyId !== activeCompanyId.value) return;
     catalogs.value = catalogResponse.data.data;
     requests.value = requestResponse.data.data;
     quotations.value = quotationResponse.data.data;
     orders.value = orderResponse.data.data;
-    pendingQuantityReviews.value = quantityReviews.data.data.filter((p:any)=>p.quantityReviewStatus==='pending_review');
     const requested = Number(route.query.id);
     const linked = records.value.find(record => record.id === requested);
     if (route.query.id) {
@@ -407,7 +390,7 @@ function changeDocumentPeriod(value: string) {
 }
 
 function formSnapshot() {
-  return JSON.stringify(drawer.value === 'request' ? requestForm : drawer.value === 'quotation' ? quotationForm : drawer.value === 'order' ? { ...orderForm, selections: orderSelections.value } : receiveForm);
+  return JSON.stringify(drawer.value === 'request' ? requestForm : drawer.value === 'quotation' ? quotationForm : { ...orderForm, selections: orderSelections.value });
 }
 
 function closeDrawer(force = false) {
@@ -419,7 +402,6 @@ function closeDrawer(force = false) {
   drawer.value = null;
   editingId.value = null;
   orderQuotation.value = null;
-  receiptReview.value = null;
   if (backTo) { returningToDetail = true; void router.push(requestDetailPath(backTo)).finally(() => { returningToDetail = false; }); }
 }
 
@@ -558,50 +540,8 @@ async function saveOrder() {
   await runMutation((config) => editingId.value ? http.patch(`/purchase-orders/${editingId.value}`, payload, config) : http.post(`/purchase-orders/from-quotation/${orderQuotation.value.id}`, payload, config), editingId.value ? "Orden actualizada" : "Orden generada", "orders");
 }
 
-async function openReceive(record: any) {
-  if (preparingReceipt.value || saving.value) return;
-  const companyId = activeCompanyId.value, version = loadVersion;
-  preparingReceipt.value = true;
-  try {
-    const response = await http.get(`/purchase-orders/${record.id}`, { headers: { 'X-Company-Id': String(companyId) } });
-    if (!mounted || version !== loadVersion || companyId !== activeCompanyId.value) return;
-    const fresh = response.data.data;
-    if (!['sent', 'partially_received'].includes(fresh.status)) return showError(null, 'La orden debe estar enviada al proveedor para registrar la recepción. Actualice el listado.');
-    orders.value = orders.value.map(order => order.id === fresh.id ? fresh : order);
-    selectedId.value = fresh.id; editingId.value = fresh.id;
-    Object.assign(receiveForm, { requestId: crypto.randomUUID(), supplierInvoiceNumber: '', supplierInvoiceDate: dateValue(), notes: '',
-      items: fresh.details.filter((line: any) => Number(line.quantity) > Number(line.receivedQuantity)).map((line: any) => ({ orderDetailId: line.id, locationId: 0, quantity: 0 })) });
-    drawer.value = 'receive';
-  } catch (caught) { if (mounted && companyId === activeCompanyId.value) showError(caught, 'No se pudieron consultar las cantidades pendientes'); }
-  finally { preparingReceipt.value = false; }
-}
-
-function fillPendingReceipt() {
-  for (const item of receiveForm.items) {
-    const line = selected.value?.details.find((detail: any) => detail.id === item.orderDetailId);
-    item.quantity = line ? Math.max(0, roundMoney(Number(line.quantity) - Number(line.receivedQuantity))) : 0;
-  }
-}
-function receiveOrder() {
-  if (!editingId.value) return;
-  const items = receiveForm.items.filter((item) => Number(item.quantity) > 0).map(item => ({ ...item, locationId: item.locationId || undefined, quantity: Number(item.quantity) }));
-  if (!items.length) return showError(null, "Indique una cantidad recibida mayor que cero");
-  for (const item of items) {
-    const line = selected.value?.details.find((detail: any) => detail.id === item.orderDetailId);
-    if (!Number.isSafeInteger(item.quantity)) return showError(null, 'La cantidad recibida debe ser un número entero.');
-    if (!line || !Number.isFinite(item.quantity) || item.quantity > roundMoney(Number(line.quantity) - Number(line.receivedQuantity))) return showError(null, 'La cantidad recibida supera lo pendiente en la orden');
-  }
-  const description = items.map(item => { const line = selected.value.details.find((detail: any) => detail.id === item.orderDetailId); return `${line.product.name}: ${item.quantity} ${line.unit.name}`; }).join('; ');
-  const progress = receiptProgress(selected.value.details, items);
-  const outcome = progress.complete ? 'La orden quedará recibida completamente.' : `Recepción parcial: quedarán ${progress.pendingLines} productos con cantidades pendientes.`;
-  errorMessage.value = '';
-  receiptReview.value = { payload: { requestId: receiveForm.requestId, supplierInvoiceNumber: receiveForm.supplierInvoiceNumber.trim() || undefined, supplierInvoiceDate: receiveForm.supplierInvoiceDate || undefined, notes: receiveForm.notes.trim() || undefined, items }, description: `${selected.value.code}. ${description}. ${outcome} Estas cantidades quedarán recibidas y pendientes de viñeteo y confirmación física de ubicación.` };
-}
-async function confirmReceipt() {
-  if (!receiptReview.value || !editingId.value) return;
-  const id = editingId.value, payload = receiptReview.value.payload;
-  await runMutation(config => http.post(`/purchase-orders/${id}/receive`, payload, config), 'Recepción registrada; confirme el viñeteo y la ubicación en bodega', 'orders');
-}
+// Receiving goods is Warehouse's job: it starts in Receipts, where the order arrives with its pending quantities.
+const goReceive = (order: any) => void router.push({ path: '/purchases/receipts', query: { receiveOrder: String(order.id) } });
 
 async function workflow(path: string, success: string) {
   if (saving.value) return;
@@ -664,7 +604,7 @@ function removeExpenseDocument(documentId: number) {
 
 function resetContext() {
   ++loadVersion;
-  requests.value = []; quotations.value = []; orders.value = []; pendingQuantityReviews.value = [];
+  requests.value = []; quotations.value = []; orders.value = [];
   catalogs.value = { branches: [], products: [], suppliers: [], expenseTypes: [] };
   historyFrom.value = ''; historyTo.value = ''; requestAgeTab.value = 'recent'; selectedId.value = null; search.value = ""; statusFilter.value = ""; pendingOnly.value = false; handledSupplier.value = '';
   errorMessage.value = ""; successMessage.value = ""; pendingAction.value = null;
@@ -703,10 +643,6 @@ onMounted(load);
       <PurchaseSectionHeader :title="sectionMeta.title" :description="sectionMeta.subtitle">
         <template #actions><div class="flex gap-2"><AppButton variant="ghost" :disabled="loading || saving" title="Actualizar" aria-label="Actualizar" @click="load"><RefreshCw class="h-4 w-4" :class="loading && 'animate-spin'" aria-hidden="true" /><span class="sr-only">Actualizar</span></AppButton><AppButton v-if="props.section === 'requests' && can('purchase_requests.create')" :disabled="loading || saving" @click="newRequest"><Plus class="h-4 w-4" />{{ sectionMeta.create }}</AppButton><AppButton v-if="props.section === 'quotations' && can('purchase_quotations.create')" :disabled="loading || saving" @click="newQuotation()"><Plus class="h-4 w-4" />{{ sectionMeta.create }}</AppButton></div></template>
       </PurchaseSectionHeader>
-      <section v-if="props.section==='orders' && pendingQuantityReviews.length" class="rounded-2xl border border-border bg-surface p-5 sm:p-6">
-        <h2 class="text-sm font-semibold">Cantidades por revisar antes de cotizar <span class="ml-2 text-muted-fg">{{ pendingQuantityReviews.length }}</span></h2>
-        <div class="mt-3 max-h-48 divide-y divide-border overflow-y-auto"><RouterLink v-for="proposal in pendingQuantityReviews" :key="proposal.id" :to="{path:'/purchases/quotations/manage',query:{id:String(proposal.id)}}" class="flex items-center justify-between gap-3 py-3 text-sm"><span>Compra #{{ proposal.id }} · {{ shortDate(proposal.createdAt) }}</span><span class="font-medium text-accent">Revisar cantidades →</span></RouterLink></div>
-      </section>
       <p v-if="errorMessage" role="alert" class="rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">{{ errorMessage }}</p>
       <p v-if="successMessage" role="status" class="rounded-xl border border-success/30 bg-success/10 px-4 py-3 text-sm text-success">{{ successMessage }}</p>
 
@@ -738,8 +674,8 @@ onMounted(load);
               <div class="min-w-0"><div class="flex flex-wrap items-center gap-2"><h2 class="text-xl font-semibold tracking-tight">{{ selected.code }}</h2><AppBadge :variant="statusVariant(selected.status)">{{ statusLabel(selected.status) }}</AppBadge><TrackingLink v-if="trackingType" :type="trackingType" :id="selected.id" /><RouterLink v-if="props.section === 'requests'" :to="requestDetailPath(selected.id)" class="inline-flex min-h-7 items-center gap-1 rounded-md px-1.5 text-xs font-medium text-muted-fg transition-colors hover:bg-surface-secondary hover:text-accent"><Maximize2 class="h-3.5 w-3.5" aria-hidden="true" />Abrir página</RouterLink></div><p class="mt-2 text-sm text-muted-fg">{{ selected.supplier?.name || selected.branch?.name }}</p></div>
               <fieldset :disabled="saving" class="flex flex-wrap items-center gap-2">
             <AppButton v-if="canEditOrder" variant="outline" @click="editOrder(selected)"><Pencil class="h-4 w-4" />{{ selected.status === 'returned' ? 'Corregir orden' : 'Editar borrador' }}</AppButton>
-            <AppButton v-if="nextAction" :disabled="preparingReceipt" @click="nextAction.run()">{{ nextAction.label }}<ChevronRight class="h-4 w-4" /></AppButton>
-            <details v-if="secondaryActions" :key="'actions-' + selected.id" class="relative"><summary class="inline-flex min-h-9 cursor-pointer list-none items-center gap-2 rounded-lg border border-border bg-surface px-3 text-sm font-medium text-fg transition-colors hover:bg-surface-secondary [&::-webkit-details-marker]:hidden"><EllipsisVertical class="h-4 w-4 text-muted-fg" aria-hidden="true" />Más acciones<ChevronDown class="h-4 w-4 text-muted-fg" aria-hidden="true" /></summary><div class="absolute right-0 z-30 mt-2 flex min-w-56 flex-col gap-2 rounded-xl border border-border bg-surface p-3 shadow-subtle"><AppButton v-if="props.section === 'orders' && ['sent','partially_received'].includes(selected.status) && (can('purchase_orders.receive') || can('purchases.create'))" variant="outline" :disabled="preparingReceipt" @click="openReceive(selected)">{{ selected.purchases?.some((p: any) => p.status !== 'CANCELLED') ? 'Registrar otra recepción' : 'Registrar recepción' }}</AppButton><RouterLink v-if="props.section === 'requests' && !['draft','rejected','cancelled'].includes(selected.status) && can('inventory.view')" :to="{ path: '/inventory/warehouse', query: { requestId: selected.id } }" class="rounded-lg border border-border px-3 py-2 text-sm text-center">Ver entregas a sucursal</RouterLink><AppButton v-if="props.section === 'requests' && (['draft','rejected'].includes(selected.status) && can('purchase_requests.update'))" variant="outline" @click="editRequest(selected)"><Pencil class="h-4 w-4" />{{ selected.purpose ? 'Editar' : 'Completar solicitud' }}</AppButton><AppButton v-if="props.section === 'quotations' && (['draft','received'].includes(selected.status) && can('purchase_quotations.update'))" variant="outline" @click="editQuotation(selected)"><Pencil class="h-4 w-4" />Editar</AppButton><AppButton v-if="props.section === 'orders' && (['draft','returned'].includes(selected.status) && can('purchase_orders.update'))" variant="outline" @click="editOrder(selected)"><Pencil class="h-4 w-4" />Editar</AppButton><AppButton v-if="props.section === 'quotations' && ['received','under_review'].includes(selected.status) && can('purchase_quotations.reject')" variant="outline" @click="workflow(`/purchase-quotations/${selected.id}/reject`, 'Cotización rechazada')"><XCircle class="h-4 w-4" />Rechazar</AppButton><AppButton v-if="(props.section === 'requests' && ['draft','submitted','approved','in_quotation','partially_ordered'].includes(selected.status) && can('purchase_requests.cancel')) || (props.section === 'quotations' && ['draft','received','under_review'].includes(selected.status) && can('purchase_quotations.cancel')) || (props.section === 'orders' && ['draft','returned','rejected','pending_approval','approved','sent'].includes(selected.status) && can('purchase_orders.cancel'))" variant="outline" @click="workflow(`/${props.section === 'requests' ? 'purchase-requests' : props.section === 'quotations' ? 'purchase-quotations' : 'purchase-orders'}/${selected.id}/cancel`, 'Documento cancelado')"><XCircle class="h-4 w-4" />Cancelar documento</AppButton><TrashButton :entity="props.section === 'requests' ? 'purchase_requests' : props.section === 'quotations' ? 'purchase_quotations' : 'purchase_orders'" :record-id="selected.id" :label="selected.code" :disabled="saving" @deleted="load" /></div></details>
+            <AppButton v-if="nextAction" @click="nextAction.run()">{{ nextAction.label }}<ChevronRight class="h-4 w-4" /></AppButton>
+            <details v-if="secondaryActions" :key="'actions-' + selected.id" class="relative"><summary class="inline-flex min-h-9 cursor-pointer list-none items-center gap-2 rounded-lg border border-border bg-surface px-3 text-sm font-medium text-fg transition-colors hover:bg-surface-secondary [&::-webkit-details-marker]:hidden"><EllipsisVertical class="h-4 w-4 text-muted-fg" aria-hidden="true" />Más acciones<ChevronDown class="h-4 w-4 text-muted-fg" aria-hidden="true" /></summary><div class="absolute right-0 z-30 mt-2 flex min-w-56 flex-col gap-2 rounded-xl border border-border bg-surface p-3 shadow-subtle"><AppButton v-if="props.section === 'orders' && ['sent','partially_received'].includes(selected.status) && (can('purchase_orders.receive') || can('purchases.create'))" variant="outline" @click="goReceive(selected)">{{ selected.purchases?.some((p: any) => p.status !== 'CANCELLED') ? 'Registrar otra recepción' : 'Registrar recepción' }}</AppButton><RouterLink v-if="props.section === 'requests' && !['draft','rejected','cancelled'].includes(selected.status) && can('inventory.view')" :to="{ path: '/inventory/warehouse', query: { requestId: selected.id } }" class="rounded-lg border border-border px-3 py-2 text-sm text-center">Ver entregas a sucursal</RouterLink><AppButton v-if="props.section === 'requests' && (['draft','rejected'].includes(selected.status) && can('purchase_requests.update'))" variant="outline" @click="editRequest(selected)"><Pencil class="h-4 w-4" />{{ selected.purpose ? 'Editar' : 'Completar solicitud' }}</AppButton><AppButton v-if="props.section === 'quotations' && (['draft','received'].includes(selected.status) && can('purchase_quotations.update'))" variant="outline" @click="editQuotation(selected)"><Pencil class="h-4 w-4" />Editar</AppButton><AppButton v-if="props.section === 'orders' && (['draft','returned'].includes(selected.status) && can('purchase_orders.update'))" variant="outline" @click="editOrder(selected)"><Pencil class="h-4 w-4" />Editar</AppButton><AppButton v-if="props.section === 'quotations' && ['received','under_review'].includes(selected.status) && can('purchase_quotations.reject')" variant="outline" @click="workflow(`/purchase-quotations/${selected.id}/reject`, 'Cotización rechazada')"><XCircle class="h-4 w-4" />Rechazar</AppButton><AppButton v-if="(props.section === 'requests' && ['draft','submitted','approved','in_quotation','partially_ordered'].includes(selected.status) && can('purchase_requests.cancel')) || (props.section === 'quotations' && ['draft','received','under_review'].includes(selected.status) && can('purchase_quotations.cancel')) || (props.section === 'orders' && ['draft','returned','rejected','pending_approval','approved','sent'].includes(selected.status) && can('purchase_orders.cancel'))" variant="outline" @click="workflow(`/${props.section === 'requests' ? 'purchase-requests' : props.section === 'quotations' ? 'purchase-quotations' : 'purchase-orders'}/${selected.id}/cancel`, 'Documento cancelado')"><XCircle class="h-4 w-4" />Cancelar documento</AppButton><TrashButton :entity="props.section === 'requests' ? 'purchase_requests' : props.section === 'quotations' ? 'purchase_quotations' : 'purchase_orders'" :record-id="selected.id" :label="selected.code" :disabled="saving" @deleted="load" /></div></details>
           </fieldset>
             </div>
             <div class="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 text-sm">
@@ -755,7 +691,6 @@ onMounted(load);
           <section v-if="detailView==='approval'&&props.section==='orders'" class="space-y-5 p-5 sm:p-6">
   <div class="flex flex-wrap items-center justify-between gap-4"><div><h3 class="text-lg font-semibold">Revisión de Gerencia</h3><p class="mt-1 text-xs text-muted-fg">Versión {{ selected.revision }} · {{ statusLabel(selected.status) }}</p></div><p class="text-xl font-semibold">{{ money(selected.total,selected.currency) }}</p></div>
   <p class="text-sm text-muted-fg">Las cantidades se definieron antes de cotizar. Revise proveedores, condiciones, gastos y total para aprobar o devolver la compra a Compras.</p>
-  <p v-if="selected.consolidation?.quantityApprovedBy" class="text-xs text-muted-fg">Cantidades autorizadas por usuario #{{ selected.consolidation.quantityApprovedBy }} · {{ shortDate(selected.consolidation.quantityApprovedAt) }} · versión {{ selected.consolidation.quantityApprovedRevision }}</p>
   <div v-if="selected.reviewNotes" class="rounded-xl border border-warning/30 bg-warning/5 p-4 text-sm"><p class="mb-1 font-medium">Observaciones de Gerencia</p><p class="whitespace-pre-wrap">{{ selected.reviewNotes }}</p></div>
   <div class="overflow-x-auto"><table class="w-full min-w-[560px] text-left text-sm"><thead class="border-b border-border text-xs text-muted-fg"><tr><th class="p-3">Producto</th><th class="p-3 text-right">Solicitado</th><th class="p-3 text-right">Propuesto</th><th class="p-3 text-right">Diferencia</th><th class="p-3">Motivo / responsable</th></tr></thead><tbody><tr v-for="line in selected.consolidation?.lines??[]" :key="line.id" class="border-b border-border"><td class="p-3 font-medium">{{ line.product.name }}</td><td class="p-3 text-right">{{ Number(line.requestedQuantity) }}</td><td class="p-3 text-right">{{ Number(line.purchaseQuantity) }}</td><td class="p-3 text-right">{{ Number(line.purchaseQuantity)-Number(line.requestedQuantity) }}</td><td class="p-3 text-xs text-muted-fg">{{ line.reason||'Sin cambios sobre lo solicitado' }}<span v-if="line.decidedBy" class="mt-1 block">Usuario #{{ line.decidedBy }} · {{ shortDate(line.decidedAt) }}</span><details v-if="line.sources?.length" class="mt-2"><summary class="cursor-pointer">Solicitudes de origen</summary><p v-for="source in line.sources" :key="source.id" class="mt-1">{{ source.requestDetail.request.code }} · {{ source.requestDetail.request.branch.name }} · {{ Number(source.quantity) }}</p></details></td></tr></tbody></table></div>
   <div v-if="selected.comparisonSnapshot?.comparison" class="space-y-4"><h4 class="text-sm font-semibold">Ofertas de origen comparadas</h4><div class="overflow-x-auto"><table class="w-full min-w-[600px] text-left text-xs"><thead><tr class="border-b border-border"><th class="p-3">Producto</th><th v-for="supplier in selected.comparisonSnapshot.comparison.suppliers" :key="supplier.id" class="p-3">{{ supplier.name }}</th></tr></thead><tbody><tr v-for="row in selected.comparisonSnapshot.comparison.rows" :key="row.lineId" class="border-b border-border"><th class="p-3 font-medium">{{ row.product.name }}</th><td v-for="cell in row.cells" :key="cell.supplierId" class="p-3"><template v-if="cell.state==='not_quoted'">No cotizado</template><template v-else>{{ money(cell.unitPrice,cell.currency) }} / unidad · {{ cell.availableQuantity }} disponibles<p v-if="cell.label" class="mt-1 text-warning">{{ cell.label }}</p><p v-if="cell.eligible" class="mt-1 text-muted-fg">Total {{ money(cell.total,cell.currency) }} por {{ cell.quantity }} · Entrega {{ cell.deliveryDays }} días</p></template></td></tr></tbody></table></div><p v-if="selected.comparisonSnapshot.partialAccepted" class="text-sm text-warning">Compras confirmó que se trata de una comparación parcial con condiciones o costos pendientes.</p></div>
@@ -778,7 +713,7 @@ onMounted(load);
             <div><strong>{{ receipt.documentNumber }}</strong><span class="ml-2 text-xs" :class="receipt.status === 'CANCELLED' ? 'text-danger' : 'text-muted-fg'">{{ receiptNextStep(receipt).label }}</span><p class="mt-1 text-xs text-muted-fg">{{ shortDate(receipt.purchaseDate) }} · {{ receipt.supplierInvoiceNumber || 'Sin factura' }}</p></div>
             <div class="flex flex-wrap items-center gap-3"><strong>{{ money(receipt.total, selected.currency) }}</strong><RouterLink v-if="can('purchases.view')" :to="{ path: '/purchases/receipts', query: { id: receipt.id } }" class="text-accent">Ver recepción</RouterLink><RouterLink v-if="can('retaceos.view') && receipt.status !== 'CANCELLED' && !receipt.retaceoArchived && (receipt.hasActiveRetaceo || ['VERIFIED','COSTED'].includes(receipt.status))" :to="{ path: '/purchases/retaceos', query: { purchaseId: receipt.id } }" class="text-accent">{{ receipt.hasActiveRetaceo ? 'Ver retaceo' : 'Preparar retaceo' }}</RouterLink></div>
           </div>
-        <div v-if="!selected.purchases?.length" class="mt-4 rounded-xl bg-surface-secondary p-5"><p class="text-sm text-muted-fg">Esta orden aún no tiene recepciones registradas.</p><AppButton v-if="['sent','partially_received'].includes(selected.status) && (can('purchase_orders.receive') || can('purchases.create'))" class="mt-4" :disabled="saving || preparingReceipt" @click="openReceive(selected)">Registrar recepción</AppButton></div></section>
+        <div v-if="!selected.purchases?.length" class="mt-4 rounded-xl bg-surface-secondary p-5"><p class="text-sm text-muted-fg">Esta orden aún no tiene recepciones registradas.</p><AppButton v-if="['sent','partially_received'].includes(selected.status) && (can('purchase_orders.receive') || can('purchases.create'))" class="mt-4" :disabled="saving" @click="goReceive(selected)">Registrar recepción</AppButton></div></section>
 
           <section v-if="detailView === 'costs' && props.section !== 'requests'" class="p-5 sm:p-6"><div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_260px]">
           <div>
@@ -828,7 +763,7 @@ onMounted(load);
       </div>
     </div>
 
-    <div v-if="drawer" class="fixed inset-0 z-50 flex justify-end bg-black/35" @click.self="closeDrawer()"><aside role="dialog" aria-modal="true" aria-label="Documento de compras" :class="drawer === 'request' ? 'max-w-2xl' : 'max-w-3xl'" class="h-full w-full overflow-y-auto bg-surface p-4 shadow-xl sm:p-6" @keydown.esc="closeDrawer()"><div class="flex items-start justify-between"><div><p class="section-eyebrow">Proceso de compras</p><h2 class="mt-1 text-xl font-semibold text-fg">{{ drawer === 'request' ? (editingId ? 'Editar solicitud' : 'Nueva solicitud') : drawer === 'quotation' ? (editingId ? 'Editar cotización' : 'Registrar cotización') : drawer === 'order' ? (editingId ? 'Editar orden' : 'Generar orden de compra') : 'Registrar recepción' }}</h2><p v-if="drawer === 'request'" class="mt-1 text-sm text-muted-fg">Completa la información de la solicitud y agrega los productos o insumos.</p></div><button type="button" class="icon-button" title="Cerrar" @click="closeDrawer()"><X class="h-5 w-5" /></button></div>
+    <div v-if="drawer" class="fixed inset-0 z-50 flex justify-end bg-black/35" @click.self="closeDrawer()"><aside role="dialog" aria-modal="true" aria-label="Documento de compras" :class="drawer === 'request' ? 'max-w-2xl' : 'max-w-3xl'" class="h-full w-full overflow-y-auto bg-surface p-4 shadow-xl sm:p-6" @keydown.esc="closeDrawer()"><div class="flex items-start justify-between"><div><p class="section-eyebrow">Proceso de compras</p><h2 class="mt-1 text-xl font-semibold text-fg">{{ drawer === 'request' ? (editingId ? 'Editar solicitud' : 'Nueva solicitud') : drawer === 'quotation' ? (editingId ? 'Editar cotización' : 'Registrar cotización') : drawer === 'order' ? (editingId ? 'Editar orden' : 'Generar orden de compra') : '' }}</h2><p v-if="drawer === 'request'" class="mt-1 text-sm text-muted-fg">Completa la información de la solicitud y agrega los productos o insumos.</p></div><button type="button" class="icon-button" title="Cerrar" @click="closeDrawer()"><X class="h-5 w-5" /></button></div>
 
       <p v-if="errorMessage" role="alert" class="sticky top-0 z-10 mt-4 rounded-lg border border-danger/30 bg-surface p-3 text-sm text-danger">{{ errorMessage }}</p>
       <form v-if="drawer === 'request'" class="mt-5" @submit.prevent="saveRequest"><fieldset :disabled="saving" class="min-w-0 space-y-6">
@@ -873,38 +808,11 @@ onMounted(load);
       <section v-else-if="drawer === 'quotation'" class="mt-6 space-y-4 border-y border-border py-6"><h3 class="font-semibold text-fg">No hay solicitudes aprobadas pendientes</h3><AppButton v-if="can('purchase_requests.view')" type="button" @click="router.push('/purchases/requests')"><ClipboardCheck class="h-4 w-4" />Ver solicitudes de compra</AppButton><AppButton type="button" variant="outline" @click="closeDrawer()">Cerrar</AppButton></section>
       <form v-else-if="drawer === 'order'" class="mt-6 space-y-6" @submit.prevent="saveOrder"><fieldset :disabled="saving" class="min-w-0 space-y-6"><section v-if="editingId" class="space-y-4"><div v-if="selected?.status==='returned' && selected.reviewNotes" class="rounded-xl border border-warning/30 bg-warning/5 p-4 text-sm"><p class="mb-1 font-medium">Observaciones de Gerencia</p><p class="whitespace-pre-wrap">{{ selected.reviewNotes }}</p></div><label v-if="editableOrderQuotes.length" class="block text-sm font-medium">Oferta / proveedor<select v-model.number="orderForm.quotationId" class="field-control" @change="changeOrderProvider"><option v-for="quote in editableOrderQuotes" :key="quote.id" :value="quote.id">{{ quote.code }} · {{ quote.supplier.name }}</option></select></label><div v-for="line in orderForm.details" :key="line.quotationDetailId" class="rounded-xl border border-border p-4"><p class="mb-3 text-sm font-medium">{{ line.productName }}</p><div class="grid gap-3 sm:grid-cols-4"><label class="text-xs">Cantidad<input v-model.number="line.quantity" type="number" min="1" step="1" required class="field-control" /></label><label class="text-xs">Precio unitario<input v-model.number="line.unitPrice" type="number" min="0.0001" step="0.0001" required class="field-control" /></label><label class="text-xs">Descuento total<input v-model.number="line.discount" type="number" min="0" step="0.01" class="field-control" /></label><label class="text-xs">Impuesto %<input v-model.number="line.taxRate" type="number" min="0" max="100" step="0.01" class="field-control" /></label></div></div><label class="block text-sm">Motivo de los cambios<input v-model="orderForm.confirmationReason" required maxlength="500" class="field-control" /></label><label class="flex items-start gap-2 text-sm"><input v-model="orderForm.confirmOfferChanges" type="checkbox" class="mt-1" />Confirmé con el proveedor las nuevas cantidades, precios o condiciones; la referencia está en el motivo.</label><p class="text-xs text-warning">Las cantidades no pueden superar lo autorizado antes de cotizar. Los cambios se enviarán nuevamente a Gerencia.</p></section><div v-if="orderQuotation" class="rounded-lg border border-border bg-surface-secondary p-4"><p class="text-xs font-semibold text-muted-fg">COTIZACIÓN DE ORIGEN</p><p class="mt-1 font-semibold text-fg">{{ orderQuotation.code }} · {{ orderQuotation.supplier?.name }}</p></div><div class="grid gap-4 sm:grid-cols-2"><label class="text-sm font-medium text-fg">Sucursal<select v-model.number="orderForm.branchId" disabled required class="field-control"><option disabled :value="0">Seleccionar sucursal</option><option v-for="branch in catalogs.branches" :key="branch.id" :value="branch.id">{{ branch.name }}</option></select></label><label class="text-sm font-medium text-fg">Almacén destino<select v-model.number="orderForm.warehouseId" disabled required class="field-control"><option disabled :value="0">Seleccionar almacén</option><option v-for="warehouse in orderWarehouses" :key="warehouse.id" :value="warehouse.id">{{ warehouse.name }}</option></select></label><AppInput v-model="orderForm.expectedDate" type="date" :min="dateValue()" label="Fecha esperada" required /><AppInput v-model="orderForm.paymentTerms" label="Condiciones de pago" :disabled="!editingId" maxlength="100" /></div><section v-if="!editingId"><h3 class="font-semibold text-fg">Productos a ordenar</h3><div v-for="line in orderSelections" :key="line.quotationDetailId" class="mt-3 grid items-end gap-3 border-t border-border pt-3 sm:grid-cols-[1fr_160px]"><div><p class="font-medium">{{ line.productName }}</p><p class="text-xs text-muted-fg">Disponible pendiente: {{ line.pending }}</p></div><AppInput v-model="line.quantity as any" type="number" min="0" :max="line.pending" step="1" label="Cantidad" required /></div><p v-if="!orderSelections.length" class="mt-3 text-sm text-muted-fg">La cotización no tiene cantidades pendientes.</p></section><details class="border-t border-border pt-4" :open="!!orderForm.notes"><summary class="cursor-pointer text-sm font-medium text-muted-fg">Observaciones (opcional)</summary><label class="mt-3 block text-sm font-medium text-fg">Observaciones<textarea v-model="orderForm.notes" class="mt-1.5 min-h-24 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-fg" /></label></details><div v-if="editingId"><div class="flex items-center justify-between"><h3 class="font-semibold text-fg">Gastos acordados</h3><AppButton variant="outline" size="sm" type="button" :disabled="!catalogs.expenseTypes.length" v-if="can('purchase_expenses.create')" @click="addExpense(orderForm.expenses)"><Plus class="h-4 w-4" />Gasto</AppButton></div><div v-for="(expense, index) in orderForm.expenses" :key="index" class="mt-3 grid gap-3 sm:grid-cols-[180px_1fr_130px_36px]"><label class="text-sm font-medium text-fg">Tipo<select v-model.number="expense.expenseTypeId" :disabled="expense.id ? !can('purchase_expenses.update') : !can('purchase_expenses.create')" required class="field-control"><option v-for="type in catalogs.expenseTypes" :key="type.id" :value="type.id">{{ type.name }}</option></select></label><AppInput v-model="expense.description" :disabled="expense.id ? !can('purchase_expenses.update') : !can('purchase_expenses.create')" label="Descripción" /><AppInput v-model="expense.amount as any" :disabled="expense.id ? !can('purchase_expenses.update') : !can('purchase_expenses.create')" type="number" min="0" step="0.01" label="Monto" required /><button type="button" class="icon-button mt-7 text-danger" title="Quitar gasto" :disabled="expense.id ? !can('purchase_expenses.update') : !can('purchase_expenses.create')" @click="orderForm.expenses.splice(index, 1)"><Trash2 class="h-4 w-4" /></button></div></div><div v-if="editingId" class="grid gap-3 rounded-xl bg-surface-secondary p-4 text-sm sm:grid-cols-4"><span>Subtotal<strong class="mt-1 block">{{ money(orderEditTotals.subtotal,selected?.currency) }}</strong></span><span>Impuestos<strong class="mt-1 block">{{ money(orderEditTotals.tax,selected?.currency) }}</strong></span><span>Gastos previstos<strong class="mt-1 block">{{ money(orderEditTotals.expenses,selected?.currency) }}</strong></span><span>Total actualizado<strong class="mt-1 block text-base">{{ money(orderEditTotals.total,selected?.currency) }}</strong></span></div><div class="flex justify-end gap-2"><AppButton variant="outline" type="button" @click="closeDrawer()">Cancelar</AppButton><AppButton type="submit" :disabled="saving || (!editingId && !orderSelections.some((line) => Number(line.quantity) > 0))">{{ saving ? 'Guardando...' : editingId ? 'Guardar cambios' : 'Generar orden' }}</AppButton></div></fieldset></form>
 
-      <form v-else-if="drawer === 'receive'" class="mt-6 space-y-6" @submit.prevent="receiveOrder"><fieldset :disabled="saving || !!receiptReview" class="min-w-0 space-y-6">
-        <div class="grid gap-4 sm:grid-cols-2"><AppInput v-model="receiveForm.supplierInvoiceNumber" label="Factura del proveedor" placeholder="Opcional" /><AppInput v-model="receiveForm.supplierInvoiceDate" type="date" label="Fecha de factura" /></div>
-        <div>
-          <p class="mb-4 text-sm text-muted-fg">{{ selected?.code }} · {{ selected?.supplier.name }} · {{ selected?.warehouse.name }}</p>
-          <div class="flex flex-wrap items-center justify-between gap-2"><h3 class="font-semibold text-fg">Mercadería recibida</h3><AppButton type="button" variant="outline" size="sm" @click="fillPendingReceipt"><Check class="h-4 w-4" />Completar pendientes</AppButton></div>
-          <div class="mt-3 overflow-x-auto">
-            <table class="w-full min-w-[650px] text-left text-sm">
-              <thead class="border-y border-border bg-surface-secondary text-xs text-muted-fg"><tr><th class="p-3">Producto / Ubicación</th><th class="p-3 text-right">Ordenado</th><th class="p-3 text-right">Recibido anteriormente</th><th class="w-32 p-3">Recibido ahora</th><th class="p-3 text-right">Pendiente</th></tr></thead>
-              <tbody class="divide-y divide-border">
-                <tr v-for="row in receiptRows" :key="row.item.orderDetailId">
-                  <td class="min-w-52 p-3"><p class="font-medium">{{ row.line?.product.name }}</p><p class="mt-1 text-xs text-muted-fg">{{ row.line?.unit.name }}</p>
-                    <select v-model.number="row.item.locationId" :aria-label="'Ubicación de ' + row.line?.product.name" :disabled="Number(row.item.quantity) <= 0" class="field-control mt-2"><option :value="0">Sugerir espacio (pendiente de confirmación)</option><option v-for="location in receiveLocations" :key="location.id" :value="location.id">{{ location.code }} · {{ location.aisle }} / {{ location.rack }} / {{ location.level }}</option></select>
-                  </td>
-                  <td class="p-3 text-right tabular-nums">{{ Number(row.line?.quantity) }}</td>
-                  <td class="p-3 text-right tabular-nums">{{ Number(row.line?.receivedQuantity) }}</td>
-                  <td class="p-3"><input v-model="row.item.quantity" type="number" min="0" :max="row.pending" step="1" :aria-label="'Recibido ahora de ' + row.line?.product.name" required class="field-control w-28" /></td>
-                  <td class="p-3 text-right font-medium tabular-nums">{{ row.remaining }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <p v-if="!receiveLocations.length" class="mt-4 text-sm text-muted-fg">La recepción quedará pendiente de ubicación hasta registrar un espacio.</p>
-        </div>
-        <label class="block text-sm font-medium text-fg">Observaciones de recepción<textarea v-model="receiveForm.notes" class="mt-1.5 min-h-20 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-fg" maxlength="2000" /></label>
-        <div class="flex justify-end gap-2"><AppButton variant="outline" type="button" @click="closeDrawer()">Cancelar</AppButton><AppButton type="submit" :disabled="saving || !receiveForm.items.some((item) => Number(item.quantity) > 0)">Revisar recepción</AppButton></div>
-      </fieldset></form>
 
     </aside></div>
-    <PurchaseActionDialog v-if="receiptReview" title="Confirmar recepción" :description="receiptReview.description" :busy="saving" :error="errorMessage" @confirm="confirmReceipt" @close="receiptReview = null" />
     <PurchaseActionDialog v-if="discardChanges" title="Descartar cambios" description="Hay cambios sin guardar en este documento. ¿Deseas descartarlos?" @confirm="closeDrawer(true)" @close="discardChanges = false" />
     <PurchaseActionDialog v-if="leaving" title="Salir sin guardar" description="Los cambios de este documento no se han guardado." @confirm="resolveLeave(true)" @close="resolveLeave(false)" />
     <PurchaseActionDialog v-if="pendingAction" :title="pendingAction.title" :description="pendingAction.description" :require-reason="pendingAction.reason" :busy="saving" :error="errorMessage" @confirm="confirmAction" @close="pendingAction = null" />
-    <p v-if="loading || preparingReceipt" role="status" class="mt-3 text-sm text-muted-fg">{{ preparingReceipt ? 'Consultando cantidades pendientes...' : 'Actualizando documentos...' }}</p>
+    <p v-if="loading" role="status" class="mt-3 text-sm text-muted-fg">Actualizando documentos...</p>
   </AdminLayout>
 </template>

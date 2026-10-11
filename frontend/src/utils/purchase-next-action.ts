@@ -11,7 +11,6 @@ type Behavior =
   | { kind: 'workflow'; path: string; message: string }
   | { kind: 'new-quotation' }
   | { kind: 'new-order' }
-  | { kind: 'receive' }
   | { kind: 'approval-tab' }
   | { kind: 'navigate'; path: string; query?: Record<string, string> };
 /** `detail` is the full text of the step when the label is a short summary of it. */
@@ -65,8 +64,8 @@ export function documentAction(section: ActionSection, record: any, ctx: ActionC
     if (record.rfq) {
       return allow(draft ? 'purchase_quotations.update' : 'purchase_quotations.view', {
         label: draft ? 'Completar oferta' : 'Comparar y elegir productos', kind: 'navigate',
-        path: draft ? '/purchases/quotations/manage' : '/purchases/comparison',
-        query: { id: String(record.rfq.consolidationId), ...(draft ? { rfqId: String(record.rfq.id) } : {}) },
+        path: '/purchases/quotations/manage',
+        query: { id: String(record.rfq.consolidationId), ...(draft ? { rfqId: String(record.rfq.id) } : { tab: 'compare' }) },
       });
     }
     if (draft) return allow('purchase_quotations.update', { label: 'Confirmar oferta recibida', kind: 'workflow', path: `/purchase-quotations/${record.id}/receive`, message: 'Oferta recibida' });
@@ -87,7 +86,7 @@ export function documentAction(section: ActionSection, record: any, ctx: ActionC
     if (step === 'cost' && can('retaceos.view')) return allow('retaceos.view', { label: 'Continuar en Retaceo', kind: 'navigate', path: '/purchases/retaceos', query: { purchaseId: String(receipt.id) } });
     return allow('purchases.view', { label: step === 'verify' ? 'Verificar recepción' : step === 'close' ? 'Cerrar recepción' : 'Ver recepción pendiente', kind: 'navigate', path: '/purchases/receipts', query: { id: String(receipt.id) } });
   }
-  if (['sent', 'partially_received'].includes(record.status)) return allow(can('purchase_orders.receive') ? 'purchase_orders.receive' : 'purchases.create', { label: 'Registrar recepción', kind: 'receive' });
+  if (['sent', 'partially_received'].includes(record.status)) return allow(can('purchase_orders.receive') ? 'purchase_orders.receive' : 'purchases.create', { label: 'Registrar recepción', kind: 'navigate', path: '/purchases/receipts', query: { receiveOrder: String(record.id) } });
   // Fully received and every receipt closed: only the rest of the purchase (distribution, delivery) is left.
   if (record.status === 'received') return fromProcess();
   return null;

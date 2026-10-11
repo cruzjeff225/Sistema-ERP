@@ -26,11 +26,12 @@ export function deliveredQuantity(line: TransferLine, field: 'quantity' | 'recei
 }
 
 /** What the headers need from the tracking of the whole purchase: the next step and where the purchase stands. */
-export function processSnapshot(tracking: Pick<Tracking, 'stages' | 'nextStep'>): { step: TrackingStep | null; info: { stage: string; done: number; total: number } | null } {
+export function processSnapshot(tracking: Pick<Tracking, 'stages' | 'nextStep'> & { alsoAvailable?: TrackingStep[] }): { step: TrackingStep | null; also: TrackingStep[]; info: { stage: string; done: number; total: number } | null } {
   const applicable = tracking.stages.filter(stage => stage.state !== 'skipped');
   const current = tracking.stages.find(stage => stage.id === tracking.nextStep?.stage) ?? applicable.find(stage => stage.state !== 'complete');
   return {
     step: tracking.nextStep,
+    also: tracking.alsoAvailable ?? [],
     info: current ? { stage: current.label, done: applicable.filter(stage => stage.state === 'complete').length, total: applicable.length } : null,
   };
 }

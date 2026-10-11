@@ -302,7 +302,7 @@ async function workflow(action: string, message: string, confirmed = false, reas
   if (!targetId || saving.value || !activeCompanyId.value) return;
   if (!confirmed && ["close", "cancel"].includes(action)) {
     errorMessage.value = "";
-    confirmation.value = { id: targetId, action, message, title: action === "close" ? "Cerrar retaceo" : "Cancelar retaceo", description: action === "close" ? `Se confirmará el costo real de ${selected.value.details.length} productos de ${selected.value.code}. El retaceo quedará cerrado y no podrá editarse.` : `Se cancelará ${selected.value.code}. La recepción quedará disponible para un nuevo retaceo.`, reason: action === "cancel" };
+    confirmation.value = { id: targetId, action, message, title: action === "close" ? "Cerrar retaceo" : "Cancelar retaceo", description: action === "close" ? `Se confirmará el costo real de ${selected.value.details.length} productos de ${selected.value.code}. El retaceo quedará cerrado, no podrá editarse y la recepción se cerrará con él.` : `Se cancelará ${selected.value.code}. La recepción quedará disponible para un nuevo retaceo.`, reason: action === "cancel" };
     return;
   }
   const companyId = activeCompanyId.value;

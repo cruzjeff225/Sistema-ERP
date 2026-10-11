@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, reactive, ref, watch } from "vue";
 import { RouterLink, useRoute, useRouter } from "vue-router";
-import { Check, ChevronLeft, ChevronRight, LockKeyhole, Pencil, RefreshCw, Search, X } from "lucide-vue-next";
+import { Check, ChevronLeft, PackagePlus, ChevronRight, LockKeyhole, Pencil, RefreshCw, Search, X } from "lucide-vue-next";
 import AdminLayout from "../layouts/AdminLayout.vue";
 import PurchasesNav from "../components/purchases/PurchasesNav.vue";
 import PurchaseSectionHeader from "../components/purchases/PurchaseSectionHeader.vue";
@@ -11,6 +11,7 @@ import AppButton from "../components/base/AppButton.vue";
 import TrackingLink from "../components/purchases/TrackingLink.vue";
 import AppInput from "../components/base/AppInput.vue";
 import PurchaseActionDialog from "../components/base/PurchaseActionDialog.vue";
+import ReceiveOrderDrawer from "../components/purchases/ReceiveOrderDrawer.vue";
 import { http } from "../services/http.service";
 import { activeCompanyId } from "../services/company-context";
 import { usePermissions } from "../composables/usePermissions";
@@ -76,6 +77,27 @@ const actionDescription = computed(() => {
 });
 let version = 0;
 onBeforeUnmount(() => { version++; });
+// Orders that already left for the supplier and wait for goods: receiving them starts here, in Warehouse's own module.
+const toReceive = ref<any[]>([]);
+const receivingOrderId = ref<number | null>(null);
+const canReceive = computed(() => can('purchase_orders.receive') && can('purchase_orders.view'));
+let toReceiveVersion = 0;
+async function loadToReceive() {
+  const company = activeCompanyId.value, current = ++toReceiveVersion;
+  if (!company || !canReceive.value) { toReceive.value = []; return; }
+  try {
+    const response = await http.get('/purchase-orders', { headers: { 'X-Company-Id': String(company) } });
+    if (current !== toReceiveVersion || company !== activeCompanyId.value) return;
+    toReceive.value = response.data.data.filter((order: any) => ['sent', 'partially_received'].includes(order.status));
+  } catch { if (current === toReceiveVersion) toReceive.value = []; }
+}
+const pendingUnits = (order: any) => order.details.reduce((sum: number, line: any) => sum + Math.max(0, Number(line.quantity) - Number(line.receivedQuantity)), 0);
+function openReceive(orderId: number) { if (busy.value || editing.value) return; error.value = ''; receivingOrderId.value = orderId; }
+function closeReceive() { receivingOrderId.value = null; if (route.query.receiveOrder) { const query = { ...route.query }; delete query.receiveOrder; void router.replace({ query }); } }
+function afterReceived() { closeReceive(); void loadToReceive(); void load(1); }
+watch(activeCompanyId, () => { receivingOrderId.value = null; void loadToReceive(); }, { immediate: true });
+// A link such as the next step of the tracking opens the form of that order right away.
+watch(() => route.query.receiveOrder, value => { const id = Number(value); if (Number.isInteger(id) && id > 0) receivingOrderId.value = id; }, { immediate: true });
 const money = (amount: string, currency: string) => new Intl.NumberFormat("es-SV", { style: "currency", currency }).format(Number(amount));
 async function load(page = 1) {
   const current = ++version;
@@ -162,7 +184,7 @@ async function mutate(reason?: string) {
   <AdminLayout title="Recepciones de mercadería">
     <div class="mx-auto max-w-[1440px] space-y-6">
     <PurchasesNav />
-    <PurchaseSectionHeader title="Recepciones" description="Revisa los productos recibidos y continúa con su ubicación y costo final.">
+    <PurchaseSectionHeader title="Recepciones" description="Registra lo que llega, ubícalo y verifícalo antes del costo final.">
       <template #actions>
       <AppButton variant="outline" :disabled="loading || busy || editing" @click="load(meta.page)"><RefreshCw class="h-4 w-4" :class="loading && 'animate-spin'" />Actualizar</AppButton>
       </template>
@@ -171,6 +193,15 @@ async function mutate(reason?: string) {
     <p v-if="success" role="status" class="mb-4 rounded-lg border border-success/30 bg-success/10 px-3 py-2 text-sm text-success">{{ success }}</p>
     <div class="grid items-start gap-5 lg:grid-cols-[300px_minmax(0,1fr)]">
       <aside class="min-w-0 overflow-hidden rounded-2xl border border-border bg-surface">
+        <section v-if="toReceive.length" aria-labelledby="to-receive-title" class="border-b border-border bg-accent-soft/40 p-4">
+          <h2 id="to-receive-title" class="flex items-center justify-between text-sm font-semibold"><span class="flex items-center gap-2"><PackagePlus class="h-4 w-4 text-accent" aria-hidden="true" />Por recibir</span><span class="rounded-full bg-accent-soft px-2 py-0.5 text-xs font-semibold text-accent">{{ toReceive.length }}</span></h2>
+          <ul class="mt-3 space-y-2">
+            <li v-for="(order, index) in toReceive" :key="order.id" class="flex items-center justify-between gap-2 rounded-xl border border-border bg-surface px-3 py-2">
+              <div class="min-w-0"><p class="text-sm font-medium">{{ order.code }}</p><p class="truncate text-xs text-muted-fg">{{ order.supplier?.name }} · {{ pendingUnits(order) }} por recibir</p></div>
+              <AppButton size="sm" :variant="index === 0 ? 'primary' : 'outline'" :disabled="busy || editing" @click="openReceive(order.id)">Recibir</AppButton>
+            </li>
+          </ul>
+        </section>
         <form class="space-y-3 border-b border-border p-4" @submit.prevent="filterReceipts()">
           <div class="flex items-center justify-between text-sm"><strong>Recepciones</strong><span class="text-xs text-muted-fg">{{ meta.total }} registros</span></div>
           <PurchaseTabs :model-value="ageTab" :items="[{ value: 'recent', label: 'Esta semana' }, { value: 'older', label: 'Anteriores' }]" label="Período de recepciones" :disabled="loading || busy || editing" @update:model-value="changeTab($event as 'recent' | 'older')" />
@@ -244,6 +275,7 @@ async function mutate(reason?: string) {
     </div>
     </div>
     <PurchaseActionDialog v-if="action && selected" :title="action === 'cancel' ? 'Cancelar recepción' : action === 'verify' ? 'Verificar recepción' : 'Cerrar recepción'" :description="actionDescription" :require-reason="action === 'cancel'" :busy="busy" :error="error" @close="action = null" @confirm="mutate" />
+    <ReceiveOrderDrawer v-if="receivingOrderId" :order-id="receivingOrderId" @close="closeReceive" @received="afterReceived" />
     <PurchaseActionDialog v-if="discardInvoice" title="Descartar cambios de factura" description="Los cambios de factura no se han guardado." @confirm="editing = false; discardInvoice = false" @close="discardInvoice = false" />
     <PurchaseActionDialog v-if="leaving" title="Salir sin guardar" description="Los cambios de factura no se han guardado." @confirm="resolveLeave(true)" @close="resolveLeave(false)" />
   </AdminLayout>

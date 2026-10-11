@@ -43,7 +43,7 @@ test('solicitud con distribución parcial o completada sin paso pendiente muestr
 test('ofertas: completar, comparar, confirmar, elegir y crear la orden', () => {
   const rfq = { id: 9, consolidationId: 5 };
   assert.deepEqual(documentAction('quotations', { id: 1, status: 'draft', rfq }, ctx()), { label: 'Completar oferta', kind: 'navigate', path: '/purchases/quotations/manage', query: { id: '5', rfqId: '9' } });
-  assert.deepEqual(documentAction('quotations', { id: 1, status: 'received', rfq }, ctx()), { label: 'Comparar y elegir productos', kind: 'navigate', path: '/purchases/comparison', query: { id: '5' } });
+  assert.deepEqual(documentAction('quotations', { id: 1, status: 'received', rfq }, ctx()), { label: 'Comparar y elegir productos', kind: 'navigate', path: '/purchases/quotations/manage', query: { id: '5', tab: 'compare' } });
   assert.equal(documentAction('quotations', { id: 1, status: 'draft' }, ctx())?.label, 'Confirmar oferta recibida');
   assert.equal(documentAction('quotations', { id: 1, status: 'under_review' }, ctx())?.label, 'Elegir oferta');
   assert.equal(documentAction('quotations', { id: 1, status: 'selected' }, ctx())?.kind, 'new-order');
@@ -61,7 +61,7 @@ test('órdenes: enviar, revisar, aprobar, marcar enviada y registrar la recepci�
   assert.equal(documentAction('orders', { id: 2, status: 'returned' }, ctx())?.kind, 'approval-tab');
   assert.deepEqual(documentAction('orders', { id: 2, status: 'pending_approval' }, ctx()), { label: 'Revisar para aprobar', kind: 'approval-tab' });
   assert.equal(documentAction('orders', { id: 2, status: 'approved' }, ctx())?.label, 'Marcar enviada al proveedor');
-  assert.deepEqual(documentAction('orders', { id: 2, status: 'sent' }, ctx()), { label: 'Registrar recepción', kind: 'receive' });
+  assert.deepEqual(documentAction('orders', { id: 2, status: 'sent' }, ctx()), { label: 'Registrar recepción', kind: 'navigate', path: '/purchases/receipts', query: { receiveOrder: '2' } });
   assert.equal(documentAction('orders', { id: 2, status: 'pending_approval' }, ctx({ can: only('purchase_orders.view') })), null, 'solo Gerencia aprueba');
   assert.equal(documentAction('orders', { id: 2, status: 'rejected' }, ctx()), null);
 });

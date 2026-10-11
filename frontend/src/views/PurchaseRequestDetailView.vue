@@ -10,6 +10,7 @@ import PurchaseActionDialog from '../components/base/PurchaseActionDialog.vue';
 import TrashButton from '../components/admin/TrashButton.vue';
 import PurchaseTabs from '../components/purchases/PurchaseTabs.vue';
 import TrackingLink from '../components/purchases/TrackingLink.vue';
+import ReceiveTransferPanel from '../components/purchases/ReceiveTransferPanel.vue';
 import { http } from '../services/http.service';
 import { activeCompanyId } from '../services/company-context';
 import { usePermissions } from '../composables/usePermissions';
@@ -17,6 +18,7 @@ import { useFeedbackStore } from '../stores/feedback.store';
 import { getApiErrorMessage } from '../utils/api-error';
 import { purchaseStage } from '../utils/purchase-inbox';
 import { documentAction, needsProcessStep } from '../utils/purchase-next-action';
+import { myOwners, stepForUser } from '../utils/my-pending';
 import { purchasePurposeLabel } from '../utils/purchase-workflow';
 import { canCancelRequest, deliveredQuantity, hasBranchDeliveries, isAwaitingPurchasing, isEditableRequest, processSnapshot, quotationEntryLocation, requestEditLocation, requestLifecycle, requestListLocation, requestNextStep, requestStatusIcon, type RequestStatusIcon } from '../utils/purchase-request';
 import { documentStatusLabel, documentStatusVariant, formatQuantity, type TrackingStep } from '../utils/purchase-tracking';
@@ -31,9 +33,12 @@ const loading = ref(false);
 const busy = ref(false);
 const notFound = ref(false);
 const error = ref('');
-const tab = ref('products');
+const tab = ref(route.query.tab === 'deliveries' ? 'deliveries' : 'products');
 const processStep = ref<TrackingStep | null>(null);
 const processInfo = ref<{ stage: string; done: number; total: number } | null>(null);
+const processAlso = ref<TrackingStep[]>([]);
+// The step that is the user's own: the main one, or one the user's team can already take in parallel (e.g. receiving at the branch).
+const ownStep = computed(() => stepForUser(processStep.value, processAlso.value, myOwners(can), can));
 const cancelling = ref(false);
 let version = 0;
 
@@ -50,14 +55,14 @@ const dateTime = (value?: string | null) => value ? new Date(value).toLocaleStri
 
 async function loadProcess() {
   const current = ++version;
-  processStep.value = null; processInfo.value = null;
+  processStep.value = null; processInfo.value = null; processAlso.value = [];
   const companyId = activeCompanyId.value;
   if (!request.value || !companyId || !needsProcessStep('requests', request.value) || !can('purchases.view')) return;
   try {
     const response = await http.get(`/purchases/tracking/request/${request.value.id}`, { headers: { 'X-Company-Id': String(companyId) } });
     if (current !== version || companyId !== activeCompanyId.value) return;
     const snapshot = processSnapshot(response.data.data);
-    processStep.value = snapshot.step; processInfo.value = snapshot.info;
+    processStep.value = snapshot.step; processInfo.value = snapshot.info; processAlso.value = snapshot.also;
   } catch { /* The request still works without the process summary. */ }
 }
 
@@ -91,7 +96,7 @@ async function post(path: string, body: object, success: string) {
 
 // The single red button is the next step of the process; what it does is decided in utils/purchase-next-action.
 const mainAction = computed(() => {
-  const chosen = documentAction('requests', request.value, { can, quoteExpired: false, hasPendingOrderLines: false, processStep: processStep.value });
+  const chosen = documentAction('requests', request.value, { can, quoteExpired: false, hasPendingOrderLines: false, processStep: ownStep.value });
   if (!chosen) return null;
   const record = request.value;
   const run = () => {
@@ -99,7 +104,8 @@ const mainAction = computed(() => {
       case 'edit-request': return void router.push(requestEditLocation(record.id));
       case 'workflow': return void post(chosen.path, {}, chosen.message);
       case 'new-quotation': return void router.push(quotationEntryLocation(record));
-      case 'navigate': return void router.push({ path: chosen.path, query: chosen.query ?? {} });
+      // Receiving at the branch happens inside this same request, in its Deliveries tab.
+      case 'navigate': if (ownStep.value?.stage === 'delivery') { tab.value = 'deliveries'; return; } return void router.push({ path: chosen.path, query: chosen.query ?? {} });
     }
   };
   return { label: chosen.label, kind: chosen.kind, run };
@@ -115,7 +121,7 @@ const callout = computed(() => {
   const record = request.value;
   if (!record) return null;
   const progress = processInfo.value ? `Etapa ${processInfo.value.stage} · ${processInfo.value.done} de ${processInfo.value.total} completas.` : '';
-  if (processStep.value) return { tone: 'action' as const, title: processStep.value.label, description: `A cargo de ${processStep.value.owner}. ${progress}`.trim(), icon: ArrowRight };
+  if (ownStep.value) return { tone: 'action' as const, title: ownStep.value.label, description: `A cargo de ${ownStep.value.owner}. ${progress}`.trim(), icon: ArrowRight };
   const own = requestNextStep(record.status);
   if (own) return { tone: 'action' as const, title: own.label, description: own.hint, icon: ArrowRight };
   if (record.status === 'fulfilled') return { tone: 'success' as const, title: 'Solicitud completada', description: 'Todos los productos fueron entregados a la sucursal.', icon: CircleCheck };
@@ -137,7 +143,7 @@ function afterRemoved() { feedback.success('Solicitud enviada a la papelera'); v
 
 onMounted(() => void load());
 onBeforeUnmount(() => { version++; });
-watch([() => route.params.id, activeCompanyId], () => { tab.value = 'products'; void load(); });
+watch([() => route.params.id, activeCompanyId], () => { tab.value = route.query.tab === 'deliveries' ? 'deliveries' : 'products'; void load(); });
 </script>
 
 <template>
@@ -273,6 +279,7 @@ watch([() => route.params.id, activeCompanyId], () => { tab.value = 'products'; 
               </tbody>
             </table>
           </div>
+          <ReceiveTransferPanel v-if="can('inventory.view') && can('inventory.adjust')" :request-id="request.id" @received="load" />
         </section>
 
         <!-- Información -->
