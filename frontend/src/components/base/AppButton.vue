@@ -1,7 +1,7 @@
 <script setup lang="ts">
 withDefaults(
     defineProps<{
-        variant?: 'primary' | 'outline' | 'ghost' | 'danger';
+        variant?: 'primary' | 'outline' | 'ghost' | 'danger' | 'danger-outline';
         size?: 'sm' | 'md' | 'icon';
         disabled?: boolean;
         type?: 'button' | 'submit';
@@ -26,6 +26,8 @@ withDefaults(
             'border border-border bg-surface text-fg hover:bg-surface-secondary active:scale-[0.98]',
             variant === 'ghost' && 'text-fg hover:bg-surface-secondary active:scale-[0.98]',
             variant === 'danger' && 'bg-danger text-white hover:bg-danger/90 active:scale-[0.98]',
+            // Destructive but not the point of the screen: red text on a quiet button, so it never competes with the main action.
+            variant === 'danger-outline' && 'border border-danger/30 bg-surface text-danger hover:bg-danger/10 active:scale-[0.98]',
         ]">
         <slot />
     </button>
