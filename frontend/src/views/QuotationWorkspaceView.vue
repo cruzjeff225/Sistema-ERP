@@ -321,7 +321,7 @@ onBeforeUnmount(() => { mounted = false; ++companyEpoch; ++loadVersion; ++openVe
         <p v-if="loading || opening" role="status" class="mt-4 text-sm text-muted-fg">Cargando cotizaciones…</p>
       </section>
 
-      <div v-if="can('purchase_quotations.create') && can('purchase_requests.view') && !offer && !opening && (showNew || !contextUnavailable && !documents.length && !loading)" class="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_20rem]">
+      <div v-if="can('purchase_quotations.create') && can('purchase_requests.view') && !offer && !opening && (showNew || !contextUnavailable && !documents.length && !loading)" class="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_18rem]">
         <section aria-labelledby="picker-title" class="min-w-0 rounded-2xl border border-border bg-surface p-5 sm:p-6">
           <div class="flex flex-wrap items-start justify-between gap-4">
             <div class="flex items-start gap-3">
@@ -340,7 +340,7 @@ onBeforeUnmount(() => { mounted = false; ++companyEpoch; ++loadVersion; ++openVe
             <label class="relative block"><span class="sr-only">Finalidad</span><Tag class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-fg" aria-hidden="true" /><select v-model="requestPurpose" class="field-control !pl-9"><option value="">Todas las finalidades</option><option v-for="purpose in purposeOptions" :key="purpose.value" :value="purpose.value">{{ purpose.label }}</option></select></label>
           </div>
           <div class="mt-4 overflow-x-auto rounded-xl border border-border/70">
-            <table class="w-full min-w-[720px] text-left text-sm">
+            <table class="w-full min-w-[600px] text-left text-sm">
               <thead class="data-thead"><tr>
                 <th class="w-10 px-4 py-3"><input type="checkbox" class="h-4 w-4" aria-label="Seleccionar las solicitudes de esta página" :checked="pageAllSelected" :disabled="busy || !pickerPage.length" @change="togglePage" /></th>
                 <th class="px-3 py-3 font-medium">Código</th><th class="px-3 py-3 font-medium">Sucursal</th><th class="px-3 py-3 font-medium">Fecha</th><th class="px-3 py-3 font-medium">Finalidad de la compra</th><th class="px-3 py-3 font-medium">Productos</th><th class="px-3 py-3 font-medium">Estado</th>

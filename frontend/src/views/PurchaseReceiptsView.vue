@@ -93,7 +93,14 @@ async function loadToReceive() {
 const pendingUnits = (order: any) => order.details.reduce((sum: number, line: any) => sum + Math.max(0, Number(line.quantity) - Number(line.receivedQuantity)), 0);
 function openReceive(orderId: number) { if (busy.value || editing.value) return; error.value = ''; receivingOrderId.value = orderId; }
 function closeReceive() { receivingOrderId.value = null; if (route.query.receiveOrder) { const query = { ...route.query }; delete query.receiveOrder; void router.replace({ query }); } }
-function afterReceived() { closeReceive(); void loadToReceive(); void load(1); }
+// The receipt just recorded is the newest one: show it, not the one that was selected before, and drop filters that could hide it.
+function afterReceived() {
+  selected.value = null; ageTab.value = 'recent'; search.value = ''; status.value = ''; historyFrom.value = ''; historyTo.value = ''; pendingOnly.value = false; success.value = '';
+  receivingOrderId.value = null;
+  // One update of the address: neither the order that was received nor an old selection stays in it.
+  if (route.query.id || route.query.receiveOrder) { const query = { ...route.query }; delete query.id; delete query.receiveOrder; void router.replace({ query }); }
+  void loadToReceive(); void load(1);
+}
 watch(activeCompanyId, () => { receivingOrderId.value = null; void loadToReceive(); }, { immediate: true });
 // A link such as the next step of the tracking opens the form of that order right away.
 watch(() => route.query.receiveOrder, value => { const id = Number(value); if (Number.isInteger(id) && id > 0) receivingOrderId.value = id; }, { immediate: true });
