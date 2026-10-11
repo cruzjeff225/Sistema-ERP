@@ -4,10 +4,10 @@ import { ArrowLeft, ArrowRight, Check, CheckCircle2, ChevronDown, ChevronRight, 
 import { RouterLink, useRoute } from 'vue-router';
 import AdminLayout from '../layouts/AdminLayout.vue';
 import PurchasesNav from '../components/purchases/PurchasesNav.vue';
-import PurchaseSectionHeader from '../components/purchases/PurchaseSectionHeader.vue';
+import PageHeader from '../components/base/PageHeader.vue';
 import PurchaseTabs from '../components/purchases/PurchaseTabs.vue';
 import AppButton from '../components/base/AppButton.vue';
-import PurchaseActionDialog from '../components/base/PurchaseActionDialog.vue';
+import ConfirmDialog from '../components/base/ConfirmDialog.vue';
 import { usePermissions } from '../composables/usePermissions';
 import { useUnsavedChanges } from '../composables/useUnsavedChanges';
 import { http } from '../services/http.service';
@@ -293,9 +293,9 @@ onBeforeUnmount(() => { ++version;++comparisonVersion;clearTimeout(comparisonTim
     <div class="comparison-page space-y-6" :class="embedded ? '' : 'mx-auto max-w-[1440px]'">
       <div v-if="embedded && current" class="flex items-center justify-between gap-3"><div><h2 class="text-lg font-semibold">Comparar ofertas</h2><p class="mt-1 text-sm text-muted-fg">Compare por producto. Revise su selección antes de crear las órdenes.</p></div><AppButton variant="outline" size="sm" :disabled="busy||loading" @click="refreshOffers">Actualizar ofertas</AppButton></div>
       <PurchasesNav v-if="!embedded" />
-      <PurchaseSectionHeader v-if="!embedded" title="Elegir ofertas" description="Compare por producto. Revise su selección antes de crear las órdenes.">
+      <PageHeader v-if="!embedded" title="Elegir ofertas" description="Compare por producto. Revise su selección antes de crear las órdenes.">
         <template #actions><div class="flex items-center gap-4"><AppButton v-if="current" variant="outline" size="sm" :disabled="busy||loading" @click="refreshOffers">Actualizar ofertas</AppButton><RouterLink :to="selectedId ? '/purchases/quotations/manage?id=' + selectedId : '/purchases/quotations'" class="inline-flex items-center gap-2 text-sm font-medium text-muted-fg hover:text-fg"><ArrowLeft class="h-4 w-4" />Cotizaciones</RouterLink></div></template>
-      </PurchaseSectionHeader>
+      </PageHeader>
 
       <section v-if="!embedded" aria-label="Compra y filtros" class="flex flex-wrap items-end gap-4 rounded-2xl border border-border bg-surface p-4 sm:px-5">
         <label class="min-w-0 flex-[1_1_280px] text-xs font-medium text-muted-fg">Compra
@@ -452,8 +452,8 @@ onBeforeUnmount(() => { ++version;++comparisonVersion;clearTimeout(comparisonTim
       </template>
       <div v-else-if="!error" class="rounded-2xl border border-dashed border-border py-14 text-center"><FileSearch class="mx-auto mb-4 h-8 w-8 text-muted-fg" /><h2 class="text-base font-semibold">{{ activeFilterCount ? 'No hay compras con estos filtros' : history ? 'Elija una compra para comparar' : 'No hay compras de esta semana' }}</h2><RouterLink to="/purchases/quotations" class="mt-4 inline-block text-sm font-medium text-accent">Ir a cotizaciones</RouterLink></div>
     </div>
-    <PurchaseActionDialog v-if="discardSelection" title="Descartar selección" description="Tiene productos seleccionados sin guardar. Confirme si desea descartarlos y continuar." :busy="false" @close="resolveSelectionDiscard(false)" @confirm="resolveSelectionDiscard(true)" />
-    <PurchaseActionDialog v-if="leaving" title="Descartar selección" description="Tiene productos seleccionados sin guardar en sus órdenes." :busy="false" @close="resolveLeave(false)" @confirm="resolveLeave(true)" />
+    <ConfirmDialog v-if="discardSelection" title="Descartar selección" description="Tiene productos seleccionados sin guardar. Confirme si desea descartarlos y continuar." :busy="false" @close="resolveSelectionDiscard(false)" @confirm="resolveSelectionDiscard(true)" />
+    <ConfirmDialog v-if="leaving" title="Descartar selección" description="Tiene productos seleccionados sin guardar en sus órdenes." :busy="false" @close="resolveLeave(false)" @confirm="resolveLeave(true)" />
   </component>
 </template>
 

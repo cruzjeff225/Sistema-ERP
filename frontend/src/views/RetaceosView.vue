@@ -3,10 +3,10 @@ import { computed, onMounted, onBeforeUnmount, reactive, ref, watch } from "vue"
 import { Calculator, Settings2, LockKeyhole, Pencil, Plus, RefreshCw, Search, ShieldCheck, X, XCircle } from "lucide-vue-next";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 import ExpenseTypesManager from '../components/purchases/ExpenseTypesManager.vue';
-import PurchaseActionDialog from "../components/base/PurchaseActionDialog.vue";
+import ConfirmDialog from "../components/base/ConfirmDialog.vue";
 import AdminLayout from "../layouts/AdminLayout.vue";
 import PurchasesNav from "../components/purchases/PurchasesNav.vue";
-import PurchaseSectionHeader from "../components/purchases/PurchaseSectionHeader.vue";
+import PageHeader from "../components/base/PageHeader.vue";
 import PurchaseTabs from "../components/purchases/PurchaseTabs.vue";
 import AppBadge from "../components/base/AppBadge.vue";
 import TrashButton from "../components/admin/TrashButton.vue";
@@ -368,12 +368,12 @@ onMounted(load);
   <AdminLayout title="Retaceo">
     <div class="mx-auto max-w-[1440px] space-y-6">
     <PurchasesNav />
-    <PurchaseSectionHeader title="Retaceo y costos" description="Distribuye los gastos de cada recepción y confirma el costo de sus productos.">
+    <PageHeader title="Retaceo y costos" description="Distribuye los gastos de cada recepción y confirma el costo de sus productos.">
       <template #actions>
         <AppButton v-if="can('expense_types.view')" variant="outline" :disabled="saving || drawerOpen" @click="expenseSettingsOpen = true"><Settings2 class="h-4 w-4" />Configurar gastos</AppButton>
         <AppButton v-if="can('retaceos.create')" :disabled="loading || saving || !eligiblePurchases.length" @click="newRetaceo"><Plus class="h-4 w-4" />Nuevo retaceo</AppButton>
       </template>
-    </PurchaseSectionHeader>
+    </PageHeader>
 
     <nav v-if="contextPurchaseId" class="mb-5 flex flex-wrap items-center justify-between gap-3 text-sm" aria-label="Recepción de origen">
       <RouterLink v-if="can('purchases.view')" :to="'/purchases/receipts?id=' + contextPurchaseId" class="text-accent">Volver a {{ contextPurchase?.documentNumber || 'la recepción' }}</RouterLink>
@@ -507,10 +507,10 @@ onMounted(load);
         </footer>
       </fieldset></form>
     </aside></div>
-    <PurchaseActionDialog v-if="confirmation" :title="confirmation.title" :description="confirmation.description" :require-reason="confirmation.reason" :busy="saving" :error="errorMessage" @confirm="confirmWorkflow" @close="confirmation = null" />
-    <PurchaseActionDialog v-if="discardChanges" title="Descartar cambios" description="Los cambios del retaceo no se han guardado." @confirm="closeDrawer(true)" @close="discardChanges = false" />
-    <PurchaseActionDialog v-if="pendingPurchaseId !== null" title="Cambiar recepción" description="Se reemplazarán los productos y la factura. Se borrarán los gastos y datos de importación capturados para la recepción anterior." @confirm="confirmPurchaseChange" @close="pendingPurchaseId = null" />
-    <PurchaseActionDialog v-if="leaving" title="Salir sin guardar" description="Los cambios del retaceo no se han guardado." @confirm="resolveLeave(true)" @close="resolveLeave(false)" />
+    <ConfirmDialog v-if="confirmation" :title="confirmation.title" :description="confirmation.description" :require-reason="confirmation.reason" :busy="saving" :error="errorMessage" @confirm="confirmWorkflow" @close="confirmation = null" />
+    <ConfirmDialog v-if="discardChanges" title="Descartar cambios" description="Los cambios del retaceo no se han guardado." @confirm="closeDrawer(true)" @close="discardChanges = false" />
+    <ConfirmDialog v-if="pendingPurchaseId !== null" title="Cambiar recepción" description="Se reemplazarán los productos y la factura. Se borrarán los gastos y datos de importación capturados para la recepción anterior." @confirm="confirmPurchaseChange" @close="pendingPurchaseId = null" />
+    <ConfirmDialog v-if="leaving" title="Salir sin guardar" description="Los cambios del retaceo no se han guardado." @confirm="resolveLeave(true)" @close="resolveLeave(false)" />
     <div v-if="expenseSettingsOpen" class="fixed inset-0 z-50 flex justify-end bg-black/40" @click.self="expenseSettings?.requestClose()">
       <aside role="dialog" aria-modal="true" aria-label="Configurar tipos de gasto" class="h-full w-full max-w-2xl overflow-y-auto bg-surface p-5 shadow-xl sm:p-7" @keydown.esc.stop="expenseSettings?.requestClose()">
         <ExpenseTypesManager ref="expenseSettings" embedded @close="expenseSettingsOpen = false" />

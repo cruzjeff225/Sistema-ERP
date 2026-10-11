@@ -6,7 +6,7 @@ import type { Component } from 'vue';
 import AdminLayout from '../layouts/AdminLayout.vue';
 import AppBadge from '../components/base/AppBadge.vue';
 import AppButton from '../components/base/AppButton.vue';
-import PurchaseActionDialog from '../components/base/PurchaseActionDialog.vue';
+import ConfirmDialog from '../components/base/ConfirmDialog.vue';
 import TrashButton from '../components/admin/TrashButton.vue';
 import PurchaseTabs from '../components/purchases/PurchaseTabs.vue';
 import TrackingLink from '../components/purchases/TrackingLink.vue';
@@ -298,6 +298,6 @@ watch([() => route.params.id, activeCompanyId], () => { tab.value = route.query.
       </template>
     </div>
 
-    <PurchaseActionDialog v-if="cancelling && request" title="Cancelar solicitud" :description="`Solicitud ${request.code}. El motivo quedará registrado en su historial.`" require-reason destructive confirm-label="Cancelar solicitud" :busy="busy" :error="error" @confirm="(reason: string) => post(`/purchase-requests/${request.id}/cancel`, { reason }, 'Solicitud cancelada')" @close="cancelling = false" />
+    <ConfirmDialog v-if="cancelling && request" title="Cancelar solicitud" :description="`Solicitud ${request.code}. El motivo quedará registrado en su historial.`" require-reason destructive confirm-label="Cancelar solicitud" :busy="busy" :error="error" @confirm="(reason: string) => post(`/purchase-requests/${request.id}/cancel`, { reason }, 'Solicitud cancelada')" @close="cancelling = false" />
   </AdminLayout>
 </template>

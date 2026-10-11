@@ -4,7 +4,7 @@ import { Pencil, Plus, Power, RefreshCw, X } from "lucide-vue-next";
 import TrashButton from "../admin/TrashButton.vue";
 import AppButton from "../base/AppButton.vue";
 import AppInput from "../base/AppInput.vue";
-import PurchaseActionDialog from "../base/PurchaseActionDialog.vue";
+import ConfirmDialog from "../base/ConfirmDialog.vue";
 import { http } from "../../services/http.service";
 import { activeCompanyId } from "../../services/company-context";
 import { usePermissions } from "../../composables/usePermissions";
@@ -71,7 +71,7 @@ async function save() {
     <div class="my-6 max-w-sm"><AppInput v-model="search" type="search" label="Buscar tipo de gasto" /></div>
     <p v-if="loading" role="status" class="py-6 text-muted-fg">Cargando...</p>
     <div v-else class="overflow-x-auto border-y border-border"><table class="w-full min-w-[480px] text-left text-sm"><thead class="bg-surface-secondary text-muted-fg"><tr><th class="p-3">Nombre</th><th class="p-3">Descripcion</th><th class="p-3">Estado</th><th class="p-3 text-right">Acciones</th></tr></thead><tbody class="divide-y divide-border"><tr v-for="row in filteredRows" :key="row.id"><td class="p-3 font-medium">{{ row.name }}</td><td class="p-3">{{ row.description || '-' }}</td><td class="p-3">{{ row.isActive ? 'Activo' : 'Inactivo' }}</td><td class="p-3"><div class="flex justify-end gap-2"><button v-if="can('expense_types.update')" class="icon-button" title="Editar tipo de gasto" :disabled="busy" @click="edit(row)"><Pencil class="h-4 w-4" /></button><button v-if="can(row.isActive ? 'expense_types.deactivate' : 'expense_types.activate')" class="icon-button" :title="row.isActive ? 'Desactivar' : 'Activar'" :disabled="busy" @click="confirmation = row; error = ''"><Power class="h-4 w-4" /></button><TrashButton compact entity="expense_types" :record-id="row.id" :label="row.name" :disabled="busy" @deleted="load(); emit('changed')" /></div></td></tr><tr v-if="!filteredRows.length"><td colspan="4" class="p-8 text-center text-muted-fg">{{ search ? 'No hay coincidencias.' : 'No hay tipos de gasto registrados.' }}</td></tr></tbody></table></div>
-    <PurchaseActionDialog v-if="confirmation" :title="confirmation.isActive ? 'Desactivar tipo de gasto' : 'Activar tipo de gasto'" :description="`${confirmation.name}: ${confirmation.isActive ? 'no estara disponible en nuevos gastos; se conserva el historial.' : 'estara disponible para nuevos gastos.'}`" :busy="busy" :error="error" @close="confirmation = null" @confirm="save" />
-    <PurchaseActionDialog v-if="discard" title="Descartar cambios" description="Tiene cambios sin guardar en el tipo de gasto." :busy="busy" @close="discard = false" @confirm="discard = false; emit('close')" />
+    <ConfirmDialog v-if="confirmation" :title="confirmation.isActive ? 'Desactivar tipo de gasto' : 'Activar tipo de gasto'" :description="`${confirmation.name}: ${confirmation.isActive ? 'no estara disponible en nuevos gastos; se conserva el historial.' : 'estara disponible para nuevos gastos.'}`" :busy="busy" :error="error" @close="confirmation = null" @confirm="save" />
+    <ConfirmDialog v-if="discard" title="Descartar cambios" description="Tiene cambios sin guardar en el tipo de gasto." :busy="busy" @close="discard = false" @confirm="discard = false; emit('close')" />
   </section>
 </template>

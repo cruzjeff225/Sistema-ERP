@@ -5,6 +5,7 @@ import AdminLayout from "../layouts/AdminLayout.vue";
 import AdministrationNav from "../components/admin/AdministrationNav.vue";
 import AppBadge from "../components/base/AppBadge.vue";
 import AppButton from "../components/base/AppButton.vue";
+import ConfirmDialog from "../components/base/ConfirmDialog.vue";
 import AppInput from "../components/base/AppInput.vue";
 import { usePermissions } from "../composables/usePermissions";
 import { http } from "../services/http.service";
@@ -125,9 +126,17 @@ async function toggleStatus(permission: Permission) {
   }
 }
 
-async function removePermission(permission: Permission) {
+const permissionToRemove = ref<Permission | null>(null);
+
+function removePermission(permission: Permission) {
   if (permission.isSystem) return;
-  if (!window.confirm(`Eliminar el permiso ${permission.action}? Podrá recuperarse desde Administración / Configuración / Papelera durante 30 días.`)) return;
+  permissionToRemove.value = permission;
+}
+
+async function confirmRemovePermission() {
+  const permission = permissionToRemove.value;
+  permissionToRemove.value = null;
+  if (!permission || permission.isSystem) return;
 
   saving.value = true;
   errorMessage.value = "";
@@ -158,5 +167,6 @@ onMounted(loadAll);
     </section>
 
     <div v-if="editorOpen" class="fixed inset-0 z-50 flex justify-end bg-black/35 backdrop-blur-[2px]" @click.self="closeEditor"><aside class="flex h-full w-full max-w-xl flex-col bg-surface shadow-2xl"><header class="flex items-start justify-between border-b border-border px-5 py-4 sm:px-6"><div><p class="text-sm font-medium text-accent">{{ editingId ? "Editar accion" : "Nueva accion" }}</p><h2 class="mt-1 text-xl font-semibold text-fg">{{ editingId ? form.name : "Crear permiso" }}</h2><p class="mt-1 text-sm text-muted-fg">El codigo se usa para proteger funciones del ERP.</p></div><button class="grid h-9 w-9 place-items-center rounded-lg text-muted-fg hover:bg-surface-secondary" title="Cerrar" @click="closeEditor"><X class="h-5 w-5" /></button></header><form class="flex min-h-0 flex-1 flex-col" @submit.prevent="submitPermission"><div class="flex-1 space-y-4 overflow-y-auto px-5 py-5 sm:px-6"><AppInput v-model="form.action" label="Codigo" placeholder="modulo.accion" :disabled="!!editingId" required /><AppInput v-model="form.name" label="Nombre visible" required /><label class="text-sm font-medium text-fg">Modulo<select v-model="form.moduleId" class="field-control" required><option v-for="module in modules" :key="module.id" :value="String(module.id)">{{ module.name }}</option></select></label><AppInput v-model="form.description" label="Descripcion" /></div><footer class="flex justify-end gap-2 border-t border-border px-5 py-4 sm:px-6"><AppButton variant="outline" type="button" @click="closeEditor">Cancelar</AppButton><AppButton type="submit" :disabled="saving"><Save class="h-4 w-4" />{{ saving ? "Guardando..." : "Guardar permiso" }}</AppButton></footer></form></aside></div>
+    <ConfirmDialog v-if="permissionToRemove" title="Eliminar permiso" :description="`Se enviará el permiso ${permissionToRemove.action} a la papelera. Podrá recuperarse desde Configuración / Papelera durante 30 días.`" confirm-label="Eliminar permiso" destructive :busy="saving" @close="permissionToRemove = null" @confirm="confirmRemovePermission" />
   </AdminLayout>
 </template>

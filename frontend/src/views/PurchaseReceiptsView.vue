@@ -4,13 +4,13 @@ import { RouterLink, useRoute, useRouter } from "vue-router";
 import { Check, ChevronLeft, PackagePlus, ChevronRight, LockKeyhole, Pencil, RefreshCw, Search, X } from "lucide-vue-next";
 import AdminLayout from "../layouts/AdminLayout.vue";
 import PurchasesNav from "../components/purchases/PurchasesNav.vue";
-import PurchaseSectionHeader from "../components/purchases/PurchaseSectionHeader.vue";
+import PageHeader from "../components/base/PageHeader.vue";
 import PurchaseTabs from "../components/purchases/PurchaseTabs.vue";
 import TrashButton from "../components/admin/TrashButton.vue";
 import AppButton from "../components/base/AppButton.vue";
 import TrackingLink from "../components/purchases/TrackingLink.vue";
 import AppInput from "../components/base/AppInput.vue";
-import PurchaseActionDialog from "../components/base/PurchaseActionDialog.vue";
+import ConfirmDialog from "../components/base/ConfirmDialog.vue";
 import ReceiveOrderDrawer from "../components/purchases/ReceiveOrderDrawer.vue";
 import { http } from "../services/http.service";
 import { activeCompanyId } from "../services/company-context";
@@ -184,11 +184,11 @@ async function mutate(reason?: string) {
   <AdminLayout title="Recepciones de mercadería">
     <div class="mx-auto max-w-[1440px] space-y-6">
     <PurchasesNav />
-    <PurchaseSectionHeader title="Recepciones" description="Registra lo que llega, ubícalo y verifícalo antes del costo final.">
+    <PageHeader title="Recepciones" description="Registra lo que llega, ubícalo y verifícalo antes del costo final.">
       <template #actions>
       <AppButton variant="outline" :disabled="loading || busy || editing" @click="load(meta.page)"><RefreshCw class="h-4 w-4" :class="loading && 'animate-spin'" />Actualizar</AppButton>
       </template>
-    </PurchaseSectionHeader>
+    </PageHeader>
     <p v-if="error" role="alert" class="mb-4 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">{{ error }}</p>
     <p v-if="success" role="status" class="mb-4 rounded-lg border border-success/30 bg-success/10 px-3 py-2 text-sm text-success">{{ success }}</p>
     <div class="grid items-start gap-5 lg:grid-cols-[300px_minmax(0,1fr)]">
@@ -274,9 +274,9 @@ async function mutate(reason?: string) {
       <section aria-label="Detalle de recepción" v-else class="flex min-h-[420px] min-w-0 items-center justify-center rounded-2xl border border-border bg-surface p-8 text-center text-sm text-muted-fg">{{ loading ? 'Cargando…' : rows.length ? 'Selecciona una recepción.' : 'Las recepciones se registran desde una orden de compra.' }}</section>
     </div>
     </div>
-    <PurchaseActionDialog v-if="action && selected" :title="action === 'cancel' ? 'Cancelar recepción' : action === 'verify' ? 'Verificar recepción' : 'Cerrar recepción'" :description="actionDescription" :require-reason="action === 'cancel'" :busy="busy" :error="error" @close="action = null" @confirm="mutate" />
+    <ConfirmDialog v-if="action && selected" :title="action === 'cancel' ? 'Cancelar recepción' : action === 'verify' ? 'Verificar recepción' : 'Cerrar recepción'" :description="actionDescription" :require-reason="action === 'cancel'" :busy="busy" :error="error" @close="action = null" @confirm="mutate" />
     <ReceiveOrderDrawer v-if="receivingOrderId" :order-id="receivingOrderId" @close="closeReceive" @received="afterReceived" />
-    <PurchaseActionDialog v-if="discardInvoice" title="Descartar cambios de factura" description="Los cambios de factura no se han guardado." @confirm="editing = false; discardInvoice = false" @close="discardInvoice = false" />
-    <PurchaseActionDialog v-if="leaving" title="Salir sin guardar" description="Los cambios de factura no se han guardado." @confirm="resolveLeave(true)" @close="resolveLeave(false)" />
+    <ConfirmDialog v-if="discardInvoice" title="Descartar cambios de factura" description="Los cambios de factura no se han guardado." @confirm="editing = false; discardInvoice = false" @close="discardInvoice = false" />
+    <ConfirmDialog v-if="leaving" title="Salir sin guardar" description="Los cambios de factura no se han guardado." @confirm="resolveLeave(true)" @close="resolveLeave(false)" />
   </AdminLayout>
 </template>

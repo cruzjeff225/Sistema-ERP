@@ -5,7 +5,7 @@ import { computed, onMounted, reactive, ref } from 'vue';
 import { Check } from 'lucide-vue-next';
 import AppButton from '../base/AppButton.vue';
 import AppInput from '../base/AppInput.vue';
-import PurchaseActionDialog from '../base/PurchaseActionDialog.vue';
+import ConfirmDialog from '../base/ConfirmDialog.vue';
 import { http } from '../../services/http.service';
 import { activeCompanyId } from '../../services/company-context';
 import { useFeedbackStore } from '../../stores/feedback.store';
@@ -122,6 +122,6 @@ onMounted(() => void load());
       </form>
       <div v-else-if="!loading" class="mt-6 flex justify-end"><AppButton variant="outline" @click="emit('close')">Cerrar</AppButton></div>
     </aside>
-    <PurchaseActionDialog v-if="review" title="Confirmar recepción" :description="review.description" :busy="saving" :error="error" @confirm="confirm" @close="review = null" />
+    <ConfirmDialog v-if="review" title="Confirmar recepción" :description="review.description" :busy="saving" :error="error" @confirm="confirm" @close="review = null" />
   </div>
 </template>

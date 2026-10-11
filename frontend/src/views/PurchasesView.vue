@@ -29,10 +29,10 @@ import {
 import type { Component } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { activeCompanyId } from "../services/company-context";
-import PurchaseActionDialog from "../components/base/PurchaseActionDialog.vue";
+import ConfirmDialog from "../components/base/ConfirmDialog.vue";
 import AdminLayout from "../layouts/AdminLayout.vue";
 import PurchasesNav from "../components/purchases/PurchasesNav.vue";
-import PurchaseSectionHeader from "../components/purchases/PurchaseSectionHeader.vue";
+import PageHeader from "../components/base/PageHeader.vue";
 import PurchaseTabs from "../components/purchases/PurchaseTabs.vue";
 import AppBadge from "../components/base/AppBadge.vue";
 import TrashButton from "../components/admin/TrashButton.vue";
@@ -640,9 +640,9 @@ onMounted(load);
 
     <div class="mx-auto max-w-[1440px] space-y-6">
       <PurchasesNav />
-      <PurchaseSectionHeader :title="sectionMeta.title" :description="sectionMeta.subtitle">
+      <PageHeader :title="sectionMeta.title" :description="sectionMeta.subtitle">
         <template #actions><div class="flex gap-2"><AppButton variant="ghost" :disabled="loading || saving" title="Actualizar" aria-label="Actualizar" @click="load"><RefreshCw class="h-4 w-4" :class="loading && 'animate-spin'" aria-hidden="true" /><span class="sr-only">Actualizar</span></AppButton><AppButton v-if="props.section === 'requests' && can('purchase_requests.create')" :disabled="loading || saving" @click="newRequest"><Plus class="h-4 w-4" />{{ sectionMeta.create }}</AppButton><AppButton v-if="props.section === 'quotations' && can('purchase_quotations.create')" :disabled="loading || saving" @click="newQuotation()"><Plus class="h-4 w-4" />{{ sectionMeta.create }}</AppButton></div></template>
-      </PurchaseSectionHeader>
+      </PageHeader>
       <p v-if="errorMessage" role="alert" class="rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">{{ errorMessage }}</p>
       <p v-if="successMessage" role="status" class="rounded-xl border border-success/30 bg-success/10 px-4 py-3 text-sm text-success">{{ successMessage }}</p>
 
@@ -810,9 +810,9 @@ onMounted(load);
 
 
     </aside></div>
-    <PurchaseActionDialog v-if="discardChanges" title="Descartar cambios" description="Hay cambios sin guardar en este documento. ¿Deseas descartarlos?" @confirm="closeDrawer(true)" @close="discardChanges = false" />
-    <PurchaseActionDialog v-if="leaving" title="Salir sin guardar" description="Los cambios de este documento no se han guardado." @confirm="resolveLeave(true)" @close="resolveLeave(false)" />
-    <PurchaseActionDialog v-if="pendingAction" :title="pendingAction.title" :description="pendingAction.description" :require-reason="pendingAction.reason" :busy="saving" :error="errorMessage" @confirm="confirmAction" @close="pendingAction = null" />
+    <ConfirmDialog v-if="discardChanges" title="Descartar cambios" description="Hay cambios sin guardar en este documento. ¿Deseas descartarlos?" @confirm="closeDrawer(true)" @close="discardChanges = false" />
+    <ConfirmDialog v-if="leaving" title="Salir sin guardar" description="Los cambios de este documento no se han guardado." @confirm="resolveLeave(true)" @close="resolveLeave(false)" />
+    <ConfirmDialog v-if="pendingAction" :title="pendingAction.title" :description="pendingAction.description" :require-reason="pendingAction.reason" :busy="saving" :error="errorMessage" @confirm="confirmAction" @close="pendingAction = null" />
     <p v-if="loading" role="status" class="mt-3 text-sm text-muted-fg">Actualizando documentos...</p>
   </AdminLayout>
 </template>

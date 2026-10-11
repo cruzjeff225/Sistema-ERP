@@ -21,8 +21,13 @@
     --color-sidebar-active-fg: hsl(var(--sidebar-active-fg));
 
     --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
-    --radius-xl: 0.875rem;
-    --shadow-subtle: 0 1px 2px rgb(15 23 42 / 0.04), 0 8px 24px rgb(15 23 42 / 0.06);
+    /* Two radii only: controls (lg) and panels/dialogs (xl, 2xl). */
+    --radius-lg: 0.5rem;
+    --radius-xl: 0.75rem;
+    --radius-2xl: 0.75rem;
+    /* Panels are flat: a hairline border. Only floating layers (menus, dialogs) lift. */
+    --shadow-subtle: 0 1px 2px rgb(15 23 42 / 0.04);
+    --shadow-float: 0 8px 24px rgb(15 23 42 / 0.10);
 }
 
 @layer base {
@@ -67,7 +72,8 @@
         --sidebar-bg: 220 13% 10%;
         --sidebar-active-bg: 0 25% 23%;
         --sidebar-active-fg: 0 100% 87%;
-        --shadow-subtle: 0 1px 2px rgb(0 0 0 / 0.15), 0 8px 24px rgb(0 0 0 / 0.18);
+        --shadow-subtle: 0 1px 2px rgb(0 0 0 / 0.15);
+        --shadow-float: 0 8px 24px rgb(0 0 0 / 0.35);
     }
 
     html {
@@ -117,7 +123,7 @@
 
 @layer utilities {
     .page-title {
-        @apply text-2xl font-semibold tracking-tight text-fg;
+        @apply text-xl font-semibold tracking-tight text-fg sm:text-2xl;
     }
 
     .page-subtitle {
@@ -125,11 +131,11 @@
     }
 
     .field-control {
-        @apply mt-1.5 h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-fg shadow-sm outline-none transition focus:border-accent focus:ring-4 focus:ring-accent/15;
+        @apply mt-1.5 h-9 w-full rounded-lg border border-border bg-surface px-3 text-sm text-fg outline-none transition focus:border-accent focus:ring-4 focus:ring-accent/15;
     }
 
     .surface-panel {
-        @apply rounded-xl border border-border/70 bg-surface shadow-subtle;
+        @apply rounded-xl border border-border/70 bg-surface;
     }
 
     .section-eyebrow {

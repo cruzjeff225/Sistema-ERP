@@ -4,7 +4,7 @@ import { RouterLink } from 'vue-router';
 import { RefreshCw, Search, TriangleAlert } from 'lucide-vue-next';
 import AdminLayout from '../layouts/AdminLayout.vue';
 import PurchasesNav from '../components/purchases/PurchasesNav.vue';
-import PurchaseSectionHeader from '../components/purchases/PurchaseSectionHeader.vue';
+import PageHeader from '../components/base/PageHeader.vue';
 import AppBadge from '../components/base/AppBadge.vue';
 import AppButton from '../components/base/AppButton.vue';
 import AppCard from '../components/base/AppCard.vue';
@@ -53,11 +53,11 @@ watch(search, () => { clearTimeout(timer); timer = setTimeout(() => void load(),
   <AdminLayout title="Seguimiento de compras">
     <div class="mx-auto max-w-[1440px] space-y-6">
       <PurchasesNav />
-      <PurchaseSectionHeader title="Seguimiento de compras" description="Cada compra con su etapa actual y lo que sigue. Entra a una para ver el detalle.">
+      <PageHeader title="Seguimiento de compras" description="Cada compra con su etapa actual y lo que sigue. Entra a una para ver el detalle.">
         <template #actions>
           <AppButton variant="outline" :disabled="loading" @click="load()"><RefreshCw class="h-4 w-4" :class="loading && 'animate-spin'" aria-hidden="true" />Actualizar</AppButton>
         </template>
-      </PurchaseSectionHeader>
+      </PageHeader>
 
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div class="inline-flex rounded-lg bg-surface-secondary p-1" role="tablist" aria-label="Estado de las compras">

@@ -4,13 +4,13 @@ import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { Building2, CalendarDays, ChevronLeft, ChevronRight, FileText, Search, ShoppingCart, Tag, Trash2, ArrowRight, Check } from 'lucide-vue-next';
 import AdminLayout from '../layouts/AdminLayout.vue';
 import PurchasesNav from '../components/purchases/PurchasesNav.vue';
-import PurchaseSectionHeader from '../components/purchases/PurchaseSectionHeader.vue';
+import PageHeader from '../components/base/PageHeader.vue';
 import PurchaseTabs from '../components/purchases/PurchaseTabs.vue';
 import TrashButton from '../components/admin/TrashButton.vue';
 import AppButton from '../components/base/AppButton.vue';
 import TrackingLink from '../components/purchases/TrackingLink.vue';
 import QuotationComparison from './QuotationComparisonView.vue';
-import PurchaseActionDialog from '../components/base/PurchaseActionDialog.vue';
+import ConfirmDialog from '../components/base/ConfirmDialog.vue';
 import { http } from '../services/http.service';
 import { activeCompanyId } from '../services/company-context';
 import { usePermissions } from '../composables/usePermissions';
@@ -275,14 +275,14 @@ onBeforeUnmount(() => { mounted = false; ++companyEpoch; ++loadVersion; ++openVe
   <AdminLayout title="Gestionar cotizaciones">
     <div class="mx-auto max-w-[1440px] space-y-6">
       <PurchasesNav />
-      <PurchaseSectionHeader :title="offer ? 'Registrar oferta' : 'Cotizaciones'" :description="offer ? 'Complete la respuesta del proveedor para poder compararla.' : 'Reúna solicitudes, consulte a los proveedores y compare sus ofertas en un mismo lugar.'">
+      <PageHeader :title="offer ? 'Registrar oferta' : 'Cotizaciones'" :description="offer ? 'Complete la respuesta del proveedor para poder compararla.' : 'Reúna solicitudes, consulte a los proveedores y compare sus ofertas en un mismo lugar.'">
         <template #actions>
           <template v-if="!offer">
             <AppButton variant="outline" :disabled="loading || opening || busy || changed" @click="load">Actualizar</AppButton>
             <AppButton v-if="can('purchase_quotations.create') && can('purchase_requests.view')" :variant="!current && !showNew ? 'primary' : 'outline'" :disabled="busy || loading || opening" @click="toggleNew">{{ showNew ? 'Volver a la gestión' : 'Nueva gestión' }}</AppButton>
           </template>
         </template>
-      </PurchaseSectionHeader>
+      </PageHeader>
 
       <ol class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" aria-label="Pasos de la gestión de cotización">
         <li v-for="(step, index) in processSteps" :key="step.title" class="flex items-start gap-3" :aria-current="processStepIndex === index + 1 ? 'step' : undefined">
@@ -531,7 +531,7 @@ onBeforeUnmount(() => { mounted = false; ++companyEpoch; ++loadVersion; ++openVe
         </section>
       </template>
     </div>
-    <PurchaseActionDialog v-if="confirm" title="Confirmar adjudicación" description="Se generará una orden por proveedor con los productos y cantidades seleccionados. Revise cada orden antes de aprobarla." :busy="busy" :error="error" @close="confirm = false" @confirm="award" />
-    <PurchaseActionDialog v-if="leaving || discardChanges" title="Descartar cambios" description="Tiene datos sin guardar en este proceso." :busy="false" @close="resolveDiscard(false)" @confirm="resolveDiscard(true)" />
+    <ConfirmDialog v-if="confirm" title="Confirmar adjudicación" description="Se generará una orden por proveedor con los productos y cantidades seleccionados. Revise cada orden antes de aprobarla." :busy="busy" :error="error" @close="confirm = false" @confirm="award" />
+    <ConfirmDialog v-if="leaving || discardChanges" title="Descartar cambios" description="Tiene datos sin guardar en este proceso." :busy="false" @close="resolveDiscard(false)" @confirm="resolveDiscard(true)" />
   </AdminLayout>
 </template>

@@ -2,7 +2,7 @@
 import { ref, watch } from 'vue';
 import { Trash2 } from 'lucide-vue-next';
 import AppButton from '../base/AppButton.vue';
-import PurchaseActionDialog from '../base/PurchaseActionDialog.vue';
+import ConfirmDialog from '../base/ConfirmDialog.vue';
 import { http } from '../../services/http.service';
 import { activeCompanyId } from '../../services/company-context';
 import { usePermissions } from '../../composables/usePermissions';
@@ -12,4 +12,4 @@ const emit=defineEmits<{deleted:[]}>();const {can}=usePermissions();const confir
 watch([activeCompanyId,()=>props.recordId],()=>{confirm.value=false;error.value='';});
 async function remove(){if(busy.value)return;busy.value=true;const company=activeCompanyId.value;try{await http.delete('/trash/'+props.entity+'/'+props.recordId,{headers:{'X-Company-Id':String(company)}});if(company!==activeCompanyId.value)return;confirm.value=false;emit('deleted');}catch(e){error.value=getApiErrorMessage(e,'No se pudo enviar a la papelera');}finally{busy.value=false;}}
 </script>
-<template><AppButton v-if="can('trash.delete')" variant="ghost" :disabled="disabled || busy" @click="confirm=true;error=''" :class="outlined ? 'border border-danger/30 bg-danger/5 text-danger hover:bg-danger/10' : 'text-danger'" :title="compact ? 'Enviar a papelera' : undefined" :aria-label="compact ? 'Enviar a papelera: ' + label : undefined"><Trash2 class="h-4 w-4"/><span v-if="!compact">Enviar a papelera</span></AppButton><PurchaseActionDialog v-if="confirm" title="Enviar a la papelera" :description="label + ': se retirará de la gestión y podrá restaurarse durante 30 días. Se conservan los movimientos y las relaciones históricas.'" :busy="busy" :error="error" @close="confirm=false" @confirm="remove" /></template>
+<template><AppButton v-if="can('trash.delete')" variant="ghost" :disabled="disabled || busy" @click="confirm=true;error=''" :class="outlined ? 'border border-danger/30 bg-danger/5 text-danger hover:bg-danger/10' : 'text-danger'" :title="compact ? 'Enviar a papelera' : undefined" :aria-label="compact ? 'Enviar a papelera: ' + label : undefined"><Trash2 class="h-4 w-4"/><span v-if="!compact">Enviar a papelera</span></AppButton><ConfirmDialog v-if="confirm" title="Enviar a la papelera" :description="label + ': se retirará de la gestión y podrá restaurarse durante 30 días. Se conservan los movimientos y las relaciones históricas.'" :busy="busy" :error="error" @close="confirm=false" @confirm="remove" /></template>

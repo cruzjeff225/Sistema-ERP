@@ -6,7 +6,7 @@ import { ArrowLeft, ArrowRight, ScanLine, Truck, ReceiptText, RefreshCw } from '
 import AdminLayout from '../layouts/AdminLayout.vue';
 import OperationsNav from '../components/operations/OperationsNav.vue';
 import AppButton from '../components/base/AppButton.vue';
-import PurchaseActionDialog from '../components/base/PurchaseActionDialog.vue';
+import ConfirmDialog from '../components/base/ConfirmDialog.vue';
 import { http } from '../services/http.service';
 import { activeCompanyId } from '../services/company-context';
 import { usePermissions } from '../composables/usePermissions';
@@ -270,7 +270,7 @@ onBeforeUnmount(() => { loadVersion++; stockVersion++; expenseVersion++; destina
 
       </template>
     </div>
-    <PurchaseActionDialog v-if="confirmDispatch" title="Confirmar despacho" description="Los productos saldrán del centro general y quedarán en tránsito, vinculados a la solicitud original." :busy="busy" :error="error" @close="confirmDispatch = false" @confirm="dispatch" />
-    <PurchaseActionDialog v-if="leaving" title="Descartar cambios" description="Hay datos sin guardar en bodega." :busy="false" @close="resolveLeave(false)" @confirm="resolveLeave(true)" />
+    <ConfirmDialog v-if="confirmDispatch" title="Confirmar despacho" description="Los productos saldrán del centro general y quedarán en tránsito, vinculados a la solicitud original." :busy="busy" :error="error" @close="confirmDispatch = false" @confirm="dispatch" />
+    <ConfirmDialog v-if="leaving" title="Descartar cambios" description="Hay datos sin guardar en bodega." :busy="false" @close="resolveLeave(false)" @confirm="resolveLeave(true)" />
   </AdminLayout>
 </template>

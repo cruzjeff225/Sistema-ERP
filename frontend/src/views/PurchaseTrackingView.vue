@@ -4,7 +4,7 @@ import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { ArrowRight, Check, Lock, Minus, RefreshCw, TriangleAlert } from 'lucide-vue-next';
 import AdminLayout from '../layouts/AdminLayout.vue';
 import PurchasesNav from '../components/purchases/PurchasesNav.vue';
-import PurchaseSectionHeader from '../components/purchases/PurchaseSectionHeader.vue';
+import PageHeader from '../components/base/PageHeader.vue';
 import AppBadge from '../components/base/AppBadge.vue';
 import AppButton from '../components/base/AppButton.vue';
 import AppCard from '../components/base/AppCard.vue';
@@ -65,11 +65,11 @@ watch(() => [route.params.type, route.params.id, activeCompanyId.value], () => {
   <AdminLayout title="Seguimiento de compra">
     <div class="mx-auto max-w-[1440px] space-y-6">
       <PurchasesNav />
-      <PurchaseSectionHeader title="Seguimiento de la compra" :description="data ? processSummary(data.documents) || 'Proceso de compra' : 'Revisa en qué etapa va la compra y qué sigue.'">
+      <PageHeader title="Seguimiento de la compra" :description="data ? processSummary(data.documents) || 'Proceso de compra' : 'Revisa en qué etapa va la compra y qué sigue.'">
         <template #actions>
           <AppButton variant="outline" :disabled="loading" @click="load()"><RefreshCw class="h-4 w-4" :class="loading && 'animate-spin'" aria-hidden="true" />Actualizar</AppButton>
         </template>
-      </PurchaseSectionHeader>
+      </PageHeader>
 
       <p v-if="error" role="alert" class="rounded-lg border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">{{ error }}</p>
 

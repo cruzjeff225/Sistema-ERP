@@ -4,7 +4,7 @@ import { RouterLink } from 'vue-router';
 import AdminLayout from '../layouts/AdminLayout.vue';
 import AdministrationNav from '../components/admin/AdministrationNav.vue';
 import AppButton from '../components/base/AppButton.vue';
-import PurchaseActionDialog from '../components/base/PurchaseActionDialog.vue';
+import ConfirmDialog from '../components/base/ConfirmDialog.vue';
 import { http } from '../services/http.service';
 import { activeCompanyId } from '../services/company-context';
 import { usePermissions } from '../composables/usePermissions';
@@ -73,6 +73,6 @@ onBeforeUnmount(() => { mounted = false; ++version; ++operation; });
       <p v-else-if="!error" class="text-sm text-muted-fg">No hay almacenes disponibles para esta empresa.</p>
       <RouterLink v-if="general && can('locations.view')" :to="{path:'/organization/locations',query:{warehouse:String(general.id),branch:String(general.branchId)}}" class="inline-block text-sm text-muted-fg hover:text-fg">Gestionar espacios del almacén general</RouterLink>
     </div>
-    <PurchaseActionDialog v-if="leaving" title="Descartar cambio" description="El cambio del centro de recepción no se ha guardado." @close="resolveLeave(false)" @confirm="resolveLeave(true)" />
+    <ConfirmDialog v-if="leaving" title="Descartar cambio" description="El cambio del centro de recepción no se ha guardado." @close="resolveLeave(false)" @confirm="resolveLeave(true)" />
   </AdminLayout>
 </template>

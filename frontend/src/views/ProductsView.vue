@@ -23,6 +23,7 @@ import OperationsNav from '../components/operations/OperationsNav.vue';
 import AppBadge from "../components/base/AppBadge.vue";
 import TrashButton from "../components/admin/TrashButton.vue";
 import AppButton from "../components/base/AppButton.vue";
+import ConfirmDialog from "../components/base/ConfirmDialog.vue";
 import AppInput from "../components/base/AppInput.vue";
 import { usePermissions } from "../composables/usePermissions";
 import { http } from "../services/http.service";
@@ -474,8 +475,16 @@ async function toggleImage(image: ProductImage) {
   }
 }
 
-async function removeImage(image: ProductImage) {
-  if (!window.confirm("¿Eliminar esta imagen del producto? Podrá recuperarse desde Administración / Configuración / Papelera durante 30 días.")) return;
+const imageToRemove = ref<ProductImage | null>(null);
+
+function removeImage(image: ProductImage) {
+  imageToRemove.value = image;
+}
+
+async function confirmRemoveImage() {
+  const image = imageToRemove.value;
+  imageToRemove.value = null;
+  if (!image) return;
   saving.value = true;
   try {
     await http.delete(`/product-images/${image.id}`);
@@ -663,5 +672,6 @@ onMounted(load);
     </aside></div>
 
     <div v-if="imagePreview" class="fixed inset-0 z-[60] grid place-items-center bg-black/65 p-4" @click.self="imagePreview = null"><section class="w-full max-w-3xl overflow-hidden rounded-lg bg-surface shadow-2xl"><header class="flex items-center justify-between border-b border-border px-4 py-3"><p class="font-semibold text-fg">Imagen de {{ selected?.name }}</p><button type="button" class="grid h-9 w-9 place-items-center rounded-lg text-muted-fg hover:bg-surface-secondary" title="Cerrar vista previa" @click="imagePreview = null"><X class="h-5 w-5" /></button></header><div class="grid max-h-[70vh] min-h-56 place-items-center bg-surface-secondary p-4"><img v-if="!hasImageError(imagePreview)" :src="imageUrl(imagePreview.path)" alt="" class="max-h-[64vh] max-w-full object-contain" @error="markImageAsUnavailable(imagePreview)" /><div v-else class="grid place-items-center gap-3 text-center text-sm text-muted-fg"><ImageOff class="h-8 w-8" /><p>Esta imagen ya no está disponible.</p></div></div><footer class="flex flex-wrap justify-end gap-2 border-t border-border px-4 py-3"><AppButton v-if="can('product_images.update')" variant="outline" @click="openImageEdit(imagePreview); imagePreview = null"><Pencil class="h-4 w-4" />Cambiar</AppButton><AppButton v-if="can('product_images.delete')" variant="outline" class="text-danger" @click="removeImage(imagePreview)"><Trash2 class="h-4 w-4" />Eliminar</AppButton><AppButton variant="outline" @click="imagePreview = null">Cerrar</AppButton></footer></section></div>
+    <ConfirmDialog v-if="imageToRemove" title="Eliminar imagen" description="Se enviará la imagen del producto a la papelera. Podrá recuperarse desde Configuración / Papelera durante 30 días." confirm-label="Eliminar imagen" destructive :busy="saving" @close="imageToRemove = null" @confirm="confirmRemoveImage" />
   </AdminLayout>
 </template>

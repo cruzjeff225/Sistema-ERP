@@ -26,7 +26,7 @@ import AppInput from "../components/base/AppInput.vue";
 import { http } from "../services/http.service";
 import { usePermissions } from "../composables/usePermissions";
 import { activeCompanyId } from "../services/company-context";
-import PurchaseActionDialog from "../components/base/PurchaseActionDialog.vue";
+import ConfirmDialog from "../components/base/ConfirmDialog.vue";
 import { useUnsavedChanges } from "../composables/useUnsavedChanges";
 import { onlyOptionId } from "../utils/purchase-workflow";
 import { organizationLocations, organizationPayload } from "../utils/organization-form";
@@ -566,8 +566,8 @@ onMounted(async () => {
         </form>
       </aside>
     </div>
-    <PurchaseActionDialog v-if="discardChanges" title="Descartar cambios" description="Los cambios del registro no se han guardado." @confirm="discardEditor" @close="discardChanges = false" />
-    <PurchaseActionDialog v-if="leaving" title="Salir sin guardar" description="Los cambios de organización no se han guardado." @confirm="resolveLeave(true)" @close="resolveLeave(false)" />
-    <PurchaseActionDialog v-if="statusChange" :title="statusChange.active ? 'Activar registro' : 'Desactivar registro'" :description="statusChange.name + '. Se conservará el historial. El servidor comprobará las restricciones de sus relaciones y existencias.'" :busy="saving" :error="errorMessage" @confirm="confirmStatusChange" @close="statusChange = null" />
+    <ConfirmDialog v-if="discardChanges" title="Descartar cambios" description="Los cambios del registro no se han guardado." @confirm="discardEditor" @close="discardChanges = false" />
+    <ConfirmDialog v-if="leaving" title="Salir sin guardar" description="Los cambios de organización no se han guardado." @confirm="resolveLeave(true)" @close="resolveLeave(false)" />
+    <ConfirmDialog v-if="statusChange" :title="statusChange.active ? 'Activar registro' : 'Desactivar registro'" :description="statusChange.name + '. Se conservará el historial. El servidor comprobará las restricciones de sus relaciones y existencias.'" :busy="saving" :error="errorMessage" @confirm="confirmStatusChange" @close="statusChange = null" />
   </AdminLayout>
 </template>

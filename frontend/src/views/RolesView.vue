@@ -6,6 +6,7 @@ import AdminLayout from "../layouts/AdminLayout.vue";
 import AdministrationNav from "../components/admin/AdministrationNav.vue";
 import AppBadge from "../components/base/AppBadge.vue";
 import AppButton from "../components/base/AppButton.vue";
+import ConfirmDialog from "../components/base/ConfirmDialog.vue";
 import AppInput from "../components/base/AppInput.vue";
 import { usePermissions } from "../composables/usePermissions";
 import { http } from "../services/http.service";
@@ -235,9 +236,17 @@ async function toggleStatus(role: Role) {
   }
 }
 
-async function removeRole(role: Role) {
+const roleToRemove = ref<Role | null>(null);
+
+function removeRole(role: Role) {
   if (role.isSystem || !can("roles.delete")) return;
-  if (!window.confirm(`Eliminar el rol ${role.name}? Podrá recuperarse desde Administración / Configuración / Papelera durante 30 días.`)) return;
+  roleToRemove.value = role;
+}
+
+async function confirmRemoveRole() {
+  const role = roleToRemove.value;
+  roleToRemove.value = null;
+  if (!role || role.isSystem || !can("roles.delete")) return;
 
   saving.value = true;
   errorMessage.value = "";
@@ -334,5 +343,6 @@ onMounted(loadAll);
         </form>
       </aside>
     </div>
+    <ConfirmDialog v-if="roleToRemove" title="Eliminar rol" :description="`Se enviará el rol ${roleToRemove.name} a la papelera. Podrá recuperarse desde Configuración / Papelera durante 30 días.`" confirm-label="Eliminar rol" destructive :busy="saving" @close="roleToRemove = null" @confirm="confirmRemoveRole" />
   </AdminLayout>
 </template>

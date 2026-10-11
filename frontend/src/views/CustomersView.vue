@@ -6,7 +6,7 @@ import SalesNav from '../components/sales/SalesNav.vue';
 import AppBadge from '../components/base/AppBadge.vue';
 import AppButton from '../components/base/AppButton.vue';
 import AppInput from '../components/base/AppInput.vue';
-import PurchaseActionDialog from '../components/base/PurchaseActionDialog.vue';
+import ConfirmDialog from '../components/base/ConfirmDialog.vue';
 import TrashButton from '../components/admin/TrashButton.vue';
 import NationalLocationFields from '../components/forms/NationalLocationFields.vue';
 import { usePermissions } from '../composables/usePermissions';
@@ -201,8 +201,8 @@ onBeforeUnmount(() => { mounted = false; ++epoch; ++loadVersion; ++mutationVersi
         <footer class="flex justify-end gap-2 border-t border-border/70 p-4 sm:px-6"><AppButton variant="outline" type="button" :disabled="saving" @click="closeEditor()">Cancelar</AppButton><AppButton type="submit" :disabled="saving">{{ saving ? 'Guardando…' : 'Guardar cliente' }}</AppButton></footer>
       </form>
     </dialog>
-    <PurchaseActionDialog v-if="discardChanges" title="Descartar cambios" description="El cliente tiene cambios sin guardar." :busy="saving" @close="discardChanges = false" @confirm="closeEditor(true)" />
-    <PurchaseActionDialog v-if="leaving" title="Salir sin guardar" description="Los cambios de este cliente no se han guardado." :busy="saving" @close="resolveLeave(false)" @confirm="resolveLeave(true)" />
-    <PurchaseActionDialog v-if="statusAction" :title="statusAction.isActive ? 'Activar cliente' : 'Desactivar cliente'" :description="statusAction.isActive ? statusAction.name + ' volverá a aparecer entre los clientes activos.' : statusAction.name + ' quedará inactivo. Sus datos y documentos se conservan.'" :busy="saving" :error="errorMessage" @close="statusAction = null" @confirm="toggleStatus" />
+    <ConfirmDialog v-if="discardChanges" title="Descartar cambios" description="El cliente tiene cambios sin guardar." :busy="saving" @close="discardChanges = false" @confirm="closeEditor(true)" />
+    <ConfirmDialog v-if="leaving" title="Salir sin guardar" description="Los cambios de este cliente no se han guardado." :busy="saving" @close="resolveLeave(false)" @confirm="resolveLeave(true)" />
+    <ConfirmDialog v-if="statusAction" :title="statusAction.isActive ? 'Activar cliente' : 'Desactivar cliente'" :description="statusAction.isActive ? statusAction.name + ' volverá a aparecer entre los clientes activos.' : statusAction.name + ' quedará inactivo. Sus datos y documentos se conservan.'" :busy="saving" :error="errorMessage" @close="statusAction = null" @confirm="toggleStatus" />
   </AdminLayout>
 </template>

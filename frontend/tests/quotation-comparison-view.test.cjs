@@ -93,11 +93,11 @@ async function html(state) {
   const app = vue.createSSRApp(vue.defineComponent({ setup: () => ({ ...state, embedded: false, AdminLayout: slot('main') }), ssrRender: renderExports.ssrRender }));
   app.config.warnHandler = message => { throw Error(message); };
   app.component('AdminLayout', slot('main')); app.component('PurchasesNav', slot('nav'));
-  app.component('PurchaseSectionHeader', vue.defineComponent({ props: ['title','description'], setup: (p,{slots}) => () => vue.h('header', [vue.h('h1',p.title),vue.h('p',p.description),slots.actions?.()]) }));
+  app.component('PageHeader', vue.defineComponent({ props: ['title','description'], setup: (p,{slots}) => () => vue.h('header', [vue.h('h1',p.title),vue.h('p',p.description),slots.actions?.()]) }));
   app.component('PurchaseTabs', vue.defineComponent({ props: ['items'], setup: p => () => vue.h('div', p.items.map(item => vue.h('span',item.label))) }));
   app.component('AppButton', vue.defineComponent({ props: ['disabled','type'], setup: (p,{slots}) => () => vue.h('button',{disabled:p.disabled,type:p.type||'button'},slots.default?.()) }));
   app.component('RouterLink',vue.defineComponent({props:['to'],setup:(p,{slots})=>()=>vue.h('a',{href:p.to},slots.default?.())}));
-  app.component('PurchaseActionDialog',slot('dialog'));
+  app.component('ConfirmDialog',slot('dialog'));
   for (const icon of ['ArrowLeft','ArrowRight','Check','CheckCircle2','ChevronDown','ChevronRight','FileSearch','Package','ShoppingCart','SlidersHorizontal','X']) app.component(icon,vue.defineComponent({setup:()=>()=>vue.h('svg')}));
   return front('vue/server-renderer').renderToString(app);
 }
