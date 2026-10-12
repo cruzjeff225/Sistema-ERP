@@ -14,6 +14,7 @@ import ReceiveTransferPanel from '../components/purchases/ReceiveTransferPanel.v
 import { http } from '../services/http.service';
 import { activeCompanyId } from '../services/company-context';
 import { usePermissions } from '../composables/usePermissions';
+import { recordRecentDocument } from '../composables/useRecentDocuments';
 import { useFeedbackStore } from '../stores/feedback.store';
 import { getApiErrorMessage } from '../utils/api-error';
 import { purchaseStage } from '../utils/purchase-inbox';
@@ -74,6 +75,7 @@ async function load() {
     const response = await http.get(`/purchase-requests/${id.value}`, { headers: { 'X-Company-Id': String(companyId) } });
     if (companyId !== activeCompanyId.value) return;
     request.value = response.data.data;
+    recordRecentDocument({ key: `request:${request.value.id}`, code: request.value.code, kind: 'Solicitud de compra', stage: documentStatusLabel(request.value.status), to: `/purchases/requests/${request.value.id}`, anchor: { type: 'request', id: request.value.id } });
     await loadProcess();
   } catch (caught: any) {
     request.value = null;

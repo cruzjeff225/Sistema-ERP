@@ -1,17 +1,20 @@
 <script setup lang="ts">
 import { computed, onMounted, onBeforeUnmount, ref } from 'vue';
 import { RouterLink } from 'vue-router';
-import { Boxes, Building2, ClipboardCheck, ClipboardList, ListChecks, Moon, Package, PackageCheck, Sun, Tag, Users } from 'lucide-vue-next';
+import { Boxes, Building2, ClipboardCheck, ClipboardList, Clock, ListChecks, Moon, Package, PackageCheck, Sun, Tag, Users } from 'lucide-vue-next';
 import AdminLayout from '../layouts/AdminLayout.vue';
 import { usePermissions } from '../composables/usePermissions';
 import { useMyPending } from '../composables/useMyPending';
+import { useRecentDocuments, type RecentDocument } from '../composables/useRecentDocuments';
+import { relativeTime } from '../utils/purchase-tracking';
 import { myPendingRoute } from '../config/my-pending.config';
 import { purchasingPermissions, purchasingRoute, purchasingSections } from '../config/purchasing.config';
 import { operationsSections } from '../config/operations.config';
 import { salesSections } from '../config/sales.config';
 
 const { currentUser, can, canAny } = usePermissions();
-const { items: pending, loading: pendingLoading, failed: pendingFailed, visible: pendingVisible } = useMyPending();
+const { items: pending, rows: processes, loading: pendingLoading, failed: pendingFailed, visible: pendingVisible } = useMyPending();
+const { items: recent } = useRecentDocuments(3);
 const now = ref(new Date());
 let timer: ReturnType<typeof setInterval> | undefined;
 onMounted(() => { timer = setInterval(() => now.value = new Date(), 60000); });
@@ -39,6 +42,10 @@ const destinations = computed(() => [
   { name: 'Organización', detail: 'El equipo y sus espacios.', icon: Building2, route: can('companies.view') ? '/organization' : can('branches.view') ? '/organization/branches' : null },
 ].filter(d => d.route) as { name: string; detail: string; icon: typeof Package; route: string }[]);
 const quickAccess = computed(() => [...shortcuts.value, ...destinations.value]);
+
+// The live stage of the purchase when it is still in progress; otherwise the one saved when it was opened.
+const stageOf = (doc: RecentDocument) => processes.value.find(row => doc.anchor && row.anchor.type === doc.anchor.type && row.anchor.id === doc.anchor.id)?.currentStage?.label || doc.stage || '—';
+const showRecent = computed(() => canAny(purchasingPermissions));
 
 const pendingText = computed(() => pendingLoading.value || pendingFailed.value ? 'Mis pendientes' : `${pending.value.length} ${pending.value.length === 1 ? 'pendiente' : 'pendientes'}`);
 const pendingLabel = computed(() => pendingLoading.value || pendingFailed.value ? 'Mis pendientes' : `Mis pendientes: ${pending.value.length}`);
@@ -80,12 +87,33 @@ const pendingLabel = computed(() => pendingLoading.value || pendingFailed.value 
      </p>
     </div>
     <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-     <RouterLink v-for="item in quickAccess" :key="item.name" :to="item.route" class="flex min-h-16 items-center gap-4 rounded-xl border border-border bg-surface px-4 py-3 transition-colors hover:border-accent/50 hover:bg-surface-secondary">
+     <RouterLink v-for="item in quickAccess" :key="item.name" :to="item.route" class="flex min-h-14 items-center gap-4 rounded-xl border border-border bg-surface px-4 py-3 transition-colors hover:border-accent/50 hover:bg-surface-secondary">
       <component :is="item.icon" class="h-5 w-5 shrink-0 text-muted-fg" :stroke-width="1.5" aria-hidden="true" />
       <span class="min-w-0"><span class="block text-sm font-medium text-fg">{{ item.name }}</span><span v-if="item.detail" class="mt-0.5 block text-xs text-muted-fg">{{ item.detail }}</span></span>
      </RouterLink>
     </div>
     <p v-if="!quickAccess.length" class="rounded-xl border border-dashed border-border px-4 py-5 text-sm text-muted-fg">Tu cuenta no tiene accesos disponibles por ahora.</p>
+   </section>
+
+   <section v-if="showRecent" class="mt-6 overflow-hidden rounded-xl border border-border bg-surface" aria-labelledby="recent-title">
+    <div class="flex items-center gap-3 px-4 pt-4 sm:px-5">
+     <Clock class="h-5 w-5 shrink-0 text-muted-fg" :stroke-width="1.5" aria-hidden="true" />
+     <div><h2 id="recent-title" class="text-base font-semibold leading-tight text-fg">Consultados recientemente</h2><p class="mt-0.5 text-xs text-muted-fg">Los últimos documentos que abriste en este equipo.</p></div>
+    </div>
+    <p v-if="!recent.length" class="px-4 pb-5 pt-4 text-sm text-muted-fg sm:px-5">Aún no has consultado documentos. Los que abras aparecerán aquí.</p>
+    <div v-else class="mt-3 overflow-x-auto">
+     <table class="w-full text-left text-sm">
+      <thead><tr class="border-y border-border text-[11px] font-semibold uppercase tracking-wide text-muted-fg"><th scope="col" class="px-4 py-2 sm:pl-5">Código</th><th scope="col" class="hidden px-3 py-2 sm:table-cell">Tipo de documento</th><th scope="col" class="px-3 py-2">Estado actual</th><th scope="col" class="px-4 py-2 text-right sm:pr-5">Acción</th></tr></thead>
+      <tbody class="divide-y divide-border">
+       <tr v-for="doc in recent" :key="doc.key">
+        <td class="px-4 py-2.5 font-medium text-fg sm:pl-5">{{ doc.code }}<span class="block text-xs font-normal text-muted-fg sm:hidden">{{ doc.kind }}</span></td>
+        <td class="hidden px-3 py-2.5 text-fg sm:table-cell">{{ doc.kind }}<span class="ml-2 text-xs text-muted-fg">{{ relativeTime(doc.at) }}</span></td>
+        <td class="px-3 py-2.5 text-fg">{{ stageOf(doc) }}</td>
+        <td class="px-4 py-2.5 text-right sm:pr-5"><RouterLink :to="doc.to" :aria-label="`Abrir ${doc.kind} ${doc.code}`" class="font-medium text-accent underline-offset-4 hover:underline">Abrir</RouterLink></td>
+       </tr>
+      </tbody>
+     </table>
+    </div>
    </section>
   </div>
  </AdminLayout>

@@ -11,6 +11,7 @@ import AppCard from '../components/base/AppCard.vue';
 import { http } from '../services/http.service';
 import { activeCompanyId } from '../services/company-context';
 import { usePermissions } from '../composables/usePermissions';
+import { recordRecentDocument } from '../composables/useRecentDocuments';
 import { getApiErrorMessage } from '../utils/api-error';
 import {
   canOpenRoute, currentStageId, DOCUMENT_GROUPS, documentLocation, documentStatusLabel, documentStatusVariant, formatQuantity, isTrackingType,
@@ -33,6 +34,17 @@ const activeStage = computed(() => data.value ? currentStageId(data.value.stages
 const visibleGroups = computed(() => DOCUMENT_GROUPS.map(group => ({ ...group, docs: data.value?.documents[group.key] ?? [] })).filter(group => group.docs.length));
 const hasDecided = computed(() => data.value?.lines.some(line => line.decided !== null) ?? false);
 
+const KIND_LABEL: Record<string, string> = { request: 'Solicitud de compra', consolidation: 'Gestión de cotización', quotation: 'Oferta de proveedor', order: 'Orden de compra', receipt: 'Recepción', retaceo: 'Retaceo' };
+// Keep this purchase in "Consultados recientemente" on Inicio.
+function remember(tracking: Tracking) {
+  const { type, id } = anchor.value;
+  const code = tracking.documents[`${type}s` as keyof Tracking['documents']]?.find(doc => doc.id === id)?.code ?? processSummary(tracking.documents).split(' · ')[0];
+  if (!code) return;
+  const stageId = currentStageId(tracking.stages, tracking.nextStep);
+  const stage = tracking.completed ? 'Completada' : tracking.stages.find(item => item.id === stageId)?.label ?? '';
+  recordRecentDocument({ key: `tracking:${type}:${id}`, code, kind: KIND_LABEL[type] ?? 'Compra', stage, to: `/purchases/tracking/${type}/${id}`, anchor: { type, id } });
+}
+
 async function load(silent = false) {
   const companyId = activeCompanyId.value;
   if (!companyId || !validAnchor.value) { loading.value = false; notFound.value = !validAnchor.value; return; }
@@ -43,6 +55,7 @@ async function load(silent = false) {
     const response = await http.get(`/purchases/tracking/${anchor.value.type}/${anchor.value.id}`, { headers: { 'X-Company-Id': String(companyId) } });
     if (version !== requestVersion || companyId !== activeCompanyId.value) return;
     data.value = response.data.data;
+    remember(response.data.data);
   } catch (caught: any) {
     if (version !== requestVersion) return;
     data.value = null;
