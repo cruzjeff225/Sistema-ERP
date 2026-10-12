@@ -270,7 +270,7 @@ onBeforeUnmount(() => { mounted = false; ++companyEpoch; ++loadVersion; ++openVe
 
 <template>
   <AdminLayout title="Gestionar cotizaciones">
-    <div class="mx-auto max-w-[1440px] space-y-6">
+    <div class="mx-auto max-w-[1440px] space-y-4">
       <header class="flex flex-wrap items-start justify-between gap-3">
         <div class="min-w-0"><h1 class="text-2xl font-semibold tracking-tight text-fg">{{ offer ? 'Registrar oferta' : 'Cotizaciones' }}</h1><p class="mt-1 text-sm text-muted-fg">{{ offer ? 'Complete la respuesta del proveedor para poder compararla.' : 'Reúna solicitudes, consulte a los proveedores y compare sus ofertas en un mismo lugar.' }}</p></div>
         <div class="flex flex-wrap items-center gap-2">
@@ -281,22 +281,41 @@ onBeforeUnmount(() => { mounted = false; ++companyEpoch; ++loadVersion; ++openVe
         </div>
       </header>
 
-      <ol class="grid gap-x-6 border-b border-border sm:grid-cols-2 lg:grid-cols-4" aria-label="Pasos de la gestión de cotización">
-        <li v-for="(step, index) in processSteps" :key="step.title" class="-mb-px border-b-2 py-3" :class="processStepIndex === index + 1 ? 'border-accent' : 'border-transparent'" :aria-current="processStepIndex === index + 1 ? 'step' : undefined">
+      <ol class="grid gap-x-6 border-b border-border sm:grid-cols-2 lg:grid-cols-[1.3fr_1.1fr_1.1fr_1.5fr]" aria-label="Pasos de la gestión de cotización">
+        <li v-for="(step, index) in processSteps" :key="step.title" class="-mb-px border-b-2 py-2" :class="processStepIndex === index + 1 ? 'border-accent' : 'border-transparent'" :aria-current="processStepIndex === index + 1 ? 'step' : undefined">
           <span class="flex items-center gap-3">
             <span class="grid h-6 w-6 shrink-0 place-items-center rounded-full text-sm font-semibold tabular-nums" :class="processStepIndex > index + 1 ? 'bg-success text-white' : processStepIndex === index + 1 ? 'text-accent' : 'text-muted-fg'"><Check v-if="processStepIndex > index + 1" class="h-4 w-4" aria-hidden="true" /><template v-else>{{ index + 1 }}</template></span>
             <span class="text-sm" :class="processStepIndex === index + 1 ? 'font-semibold text-accent' : processStepIndex > index + 1 ? 'font-medium text-fg' : 'text-muted-fg'">{{ step.title }}</span>
           </span>
-          <span class="mt-0.5 block pl-9 text-xs leading-5 text-muted-fg">{{ step.hint }}</span>
+          <span class="block pl-9 text-xs leading-5 text-muted-fg">{{ step.hint }}</span>
         </li>
       </ol>
 
       <p v-if="error" role="alert" class="rounded-[12px] bg-danger/10 p-4 text-sm text-danger">{{ error }}</p>
       <p v-if="success" role="status" class="flex items-center gap-2 text-sm font-medium text-success"><Check class="h-4 w-4 shrink-0" aria-hidden="true" />{{ success }}</p>
 
-      <section v-if="current && !showNew && !offer && !opening" aria-label="Gestión abierta" class="flex flex-wrap items-start justify-between gap-3 rounded-[12px] border border-border bg-surface px-5 py-4">
-        <div class="min-w-0"><p class="text-sm text-muted-fg">Gestión abierta</p><p class="mt-0.5 text-lg font-semibold text-fg">{{ processLabel(current) }}</p><p v-if="originCodes.length" class="mt-0.5 text-sm text-muted-fg">{{ originCodes.join(', ') }}</p></div>
-        <AppButton variant="ghost" size="sm" :disabled="busy || loading" @click="switching = !switching">{{ switching ? 'Cerrar' : 'Cambiar de gestión' }}</AppButton>
+      <section v-if="current && !showNew && !offer && !opening" aria-label="Gestión abierta" class="rounded-[12px] border border-border bg-surface">
+        <div class="flex flex-wrap items-start justify-between gap-3 px-5 py-3">
+          <div class="min-w-0"><p class="text-xs text-muted-fg">Gestión abierta</p><p class="text-base font-semibold text-fg">{{ processLabel(current) }}</p><p class="flex flex-wrap items-center gap-x-4 text-sm text-muted-fg"><span v-if="originCodes.length">{{ originCodes.join(', ') }}</span><TrackingLink class="-ml-2" type="consolidation" :id="current.id" /></p></div>
+          <AppButton variant="ghost" size="sm" :disabled="busy || loading" @click="switching = !switching">{{ switching ? 'Cerrar' : 'Cambiar de gestión' }}</AppButton>
+        </div>
+        <div v-if="visibleDocuments.some(d => d.id === current.id)" class="border-t border-border px-5 py-3">
+          <div class="flex flex-wrap items-center justify-between gap-4">
+            <div class="max-w-3xl"><p class="text-xs font-medium text-muted-fg">Siguiente paso</p><h2 class="text-base font-semibold">{{ nextStep.title }}</h2><p class="mt-0.5 text-sm text-muted-fg">{{ nextStep.description }}</p></div>
+            <div class="flex flex-col items-stretch gap-2 sm:items-end"><div class="flex flex-wrap gap-2">
+              <AppButton v-if="nextStep.action === 'suppliers' && can('purchase_quotations.create')" :disabled="busy || changed" @click="change(() => { workspace = 'suppliers'; })">Preparar solicitud al proveedor</AppButton>
+              <AppButton v-if="nextStep.action === 'offer' && !severalPending && canRegisterResponse(pendingResponse)" :disabled="busy || changed" @click="change(() => { workspace = 'suppliers'; startOffer(pendingResponse); })">{{ pendingResponse.quotation ? 'Completar oferta' : 'Registrar oferta' }}</AppButton>
+              <AppButton v-if="nextStep.action === 'offer' && severalPending && workspace !== 'suppliers'" :disabled="busy || changed" @click="change(() => { workspace = 'suppliers'; })">Elegir proveedor</AppButton>
+              <AppButton v-if="nextStep.action === 'compare' && can('purchase_quotations.view')" :disabled="busy || changed" @click="change(() => { workspace = 'compare'; })">Comparar y elegir ofertas</AppButton>
+              <AppButton v-if="nextStep.action === 'orders' && can('purchase_orders.view') && workspace !== 'orders'" :disabled="busy || changed" @click="change(() => { workspace = 'orders'; })">Ver órdenes</AppButton>
+            </div>
+              <details v-if="can('trash.delete') || can('purchase_quotations.view')" class="relative">
+                <summary class="inline-flex h-9 cursor-pointer list-none items-center gap-2 rounded-lg border border-border bg-surface px-3 text-sm font-medium text-fg transition-colors hover:bg-surface-secondary [&::-webkit-details-marker]:hidden">Más acciones<ChevronDown class="h-4 w-4 text-muted-fg" aria-hidden="true" /></summary>
+                <div class="absolute right-0 top-full z-30 mt-2 flex min-w-52 flex-col gap-2 rounded-[12px] border border-border bg-surface p-3 shadow-subtle"><RouterLink v-if="can('purchase_quotations.view')" to="/purchases/quotations" class="rounded-lg border border-border px-3 py-2 text-center text-sm hover:bg-surface-secondary">Ver ofertas anteriores</RouterLink><TrashButton v-if="can('trash.delete')" entity="purchase_processes" :record-id="current.id" :label="current.code" :disabled="busy || changed" @deleted="load" /></div>
+              </details>
+            </div>
+          </div>
+        </div>
       </section>
 
       <section v-if="!offer && !showNew && (!current || switching)" class="rounded-[12px] border border-border bg-surface p-5 sm:p-6">
@@ -391,28 +410,11 @@ onBeforeUnmount(() => { mounted = false; ++companyEpoch; ++loadVersion; ++openVe
       </div>
 
       <template v-if="current && !showNew && !opening && visibleDocuments.some(d => d.id === current.id)">
-        <section v-if="!offer" class="rounded-[12px] border border-border bg-surface p-5 sm:p-6">
-          <div class="flex flex-wrap items-center justify-between gap-4">
-            <div class="max-w-2xl"><p class="mb-1 text-xs font-medium text-muted-fg">Siguiente paso</p><h2 class="text-lg font-semibold">{{ nextStep.title }}</h2><p class="mt-1 text-sm text-muted-fg">{{ nextStep.description }}</p><TrackingLink class="-ml-2 mt-2" type="consolidation" :id="current.id" /></div>
-            <div class="flex flex-col items-stretch gap-2 sm:items-end"><div class="flex flex-wrap gap-2">
-              <AppButton v-if="nextStep.action === 'suppliers' && can('purchase_quotations.create')" :disabled="busy || changed" @click="change(() => { workspace = 'suppliers'; })">Preparar solicitud al proveedor</AppButton>
-              <AppButton v-if="nextStep.action === 'offer' && !severalPending && canRegisterResponse(pendingResponse)" :disabled="busy || changed" @click="change(() => { workspace = 'suppliers'; startOffer(pendingResponse); })">{{ pendingResponse.quotation ? 'Completar oferta' : 'Registrar oferta' }}</AppButton>
-              <AppButton v-if="nextStep.action === 'offer' && severalPending && workspace !== 'suppliers'" :disabled="busy || changed" @click="change(() => { workspace = 'suppliers'; })">Elegir proveedor</AppButton>
-              <AppButton v-if="nextStep.action === 'compare' && can('purchase_quotations.view')" :disabled="busy || changed" @click="change(() => { workspace = 'compare'; })">Comparar y elegir ofertas</AppButton>
-              <AppButton v-if="nextStep.action === 'orders' && can('purchase_orders.view') && workspace !== 'orders'" :disabled="busy || changed" @click="change(() => { workspace = 'orders'; })">Ver órdenes</AppButton>
-            </div>
-              <details v-if="can('trash.delete') || can('purchase_quotations.view')" class="relative">
-                <summary class="inline-flex h-9 cursor-pointer list-none items-center gap-2 rounded-lg border border-border bg-surface px-3 text-sm font-medium text-fg transition-colors hover:bg-surface-secondary [&::-webkit-details-marker]:hidden">Más acciones<ChevronDown class="h-4 w-4 text-muted-fg" aria-hidden="true" /></summary>
-                <div class="absolute right-0 top-full z-30 mt-2 flex min-w-52 flex-col gap-2 rounded-[12px] border border-border bg-surface p-3 shadow-subtle"><RouterLink v-if="can('purchase_quotations.view')" to="/purchases/quotations" class="rounded-lg border border-border px-3 py-2 text-center text-sm hover:bg-surface-secondary">Ver ofertas anteriores</RouterLink><TrashButton v-if="can('trash.delete')" entity="purchase_processes" :record-id="current.id" :label="current.code" :disabled="busy || changed" @deleted="load" /></div>
-              </details>
-            </div>
-          </div>
-        </section>
         <div v-if="!offer" class="border-b border-border"><PurchaseTabs variant="underline" :model-value="workspace" :items="workspaceTabs.map(tab => ({ value: tab.value, label: `${tab.label} (${tab.count})` }))" label="Secciones de la gestión" :disabled="busy || loading" @update:model-value="selectWorkspace" /></div>
 
         <section v-if="!offer && workspace === 'products'" class="overflow-hidden rounded-[12px] border border-border bg-surface">
-          <div class="flex flex-wrap items-center justify-between gap-4 p-5 sm:p-6">
-            <div><h2 class="text-lg font-semibold">Productos a cotizar</h2><p class="mt-1 text-sm text-muted-fg">Ajuste las cantidades que va a comprar antes de consultar a los proveedores.</p></div>
+          <div class="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+            <div><h2 class="text-base font-semibold">Productos a cotizar</h2><p class="mt-1 text-sm text-muted-fg">Ajuste las cantidades que va a comprar antes de consultar a los proveedores.</p></div>
             <AppButton v-if="canAdjustProposal" variant="outline" :disabled="busy" @click="change(addProduct)">Agregar producto</AppButton>
           </div>
           <div class="overflow-x-auto">
@@ -420,7 +422,7 @@ onBeforeUnmount(() => { mounted = false; ++companyEpoch; ++loadVersion; ++openVe
               <thead class="border-y border-border bg-surface-secondary text-xs text-muted-fg"><tr><th class="px-5 py-3 font-medium sm:px-6">Producto</th><th class="px-4 py-3 text-right font-medium">Solicitado</th><th class="px-4 py-3 text-right font-medium">A cotizar</th><th class="px-5 py-3 text-right font-medium sm:px-6">Acción</th></tr></thead>
               <tbody>
                 <tr v-for="l in current.lines" :key="l.id" class="border-b border-border last:border-b-0">
-                  <td class="px-5 py-4 sm:px-6">
+                  <td class="px-5 py-3 sm:px-6">
                     <strong class="font-medium">{{ l.product.name }}</strong><span class="mt-1 block text-xs text-muted-fg">{{ l.unit.name }}<template v-if="l.reason"> · {{ l.reason }}</template></span>
                     <details v-if="l.sources.length" class="mt-2">
                       <summary class="cursor-pointer text-xs font-medium text-accent">Detalle por sucursal</summary>
@@ -430,9 +432,9 @@ onBeforeUnmount(() => { mounted = false; ++companyEpoch; ++loadVersion; ++openVe
                     </details>
                     <span v-else class="mt-2 block text-xs text-muted-fg">Agregado por Compras</span>
                   </td>
-                  <td class="px-4 py-4 text-right tabular-nums text-muted-fg">{{ l.requestedQuantity }}</td>
-                  <td class="px-4 py-4 text-right font-semibold tabular-nums">{{ l.purchaseQuantity }}</td>
-                  <td class="px-5 py-4 text-right sm:px-6"><AppButton v-if="canAdjustProposal" size="sm" variant="outline" :disabled="busy" @click="edit(l)">Modificar</AppButton></td>
+                  <td class="px-4 py-3 text-right tabular-nums text-muted-fg">{{ l.requestedQuantity }}</td>
+                  <td class="px-4 py-3 text-right font-semibold tabular-nums">{{ l.purchaseQuantity }}</td>
+                  <td class="px-5 py-3 text-right sm:px-6"><AppButton v-if="canAdjustProposal" size="sm" variant="outline" :disabled="busy" @click="edit(l)">Modificar</AppButton></td>
                 </tr>
               </tbody>
             </table>
@@ -443,14 +445,14 @@ onBeforeUnmount(() => { mounted = false; ++companyEpoch; ++loadVersion; ++openVe
             <label class="text-sm sm:col-span-2">Motivo del cambio<input v-model="lineEdit.reason" required maxlength="1000" class="field-control" /></label>
             <div class="flex flex-wrap justify-end gap-3 sm:col-span-2"><AppButton type="button" variant="outline" :disabled="busy" @click="change(() => { editingProduct = false; })">Cancelar</AppButton><AppButton type="submit" :disabled="busy || !lineEdit.productId">Guardar decisión</AppButton></div>
           </form>
-          <div class="flex flex-wrap items-center justify-between gap-4 border-t border-border p-5 sm:p-6">
+          <div class="flex flex-wrap items-center justify-between gap-4 border-t border-border px-5 py-3">
             <p class="text-xs text-muted-fg">{{ current.rfqs.length ? 'Las cantidades consultadas se conservan. Compras elige las ofertas y Gerencia aprueba la orden.' : 'Prepare las solicitudes a proveedores.' }}</p>
           </div>
         </section>
 
-        <section v-if="!offer && workspace === 'suppliers'" class="rounded-[12px] border border-border bg-surface p-5 sm:p-6">
+        <section v-if="!offer && workspace === 'suppliers'" class="rounded-[12px] border border-border bg-surface p-5">
           <div class="flex flex-wrap items-center justify-between gap-4">
-            <div><h2 class="text-lg font-semibold">Consulta a proveedores</h2><p class="mt-1 text-sm text-muted-fg">Prepare el PDF y registre la oferta de cada proveedor.</p></div>
+            <div><h2 class="text-base font-semibold">Consulta a proveedores</h2><p class="mt-1 text-sm text-muted-fg">Prepare el PDF y registre la oferta de cada proveedor.</p></div>
             <AppButton v-if="current.rfqs.length && availableSuppliers.length && can('purchase_quotations.create') && !addingSupplier" variant="outline" :disabled="busy" @click="addingSupplier = true">Consultar otro proveedor</AppButton>
           </div>
           <form v-if="(!current.rfqs.length || addingSupplier) && can('purchase_quotations.create')" class="mt-5 space-y-5 border-t border-border pt-5" @submit.prevent="requestQuote">
