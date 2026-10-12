@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
-import { Building2, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Search, Tag, Trash2, ArrowRight, Check } from 'lucide-vue-next';
+import { Building2, CalendarDays, ChevronDown, Download, Pencil, ChevronLeft, ChevronRight, Search, Tag, Trash2, ArrowRight, Check } from 'lucide-vue-next';
 import AdminLayout from '../layouts/AdminLayout.vue';
 import PurchaseTabs from '../components/purchases/PurchaseTabs.vue';
 import TrashButton from '../components/admin/TrashButton.vue';
@@ -131,6 +131,8 @@ const shortDate = (value: string) => new Date(`${value.slice(0, 10)}T12:00:00`).
 const switching = ref(false);
 watch(selectedId, () => { switching.value = false; });
 // The requests this management gathers, so the line above says what it is about without opening anything.
+// How each consulted supplier is doing: waiting, offer to complete, offer registered or closed.
+const rfqState = (r: any) => !r.quotation ? { label: 'Esperando oferta', dot: 'bg-muted-fg/60' } : r.quotation.status === 'draft' ? { label: 'Oferta por completar', dot: 'bg-warning' } : ['received', 'selected', 'under_review'].includes(r.quotation.status) ? { label: 'Oferta registrada', dot: 'bg-success' } : { label: 'Oferta cerrada', dot: 'bg-muted-fg/60' };
 const originCodes = computed<string[]>(() => [...new Set<string>((current.value?.lines ?? []).flatMap((line: any) => (line.sources ?? []).map((source: any) => source.requestDetail?.request?.code)).filter(Boolean))]);
 const processLabel = (d: any) => `Gestión #${d.id} · ${shortDate(d.dateFrom)}${d.dateFrom.slice(0, 10) === d.dateTo.slice(0, 10) ? '' : ' – ' + shortDate(d.dateTo)}`;
 const headers = (company = activeCompanyId.value) => ({ headers: { 'X-Company-Id': String(company) } });
@@ -301,7 +303,7 @@ onBeforeUnmount(() => { mounted = false; ++companyEpoch; ++loadVersion; ++openVe
         </div>
         <div v-if="visibleDocuments.some(d => d.id === current.id)" class="border-t border-border px-5 py-3">
           <div class="flex flex-wrap items-center justify-between gap-4">
-            <div class="max-w-3xl"><p class="text-xs font-medium text-muted-fg">Siguiente paso</p><h2 class="text-base font-semibold">{{ nextStep.title }}</h2><p class="mt-0.5 text-sm text-muted-fg">{{ nextStep.description }}</p></div>
+            <div class="max-w-3xl"><p class="sr-only">Siguiente paso</p><h2 class="text-base font-semibold">{{ nextStep.title }}</h2><p class="mt-0.5 text-sm text-muted-fg">{{ nextStep.description }}</p></div>
             <div class="flex flex-col items-stretch gap-2 sm:items-end"><div class="flex flex-wrap gap-2">
               <AppButton v-if="nextStep.action === 'suppliers' && can('purchase_quotations.create')" :disabled="busy || changed" @click="change(() => { workspace = 'suppliers'; })">Preparar solicitud al proveedor</AppButton>
               <AppButton v-if="nextStep.action === 'offer' && !severalPending && canRegisterResponse(pendingResponse)" :disabled="busy || changed" @click="change(() => { workspace = 'suppliers'; startOffer(pendingResponse); })">{{ pendingResponse.quotation ? 'Completar oferta' : 'Registrar oferta' }}</AppButton>
@@ -465,11 +467,16 @@ onBeforeUnmount(() => { mounted = false; ++companyEpoch; ++loadVersion; ++openVe
             </fieldset>
             <div class="flex flex-wrap justify-end gap-3"><AppButton v-if="addingSupplier" type="button" variant="outline" :disabled="busy" @click="addingSupplier = false">Cancelar</AppButton><AppButton type="submit" :disabled="busy || !supplierId || !rfqLineIds.length">Preparar solicitud</AppButton></div>
           </form>
-          <div v-if="current.rfqs.length" class="mt-5 divide-y divide-border">
-            <div v-for="r in current.rfqs" :key="r.id" class="flex flex-wrap items-center justify-between gap-4 py-5">
-              <div class="min-w-0"><h3 class="font-medium">{{ r.supplier.name }}</h3><p class="mt-1 text-xs text-muted-fg">{{ r.code }} · {{ !r.quotation ? 'Esperando oferta' : r.quotation.status === 'draft' ? 'Oferta por completar' : ['received', 'selected', 'under_review'].includes(r.quotation.status) ? 'Oferta registrada' : 'Oferta cerrada' }}</p><RouterLink v-if="r.quotation" :to="`/purchases/quotations?id=${r.quotation.id}`" class="mt-2 inline-block text-xs font-medium text-accent">Ver {{ r.quotation.code }}</RouterLink></div>
-              <div class="flex flex-wrap items-center gap-3"><AppButton size="sm" variant="outline" :disabled="busy" @click="download(r)">Descargar PDF</AppButton><AppButton v-if="canRegisterResponse(r)" size="sm" :variant="r.quotation && r.quotation.status !== 'draft' ? 'outline' : 'primary'" :disabled="busy" @click="startOffer(r)">{{ !r.quotation ? 'Registrar oferta' : r.quotation.status === 'draft' ? 'Completar oferta' : 'Editar oferta' }}</AppButton></div>
-            </div>
+          <div v-if="current.rfqs.length" class="mt-4">
+            <div class="hidden border-b border-border pb-2 text-xs font-semibold uppercase tracking-wide text-muted-fg md:grid md:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,1.2fr)_340px] md:gap-4" aria-hidden="true"><span>Proveedor</span><span>Solicitud</span><span>Estado</span><span class="text-right">Acciones</span></div>
+            <ul class="divide-y divide-border" aria-label="Proveedores consultados">
+              <li v-for="r in current.rfqs" :key="r.id" class="grid gap-x-4 gap-y-2 py-3 md:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,1.2fr)_340px] md:items-center">
+                <h3 class="min-w-0 font-medium text-fg">{{ r.supplier.name }}</h3>
+                <p class="text-sm text-muted-fg">{{ r.code }}<RouterLink v-if="r.quotation" :to="`/purchases/quotations?id=${r.quotation.id}`" class="mt-0.5 block text-xs font-medium text-accent hover:underline">Ver {{ r.quotation.code }}</RouterLink></p>
+                <p class="inline-flex items-center gap-1.5 text-sm text-muted-fg"><span class="h-2 w-2 shrink-0 rounded-full" :class="rfqState(r).dot" aria-hidden="true" />{{ rfqState(r).label }}</p>
+                <div class="flex flex-wrap items-center gap-2 md:justify-end"><AppButton variant="outline" :disabled="busy" @click="download(r)"><Download class="h-4 w-4" aria-hidden="true" />Descargar PDF</AppButton><AppButton v-if="canRegisterResponse(r)" variant="outline" :disabled="busy" @click="startOffer(r)"><Pencil class="h-4 w-4" aria-hidden="true" />{{ !r.quotation ? 'Registrar oferta' : r.quotation.status === 'draft' ? 'Completar oferta' : 'Editar oferta' }}</AppButton></div>
+              </li>
+            </ul>
           </div>
         </section>
 
