@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
-import { ArrowRight, Check, ClipboardList, Coins, FileSearch, FileText, Layers, ListChecks, Lock, Package, PackageCheck, RefreshCw, Truck, TriangleAlert } from 'lucide-vue-next';
+import { Check, ClipboardList, Coins, FileSearch, FileText, Layers, ListChecks, Lock, Package, PackageCheck, RefreshCw, Truck, TriangleAlert } from 'lucide-vue-next';
 import type { Component } from 'vue';
 import AdminLayout from '../layouts/AdminLayout.vue';
 import AppButton from '../components/base/AppButton.vue';
@@ -116,19 +116,19 @@ watch(() => [route.params.type, route.params.id, activeCompanyId.value], () => {
               <p class="mt-0.5 text-sm text-muted-fg">Todos los productos fueron recibidos, costeados y entregados a las sucursales.</p>
             </div>
           </div>
-          <div v-else-if="data.nextStep" class="rounded-[12px] border border-accent/20 bg-accent-soft p-4 sm:p-5">
+          <div v-else-if="data.nextStep" class="rounded-[12px] border border-border bg-surface p-5">
             <div class="flex flex-wrap items-center justify-between gap-4">
               <div class="min-w-0">
-                <p class="text-xs font-medium text-muted-fg">Siguiente paso</p>
-                <h2 id="next-step-title" class="mt-1 text-lg font-semibold text-fg">{{ data.nextStep.label }}</h2>
+                <p class="text-sm text-muted-fg">Siguiente paso</p>
+                <h2 id="next-step-title" class="mt-1 text-xl font-semibold text-fg">{{ data.nextStep.label }}</h2>
                 <p class="mt-1 text-sm text-muted-fg">Le corresponde a <span class="font-medium text-fg">{{ data.nextStep.owner }}</span></p>
               </div>
               <div class="flex flex-col items-stretch gap-1 sm:items-end">
-                <AppButton :disabled="!canOpen(data.nextStep)" @click="open(data.nextStep)">Ir a hacerlo<ArrowRight class="h-4 w-4" aria-hidden="true" /></AppButton>
+                <AppButton :disabled="!canOpen(data.nextStep)" @click="open(data.nextStep)">Ir a hacerlo</AppButton>
                 <p v-if="!canOpen(data.nextStep)" class="flex items-center gap-1 text-xs text-muted-fg"><Lock class="h-3 w-3" aria-hidden="true" />No tienes acceso a esa pantalla; avisa a {{ data.nextStep.owner }}.</p>
               </div>
             </div>
-            <div v-if="data.alsoAvailable.length" class="mt-4 border-t border-accent/20 pt-3">
+            <div v-if="data.alsoAvailable.length" class="mt-4 border-t border-border pt-3">
               <p class="text-xs font-medium text-muted-fg">También se puede avanzar en paralelo</p>
               <ul class="mt-2 flex flex-wrap gap-2">
                 <li v-for="step in data.alsoAvailable" :key="step.label + step.route">
