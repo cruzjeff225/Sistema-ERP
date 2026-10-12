@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
-import { Building2, CalendarDays, ChevronDown, Download, Pencil, ChevronLeft, ChevronRight, Search, Tag, Trash2, ArrowRight, Check } from 'lucide-vue-next';
+import { Building2, CalendarDays, ChevronDown, Download, Info, Pencil, ChevronLeft, ChevronRight, Search, Tag, Trash2, ArrowRight, Check } from 'lucide-vue-next';
 import AdminLayout from '../layouts/AdminLayout.vue';
 import PurchaseTabs from '../components/purchases/PurchaseTabs.vue';
 import TrashButton from '../components/admin/TrashButton.vue';
@@ -280,6 +280,10 @@ onBeforeUnmount(() => { mounted = false; ++companyEpoch; ++loadVersion; ++openVe
             <AppButton variant="outline" :disabled="loading || opening || busy || changed" @click="load">Actualizar</AppButton>
             <AppButton v-if="can('purchase_quotations.create') && can('purchase_requests.view')" :variant="!current && !showNew ? 'primary' : 'outline'" :disabled="busy || loading || opening" @click="toggleNew">{{ showNew ? 'Volver a la gestión' : 'Nueva gestión' }}</AppButton>
           </template>
+          <template v-else>
+            <AppButton type="button" variant="outline" :disabled="busy" @click="change(() => { offer = null; })">Cancelar</AppButton>
+            <AppButton type="submit" form="offer-form" :disabled="busy">Guardar oferta recibida</AppButton>
+          </template>
         </div>
       </header>
 
@@ -529,7 +533,7 @@ onBeforeUnmount(() => { mounted = false; ++companyEpoch; ++loadVersion; ++openVe
                 <p class="text-sm font-semibold">Revisión de Compras</p>
                 <label class="flex items-start gap-2.5 text-sm"><input v-model="offerForm.costsConfirmed" type="checkbox" class="mt-0.5 h-4 w-4 accent-accent" :disabled="busy" /><span>Revisé los cargos adicionales de esta oferta.<span class="mt-0.5 block text-xs leading-5 text-muted-fg">Están registrados arriba, incluidos en el precio o no aplican.</span></span></label>
                 <label class="flex items-start gap-2.5 text-sm"><input v-model="offerForm.conditionsConfirmed" type="checkbox" class="mt-0.5 h-4 w-4 accent-accent" :disabled="busy" />Revisé pago, mínimo de compra y vigencia.</label>
-                <p v-if="!offerForm.costsConfirmed || !offerForm.conditionsConfirmed" class="text-xs leading-5 text-muted-fg"><span class="font-medium text-warning">Puede guardar la oferta.</span> La comparación será parcial hasta completar la revisión.</p>
+                <p v-if="!offerForm.costsConfirmed || !offerForm.conditionsConfirmed" class="flex items-start gap-2 text-xs leading-5 text-muted-fg"><Info class="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden="true" /><span><span class="font-medium text-fg">Puede guardar la oferta.</span> La comparación será parcial hasta completar la revisión.</span></p>
               </div>
               <details :open="offerQuantityChanged">
                 <summary class="cursor-pointer px-5 py-3.5 text-sm font-medium text-fg">Referencia de la oferta<span v-if="!offerQuantityChanged" class="ml-2 text-xs font-normal text-muted-fg">Opcional</span></summary>
@@ -549,14 +553,6 @@ onBeforeUnmount(() => { mounted = false; ++companyEpoch; ++loadVersion; ++openVe
         </section>
       </template>
     </div>
-    <template v-if="offer" #footer>
-      <div class="shrink-0 border-t border-border bg-surface py-3">
-        <div class="mx-auto flex w-full max-w-[1600px] flex-wrap items-center justify-end gap-3 px-4 sm:px-6 lg:px-8">
-          <AppButton type="button" variant="outline" :disabled="busy" @click="change(() => { offer = null; })">Cancelar</AppButton>
-          <AppButton type="submit" form="offer-form" :disabled="busy">Guardar oferta recibida</AppButton>
-        </div>
-      </div>
-    </template>
     <PurchaseActionDialog v-if="confirm" title="Confirmar adjudicación" description="Se generará una orden por proveedor con los productos y cantidades seleccionados. Revise cada orden antes de aprobarla." :busy="busy" :error="error" @close="confirm = false" @confirm="award" />
     <PurchaseActionDialog v-if="leaving || discardChanges" title="Descartar cambios" description="Tiene datos sin guardar en este proceso." :busy="false" @close="resolveDiscard(false)" @confirm="resolveDiscard(true)" />
   </AdminLayout>
