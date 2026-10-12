@@ -107,6 +107,8 @@ export function documentStatusVariant(status: string): 'success' | 'danger' | 'w
   if (['pending_approval', 'pending_review', 'returned', 'in_transit', 'draft'].includes(key)) return 'warning';
   return 'neutral';
 }
+/** Colour of the dot that goes next to a document status; the label stays neutral so it keeps its contrast. */
+export const statusDotClass = (variant: ReturnType<typeof documentStatusVariant>) => ({ success: 'bg-success', danger: 'bg-danger', warning: 'bg-warning', info: 'bg-accent', neutral: 'bg-muted-fg/60' })[variant];
 
 /** One-line description of the process for the page header, e.g. "PR-00012 · OC-00002 · RC-00002". */
 export function processSummary(documents: TrackingDocuments) {

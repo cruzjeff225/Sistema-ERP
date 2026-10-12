@@ -1,10 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
-import { ArrowLeft, ArrowRight, Building2, CalendarDays, ChevronDown, Check, ChevronRight, CircleAlert, CircleCheck, CircleX, EllipsisVertical, FilePenLine, FileText, ListChecks, Package, Pencil, PlusCircle, RefreshCw, Send, StickyNote, Tag, Truck } from 'lucide-vue-next';
-import type { Component } from 'vue';
+import { ArrowLeft, ArrowRight, ChevronDown, ChevronRight, CircleCheck, CircleX, EllipsisVertical, FileText, ListChecks, Package, Pencil, PlusCircle, RefreshCw, Send, Truck } from 'lucide-vue-next';
 import AdminLayout from '../layouts/AdminLayout.vue';
-import AppBadge from '../components/base/AppBadge.vue';
 import AppButton from '../components/base/AppButton.vue';
 import PurchaseActionDialog from '../components/base/PurchaseActionDialog.vue';
 import TrashButton from '../components/admin/TrashButton.vue';
@@ -21,8 +19,8 @@ import { purchaseStage } from '../utils/purchase-inbox';
 import { documentAction, needsProcessStep } from '../utils/purchase-next-action';
 import { myOwners, stepForUser } from '../utils/my-pending';
 import { purchasePurposeLabel } from '../utils/purchase-workflow';
-import { canCancelRequest, deliveredQuantity, hasBranchDeliveries, isAwaitingPurchasing, isEditableRequest, processSnapshot, quotationEntryLocation, requestEditLocation, requestLifecycle, requestListLocation, requestNextStep, requestStatusIcon, type RequestStatusIcon } from '../utils/purchase-request';
-import { documentStatusLabel, documentStatusVariant, formatQuantity, type TrackingStep } from '../utils/purchase-tracking';
+import { canCancelRequest, deliveredQuantity, hasBranchDeliveries, isAwaitingPurchasing, isEditableRequest, processSnapshot, quotationEntryLocation, requestEditLocation, requestLifecycle, requestListLocation, requestNextStep } from '../utils/purchase-request';
+import { documentStatusLabel, documentStatusVariant, formatQuantity, statusDotClass, type TrackingStep } from '../utils/purchase-tracking';
 
 const route = useRoute();
 const router = useRouter();
@@ -116,8 +114,6 @@ const canCancel = computed(() => !!request.value && canCancelRequest(request.val
 const showDeliveriesLink = computed(() => !!request.value && hasBranchDeliveries(request.value.status) && can('inventory.view'));
 // Deleting is infrequent and destructive, so it lives in the menu rather than next to the main action.
 const hasMenu = computed(() => showDeliveriesLink.value || canCancel.value || can('trash.delete'));
-const STATUS_ICONS: Record<RequestStatusIcon, Component> = { draft: FilePenLine, sent: Send, progress: Truck, delivered: CircleCheck, cancelled: CircleX, attention: CircleAlert };
-const statusIcon = computed(() => STATUS_ICONS[requestStatusIcon(request.value?.status ?? '')]);
 // The next step is the most important thing on the page: it gets its own block with who does it and the button for it.
 const callout = computed(() => {
   const record = request.value;
@@ -130,8 +126,14 @@ const callout = computed(() => {
   if (record.status === 'cancelled') return { tone: 'neutral' as const, title: 'Solicitud cancelada', description: 'Esta solicitud ya no sigue en el proceso de compra.', icon: CircleX };
   return { tone: 'neutral' as const, title: stageText.value, description: progress, icon: ListChecks };
 });
+// One summary line (stage, progress, who acts) and, under it, what comes next.
+const summary = computed(() => {
+  const current = callout.value;
+  if (!current) return null;
+  if (ownStep.value && processInfo.value) return { primary: `${processInfo.value.stage} · ${processInfo.value.done} de ${processInfo.value.total} completas · A cargo de ${ownStep.value.owner}`, secondary: ownStep.value.label, next: true, tone: current.tone };
+  return { primary: current.title, secondary: current.description, next: false, tone: current.tone };
+});
 const lifecycle = computed(() => request.value ? requestLifecycle(request.value.status) : null);
-const lifecycleIcons: Record<string, Component> = { draft: FilePenLine, sent: Send, process: Truck, done: CircleCheck };
 // The only real date we hold for the steps is when the draft was created.
 const stepDate = (key: string) => key === 'draft' && request.value?.createdAt ? shortDate(request.value.createdAt.slice(0, 10)) : '';
 // A request that already left the branch says so, and Purchasing gets the way in to its quotation.
@@ -157,125 +159,114 @@ watch([() => route.params.id, activeCompanyId], () => { tab.value = route.query.
 
       <p v-if="error" role="alert" class="rounded-lg border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">{{ error }}</p>
 
-      <div v-if="notFound" class="rounded-xl border border-border/70 bg-surface p-8 text-center">
+      <div v-if="notFound" class="rounded-[12px] border border-border bg-surface p-8 text-center">
         <h1 class="text-lg font-semibold text-fg">No encontramos esta solicitud</h1>
         <p class="mt-2 text-sm text-muted-fg">No existe o pertenece a otra empresa.</p>
         <div class="mt-4 flex justify-center"><AppButton variant="outline" @click="router.push(requestListLocation())">Ver solicitudes</AppButton></div>
       </div>
 
       <div v-else-if="loading && !request" class="space-y-4" aria-busy="true" aria-label="Cargando solicitud">
-        <div class="h-24 animate-pulse rounded-xl bg-surface-secondary" /><div class="h-64 animate-pulse rounded-xl bg-surface-secondary" />
+        <div class="h-24 animate-pulse rounded-[12px] bg-surface-secondary" /><div class="h-64 animate-pulse rounded-[12px] bg-surface-secondary" />
       </div>
 
       <template v-else-if="request">
-        <!-- Header: the document on the left; its state, the main action and the menu on the right -->
-        <header class="flex flex-wrap items-start justify-between gap-x-6 gap-y-4">
+        <!-- Header: the document and its state on the left; the main action, the menu and refresh on the right -->
+        <header class="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
           <div class="min-w-0">
-            <div class="flex flex-wrap items-center gap-3">
-              <h1 class="text-3xl font-semibold tracking-tight text-fg">{{ request.code }}</h1>
-              <button v-if="editable" type="button" class="grid h-9 w-9 place-items-center rounded-lg border border-border text-muted-fg transition-colors hover:bg-surface-secondary hover:text-fg" title="Editar solicitud" aria-label="Editar solicitud" :disabled="busy" @click="goEdit()"><Pencil class="h-4 w-4" aria-hidden="true" /></button>
-              <TrackingLink type="request" :id="request.id" />
+            <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <h1 class="text-2xl font-semibold tracking-tight text-fg">{{ request.code }}</h1>
+              <span class="inline-flex items-center gap-1.5 text-sm font-medium text-muted-fg"><span class="h-2 w-2 rounded-full" :class="statusDotClass(documentStatusVariant(request.status))" aria-hidden="true" />{{ documentStatusLabel(request.status) }}</span>
+              <button v-if="editable" type="button" class="grid h-8 w-8 place-items-center rounded-lg border border-border text-muted-fg transition-colors hover:bg-surface-secondary hover:text-fg" title="Editar solicitud" aria-label="Editar solicitud" :disabled="busy" @click="goEdit()"><Pencil class="h-4 w-4" aria-hidden="true" /></button>
             </div>
-            <p class="mt-1.5 text-muted-fg">{{ request.branch?.name }}</p>
-            <p class="mt-3 flex flex-wrap items-center gap-3 text-sm text-muted-fg"><AppBadge :variant="documentStatusVariant(request.status)">{{ documentStatusLabel(request.status) }}</AppBadge><span v-if="request.createdAt">Creada el {{ dateTime(request.createdAt) }}</span></p>
+            <div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-fg"><span>{{ request.branch?.name }}</span><TrackingLink type="request" :id="request.id" /></div>
           </div>
-          <div class="flex min-w-0 max-w-full flex-col gap-5 lg:items-end">
-            <fieldset :disabled="busy" class="flex flex-wrap items-center gap-2">
-              <AppButton v-if="headerAction" @click="headerAction.run()"><Send v-if="headerAction.kind === 'workflow'" class="h-4 w-4" aria-hidden="true" />{{ headerAction.label }}<ChevronRight v-if="headerAction.kind !== 'workflow'" class="h-4 w-4" aria-hidden="true" /></AppButton>
-              <details v-if="hasMenu" class="relative">
-                <summary class="inline-flex min-h-9 cursor-pointer list-none items-center gap-2 rounded-lg border border-border bg-surface px-3 text-sm font-medium text-fg transition-colors hover:bg-surface-secondary [&::-webkit-details-marker]:hidden"><EllipsisVertical class="h-4 w-4 text-muted-fg" aria-hidden="true" />Más acciones<ChevronDown class="h-4 w-4 text-muted-fg" aria-hidden="true" /></summary>
-                <div class="absolute right-0 z-30 mt-2 flex min-w-56 flex-col gap-2 rounded-xl border border-border bg-surface p-3 shadow-subtle">
-                  <RouterLink v-if="showDeliveriesLink" :to="{ path: '/inventory/warehouse', query: { requestId: String(request.id) } }" class="rounded-lg border border-border px-3 py-2 text-center text-sm hover:bg-surface-secondary">Ver entregas a sucursal</RouterLink>
-                  <AppButton v-if="canCancel" variant="outline" @click="cancelling = true">Cancelar solicitud</AppButton>
-                  <TrashButton v-if="can('trash.delete')" entity="purchase_requests" :record-id="request.id" :label="request.code" :disabled="busy" @deleted="afterRemoved" />
-                </div>
-              </details>
-              <AppButton variant="ghost" :disabled="loading" title="Actualizar" aria-label="Actualizar" @click="load"><RefreshCw class="h-4 w-4" :class="loading && 'animate-spin'" aria-hidden="true" /></AppButton>
-            </fieldset>
-            <!-- Where the request is in its life: draft, sent, in process, completed -->
-            <ol v-if="lifecycle" class="grid w-full grid-cols-4 gap-2 sm:w-[28rem]" aria-label="Avance de la solicitud">
-              <li v-for="(step, index) in lifecycle" :key="step.key" class="relative flex flex-col items-center text-center" :aria-current="step.state === 'current' || step.state === 'attention' ? 'step' : undefined">
-                <span v-if="index > 0" class="absolute right-1/2 top-5 h-0.5 w-full" :class="step.state === 'pending' ? 'bg-border' : 'bg-success'" aria-hidden="true" />
-                <span class="relative grid h-10 w-10 place-items-center rounded-full border-2" :class="{ 'border-success bg-success text-white': step.state === 'done', 'border-warning bg-warning/20 text-warning': step.state === 'current', 'border-danger bg-danger/10 text-danger': step.state === 'attention', 'border-border bg-surface text-muted-fg': step.state === 'pending' }"><Check v-if="step.state === 'done'" class="h-5 w-5" aria-hidden="true" /><component :is="lifecycleIcons[step.key]" v-else class="h-4 w-4" aria-hidden="true" /></span>
-                <span class="mt-2 text-xs leading-tight" :class="step.state === 'pending' ? 'text-muted-fg' : 'font-semibold text-fg'">{{ step.label }}</span>
-                <span v-if="stepDate(step.key)" class="mt-0.5 whitespace-nowrap text-[11px] leading-tight text-muted-fg">{{ stepDate(step.key) }}</span>
-              </li>
-            </ol>
-          </div>
+          <fieldset :disabled="busy" class="flex flex-wrap items-center gap-2">
+            <AppButton v-if="headerAction" @click="headerAction.run()"><Send v-if="headerAction.kind === 'workflow'" class="h-4 w-4" aria-hidden="true" />{{ headerAction.label }}<ChevronRight v-if="headerAction.kind !== 'workflow'" class="h-4 w-4" aria-hidden="true" /></AppButton>
+            <details v-if="hasMenu" class="relative">
+              <summary class="inline-flex h-9 cursor-pointer list-none items-center gap-2 rounded-lg border border-border bg-surface px-3 text-sm font-medium text-fg transition-colors hover:bg-surface-secondary [&::-webkit-details-marker]:hidden"><EllipsisVertical class="h-4 w-4 text-muted-fg" aria-hidden="true" />Más acciones<ChevronDown class="h-4 w-4 text-muted-fg" aria-hidden="true" /></summary>
+              <div class="absolute right-0 z-30 mt-2 flex min-w-56 flex-col gap-2 rounded-xl border border-border bg-surface p-3 shadow-subtle">
+                <RouterLink v-if="showDeliveriesLink" :to="{ path: '/inventory/warehouse', query: { requestId: String(request.id) } }" class="rounded-lg border border-border px-3 py-2 text-center text-sm hover:bg-surface-secondary">Ver entregas a sucursal</RouterLink>
+                <AppButton v-if="canCancel" variant="outline" @click="cancelling = true">Cancelar solicitud</AppButton>
+                <TrashButton v-if="can('trash.delete')" entity="purchase_requests" :record-id="request.id" :label="request.code" :disabled="busy" @deleted="afterRemoved" />
+              </div>
+            </details>
+            <AppButton variant="outline" class="!w-9 !px-0" :disabled="loading" title="Actualizar" aria-label="Actualizar" @click="load"><RefreshCw class="h-4 w-4" :class="loading && 'animate-spin'" aria-hidden="true" /></AppButton>
+          </fieldset>
         </header>
 
-        <!-- Next step: what comes next and why, in a soft block that is hard to miss -->
-        <section v-if="callout" aria-labelledby="next-step-title" class="flex flex-col gap-4 rounded-xl border px-6 py-4 sm:flex-row sm:items-center sm:gap-6" :class="callout.tone === 'action' ? 'border-accent/15 bg-accent-soft' : callout.tone === 'success' ? 'border-success/30 bg-success/10' : 'border-border/70 bg-surface'">
-          <div class="flex min-w-0 items-center gap-5">
-            <span class="grid h-12 w-12 shrink-0 place-items-center rounded-full border-2" :class="callout.tone === 'action' ? 'border-accent text-accent' : callout.tone === 'success' ? 'border-success text-success' : 'border-border text-muted-fg'"><component :is="callout.icon" class="h-6 w-6" aria-hidden="true" /></span>
-            <div class="min-w-0">
-              <p class="text-sm text-fg/80">{{ callout.tone === 'action' ? 'Siguiente paso' : 'Estado de la solicitud' }}</p>
-              <h2 id="next-step-title" class="mt-0.5 text-xl font-semibold leading-snug" :class="callout.tone === 'action' ? 'text-accent' : callout.tone === 'success' ? 'text-success' : 'text-fg'">{{ callout.title }}</h2>
-            </div>
+        <!-- Where the request is and what comes next -->
+        <section v-if="summary" aria-labelledby="next-step-title" class="flex flex-wrap items-start justify-between gap-x-8 gap-y-3">
+          <div class="min-w-0">
+            <h2 id="next-step-title" class="text-base font-medium" :class="summary.tone === 'success' ? 'text-success' : 'text-fg'">{{ summary.primary }}</h2>
+            <p v-if="summary.secondary" class="mt-0.5 text-sm text-muted-fg"><span v-if="summary.next" class="sr-only">Siguiente paso: </span>{{ summary.secondary }}</p>
           </div>
-          <p v-if="callout.description" class="max-w-2xl text-sm leading-6 text-muted-fg sm:border-l sm:py-1 sm:pl-6" :class="callout.tone === 'action' ? 'sm:border-accent/40' : 'sm:border-border'">{{ callout.description }}</p>
+          <!-- Draft, sent, in process, completed -->
+          <ol v-if="lifecycle" class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs" aria-label="Avance de la solicitud">
+            <li v-for="step in lifecycle" :key="step.key" class="inline-flex items-center gap-1.5" :class="step.state === 'pending' ? 'text-muted-fg' : 'font-medium text-fg'" :aria-current="step.state === 'current' || step.state === 'attention' ? 'step' : undefined">
+              <span class="h-2 w-2 rounded-full" :class="{ 'bg-success': step.state === 'done', 'bg-warning': step.state === 'current', 'bg-danger': step.state === 'attention', 'bg-border': step.state === 'pending' }" aria-hidden="true" />{{ step.label }}<span v-if="stepDate(step.key)" class="font-normal text-muted-fg">· {{ stepDate(step.key) }}</span>
+            </li>
+          </ol>
         </section>
 
-        <div class="border-b border-border/70"><PurchaseTabs variant="underline" :model-value="tab" :items="tabs" label="Secciones de la solicitud" @update:model-value="tab = $event" /></div>
+        <div class="border-b border-border"><PurchaseTabs variant="underline" :model-value="tab" :items="tabs" label="Secciones de la solicitud" @update:model-value="tab = $event" /></div>
 
-        <!-- Productos: one container, sections separated by lines -->
-        <div v-if="tab === 'products'" class="divide-y divide-border/70 rounded-xl border border-border/70 bg-surface">
-          <section aria-labelledby="detail-general" class="p-5">
-            <div class="flex flex-wrap items-center justify-between gap-3">
-              <h2 id="detail-general" class="flex items-center gap-3 text-base font-semibold text-fg"><span class="grid h-8 w-8 place-items-center rounded-lg bg-accent-soft text-accent"><FileText class="h-4 w-4" aria-hidden="true" /></span>Información general</h2>
-              <AppButton v-if="editable" variant="outline" size="sm" :disabled="busy" @click="goEdit()"><Pencil class="h-4 w-4" aria-hidden="true" />Editar información</AppButton>
-            </div>
-            <dl class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <div class="rounded-lg border border-border/80 px-4 py-3"><dt class="text-xs text-muted-fg">Sucursal</dt><dd class="mt-1.5 flex items-center gap-2 text-sm font-medium text-fg"><Building2 class="h-4 w-4 shrink-0 text-muted-fg" aria-hidden="true" /><span class="min-w-0">{{ request.branch?.name }}</span></dd></div>
-              <div class="rounded-lg border border-border/80 px-4 py-3"><dt class="text-xs text-muted-fg">Estado</dt><dd class="mt-1.5 flex items-center gap-2"><component :is="statusIcon" class="h-4 w-4 shrink-0 text-muted-fg" aria-hidden="true" /><AppBadge :variant="documentStatusVariant(request.status)">{{ documentStatusLabel(request.status) }}</AppBadge></dd></div>
-              <div class="rounded-lg border border-border/80 px-4 py-3"><dt class="text-xs text-muted-fg">Fecha requerida</dt><dd class="mt-1.5 flex items-center gap-2 text-sm font-medium text-fg"><CalendarDays class="h-4 w-4 shrink-0 text-muted-fg" aria-hidden="true" />{{ shortDate(request.requiredDate) }}</dd></div>
-              <div class="rounded-lg border border-border/80 px-4 py-3"><dt class="text-xs text-muted-fg">Finalidad de la compra</dt><dd class="mt-1.5 flex items-center gap-2 text-sm font-medium text-fg"><Tag class="h-4 w-4 shrink-0 text-muted-fg" aria-hidden="true" /><span class="min-w-0">{{ purchasePurposeLabel(request.purpose) }}</span></dd></div>
-            </dl>
-            <div class="mt-5">
-              <p class="text-xs text-muted-fg">Motivo de la compra</p>
-              <p class="mt-1 max-w-3xl text-base font-medium leading-7 text-fg">{{ request.justification }}</p>
-            </div>
-          </section>
+        <!-- Productos: the lines and notes on the left, the general data on the right -->
+        <div v-if="tab === 'products'" class="space-y-5">
+          <div class="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
+            <div class="min-w-0 divide-y divide-border rounded-[12px] border border-border bg-surface">
+              <section aria-labelledby="detail-products" class="p-5">
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                  <h2 id="detail-products" class="text-base font-semibold text-fg">Productos e insumos <span class="text-sm font-normal tabular-nums text-muted-fg">({{ request.details.length }})</span></h2>
+                  <AppButton v-if="editable" variant="outline" size="sm" :disabled="busy" @click="goEdit()"><Pencil class="h-4 w-4" aria-hidden="true" />Editar productos</AppButton>
+                </div>
+                <div class="mt-4 overflow-x-auto rounded-lg border border-border">
+                  <table class="w-full min-w-[480px] text-left text-sm">
+                    <thead class="border-b border-border bg-surface-secondary text-xs text-muted-fg"><tr><th scope="col" class="w-12 px-4 py-2.5 font-medium">#</th><th scope="col" class="px-4 py-2.5 font-medium">Producto</th><th scope="col" class="px-4 py-2.5 font-medium">Unidad</th><th scope="col" class="px-4 py-2.5 text-right font-medium">Cantidad solicitada</th><th v-if="editable" scope="col" class="w-20 px-4 py-2.5 text-right font-medium">Acciones</th></tr></thead>
+                    <tbody class="divide-y divide-border">
+                      <tr v-for="(line, index) in request.details" :key="line.id"><td class="px-4 py-3 tabular-nums text-muted-fg">{{ Number(index) + 1 }}</td><td class="px-4 py-3"><p class="font-medium text-fg">{{ line.product.name }}</p><p class="mt-0.5 text-xs text-muted-fg">{{ line.product.internalCode }}</p></td><td class="px-4 py-3 text-muted-fg">{{ line.unit.name }}</td><td class="px-4 py-3 text-right font-medium tabular-nums text-fg">{{ formatQuantity(Number(line.quantity)) }}</td>
+                        <td v-if="editable" class="px-4 py-2 text-right"><button type="button" class="inline-grid h-8 w-8 place-items-center rounded-lg border border-border text-muted-fg transition-colors hover:bg-surface-secondary hover:text-fg" :title="'Editar ' + line.product.name" :aria-label="'Editar ' + line.product.name" :disabled="busy" @click="goEdit()"><Pencil class="h-3.5 w-3.5" aria-hidden="true" /></button></td></tr>
+                    </tbody>
+                  </table>
+                </div>
+                <button v-if="editable" type="button" class="mt-3 flex min-h-12 w-full flex-col items-center justify-center gap-0.5 rounded-lg border border-dashed border-border text-sm font-medium text-muted-fg transition-colors hover:border-accent hover:text-accent" :disabled="busy" @click="goEdit({ addLine: true })"><span class="inline-flex items-center gap-2"><PlusCircle class="h-4 w-4" aria-hidden="true" />Agregar otro producto</span><span class="text-xs font-normal">Puedes agregar todos los productos o insumos necesarios para esta solicitud.</span></button>
+              </section>
 
-          <section aria-labelledby="detail-products" class="p-5">
-            <div class="flex flex-wrap items-center justify-between gap-3">
-              <h2 id="detail-products" class="flex items-center gap-3 text-base font-semibold text-fg"><span class="grid h-8 w-8 place-items-center rounded-lg bg-accent-soft text-accent"><Package class="h-4 w-4" aria-hidden="true" /></span>Productos e insumos<span class="text-sm font-normal tabular-nums text-muted-fg">({{ request.details.length }})</span></h2>
-              <AppButton v-if="editable" variant="outline" size="sm" :disabled="busy" @click="goEdit()"><Pencil class="h-4 w-4" aria-hidden="true" />Editar productos</AppButton>
+              <section aria-labelledby="detail-notes" class="p-5">
+                <h2 id="detail-notes" class="text-base font-semibold text-fg">Observaciones</h2>
+                <p class="mt-2 whitespace-pre-wrap text-sm leading-6" :class="request.notes ? 'text-fg' : 'text-muted-fg'">{{ request.notes || 'Sin observaciones' }}</p>
+              </section>
             </div>
-            <div class="mt-4 overflow-x-auto rounded-lg border border-border">
-              <table class="w-full min-w-[560px] text-left text-sm">
-                <thead class="border-b border-border bg-surface-secondary text-xs text-muted-fg"><tr><th scope="col" class="w-12 px-4 py-3 font-medium">#</th><th scope="col" class="px-4 py-3 font-medium">Producto</th><th scope="col" class="px-4 py-3 font-medium">Código</th><th scope="col" class="px-4 py-3 font-medium">Unidad</th><th scope="col" class="px-4 py-3 text-right font-medium">Cantidad solicitada</th><th v-if="editable" scope="col" class="w-20 px-4 py-3 text-right font-medium">Acciones</th></tr></thead>
-                <tbody class="divide-y divide-border">
-                  <tr v-for="(line, index) in request.details" :key="line.id"><td class="px-4 py-3 tabular-nums text-muted-fg">{{ Number(index) + 1 }}</td><td class="px-4 py-3 font-medium text-fg">{{ line.product.name }}</td><td class="px-4 py-3 text-muted-fg">{{ line.product.internalCode }}</td><td class="px-4 py-3 text-muted-fg">{{ line.unit.name }}</td><td class="px-4 py-3 text-right font-medium tabular-nums text-fg">{{ formatQuantity(Number(line.quantity)) }}</td>
-                    <td v-if="editable" class="px-4 py-2 text-right"><button type="button" class="inline-grid h-8 w-8 place-items-center rounded-lg border border-border text-muted-fg transition-colors hover:bg-surface-secondary hover:text-fg" :title="'Editar ' + line.product.name" :aria-label="'Editar ' + line.product.name" :disabled="busy" @click="goEdit()"><Pencil class="h-3.5 w-3.5" aria-hidden="true" /></button></td></tr>
-                </tbody>
-              </table>
-            </div>
-            <button v-if="editable" type="button" class="mt-3 flex min-h-12 w-full flex-col items-center justify-center gap-0.5 rounded-lg border border-dashed border-border text-sm font-medium text-muted-fg transition-colors hover:border-accent hover:text-accent" :disabled="busy" @click="goEdit({ addLine: true })"><span class="inline-flex items-center gap-2"><PlusCircle class="h-4 w-4" aria-hidden="true" />Agregar otro producto</span><span class="text-xs font-normal">Puedes agregar todos los productos o insumos necesarios para esta solicitud.</span></button>
-          </section>
 
-          <section aria-labelledby="detail-notes" class="p-5">
-            <h2 id="detail-notes" class="flex items-center gap-2 text-sm font-semibold text-fg"><StickyNote class="h-4 w-4 text-muted-fg" aria-hidden="true" />Observaciones <span class="font-normal text-muted-fg">(opcional)</span></h2>
-            <div class="mt-2 min-h-14 whitespace-pre-wrap rounded-lg border border-border bg-surface px-3 py-2.5 text-sm leading-6" :class="request.notes ? 'text-fg' : 'text-muted-fg'">{{ request.notes || 'Sin observaciones' }}</div>
-          </section>
-
-          <div v-if="awaitingPurchasing" class="p-5">
-            <div class="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-success/40 bg-success/10 px-5 py-4">
-              <div class="flex min-w-0 items-start gap-3">
-                <CircleCheck class="mt-0.5 h-6 w-6 shrink-0 text-success" aria-hidden="true" />
-                <div><p class="font-semibold text-success">Solicitud enviada a Compras</p><p class="mt-0.5 text-sm text-muted-fg">Esta solicitud ya fue enviada y está disponible para su revisión en el área de Compras.</p></div>
+            <section aria-labelledby="detail-general" class="rounded-[12px] border border-border bg-surface p-5">
+              <div class="flex flex-wrap items-center justify-between gap-3">
+                <h2 id="detail-general" class="text-base font-semibold text-fg">Información general</h2>
+                <AppButton v-if="editable" variant="outline" size="sm" :disabled="busy" @click="goEdit()"><Pencil class="h-4 w-4" aria-hidden="true" />Editar información</AppButton>
               </div>
-              <AppButton v-if="bannerAction" variant="outline" :disabled="busy" @click="bannerAction.run()"><FileText class="h-4 w-4" aria-hidden="true" />Ver en gestión de cotización</AppButton>
+              <dl class="mt-4 space-y-4 text-sm">
+                <div><dt class="text-muted-fg">Sucursal</dt><dd class="mt-0.5 font-medium text-fg">{{ request.branch?.name }}</dd></div>
+                <div><dt class="text-muted-fg">Fecha requerida</dt><dd class="mt-0.5 font-medium text-fg">{{ shortDate(request.requiredDate) }}</dd></div>
+                <div><dt class="text-muted-fg">Finalidad de la compra</dt><dd class="mt-0.5 font-medium text-fg">{{ purchasePurposeLabel(request.purpose) }}</dd></div>
+                <div><dt class="text-muted-fg">Motivo de la compra</dt><dd class="mt-0.5 font-medium text-fg">{{ request.justification }}</dd></div>
+                <div v-if="request.createdAt"><dt class="text-muted-fg">Creada el</dt><dd class="mt-0.5 font-medium tabular-nums text-fg">{{ dateTime(request.createdAt) }}</dd></div>
+              </dl>
+            </section>
+          </div>
+
+          <div v-if="awaitingPurchasing" class="flex flex-wrap items-center justify-between gap-4 rounded-[12px] border border-success/40 bg-success/10 px-5 py-4">
+            <div class="flex min-w-0 items-start gap-3">
+              <CircleCheck class="mt-0.5 h-5 w-5 shrink-0 text-success" aria-hidden="true" />
+              <div><p class="font-semibold text-fg">Solicitud enviada a Compras</p><p class="mt-0.5 text-sm text-muted-fg">Esta solicitud ya fue enviada y está disponible para su revisión en el área de Compras.</p></div>
             </div>
+            <AppButton v-if="bannerAction" variant="outline" :disabled="busy" @click="bannerAction.run()"><FileText class="h-4 w-4" aria-hidden="true" />Ver en gestión de cotización</AppButton>
           </div>
         </div>
 
         <!-- Entregas -->
-        <section v-else-if="tab === 'deliveries'" aria-labelledby="detail-deliveries" class="rounded-xl border border-border/70 bg-surface p-5">
-          <h2 id="detail-deliveries" class="flex items-center gap-3 text-base font-semibold text-fg"><span class="grid h-8 w-8 place-items-center rounded-lg bg-accent-soft text-accent"><Truck class="h-4 w-4" aria-hidden="true" /></span>Entrega a la sucursal solicitante</h2>
+        <section v-else-if="tab === 'deliveries'" aria-labelledby="detail-deliveries" class="rounded-[12px] border border-border bg-surface p-5">
+          <h2 id="detail-deliveries" class="text-base font-semibold text-fg">Entrega a la sucursal solicitante</h2>
           <div class="mt-4 overflow-x-auto rounded-lg border border-border">
             <table class="w-full min-w-[560px] text-left text-sm">
-              <thead class="border-b border-border bg-surface-secondary text-xs text-muted-fg"><tr><th scope="col" class="px-4 py-3 font-medium">Producto</th><th scope="col" class="px-4 py-3 text-right font-medium">Solicitado</th><th scope="col" class="px-4 py-3 text-right font-medium">Despachado</th><th scope="col" class="px-4 py-3 text-right font-medium">Recibido en sucursal</th><th scope="col" class="px-4 py-3 text-right font-medium">Pendiente</th></tr></thead>
+              <thead class="border-b border-border bg-surface-secondary text-xs text-muted-fg"><tr><th scope="col" class="px-4 py-2.5 font-medium">Producto</th><th scope="col" class="px-4 py-2.5 text-right font-medium">Solicitado</th><th scope="col" class="px-4 py-2.5 text-right font-medium">Despachado</th><th scope="col" class="px-4 py-2.5 text-right font-medium">Recibido en sucursal</th><th scope="col" class="px-4 py-2.5 text-right font-medium">Pendiente</th></tr></thead>
               <tbody class="divide-y divide-border">
                 <tr v-for="line in request.details" :key="line.id"><td class="px-4 py-3"><p class="font-medium text-fg">{{ line.product.name }}</p><p class="mt-1 text-xs text-muted-fg">{{ line.unit.name }}</p></td><td class="px-4 py-3 text-right tabular-nums">{{ formatQuantity(Number(line.quantity)) }}</td><td class="px-4 py-3 text-right tabular-nums">{{ formatQuantity(deliveredQuantity(line, 'quantity')) }}</td><td class="px-4 py-3 text-right tabular-nums">{{ formatQuantity(deliveredQuantity(line, 'receivedQuantity')) }}</td><td class="px-4 py-3 text-right font-medium tabular-nums text-fg">{{ formatQuantity(Math.max(0, Number(line.quantity) - deliveredQuantity(line, 'receivedQuantity'))) }}</td></tr>
               </tbody>
@@ -285,15 +276,15 @@ watch([() => route.params.id, activeCompanyId], () => { tab.value = route.query.
         </section>
 
         <!-- Información -->
-        <section v-else aria-labelledby="detail-data" class="rounded-xl border border-border/70 bg-surface p-5">
-          <h2 id="detail-data" class="flex items-center gap-3 text-base font-semibold text-fg"><span class="grid h-8 w-8 place-items-center rounded-lg bg-accent-soft text-accent"><FileText class="h-4 w-4" aria-hidden="true" /></span>Datos del documento</h2>
-          <dl class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <div class="rounded-lg border border-border/80 px-4 py-3"><dt class="text-xs text-muted-fg">Fecha requerida</dt><dd class="mt-1.5 text-sm font-medium text-fg">{{ shortDate(request.requiredDate) }}</dd></div>
-            <div class="rounded-lg border border-border/80 px-4 py-3"><dt class="text-xs text-muted-fg">Creada</dt><dd class="mt-1.5 text-sm font-medium text-fg">{{ dateTime(request.requestDate) }}</dd></div>
-            <div class="rounded-lg border border-border/80 px-4 py-3"><dt class="text-xs text-muted-fg">Solicitante</dt><dd class="mt-1.5 text-sm font-medium text-fg">{{ request.user?.username }}</dd></div>
-            <div class="rounded-lg border border-border/80 px-4 py-3"><dt class="text-xs text-muted-fg">Centro de almacenaje</dt><dd class="mt-1.5 text-sm font-medium text-fg">{{ request.warehouse?.name || 'Por confirmar' }}</dd></div>
-            <div class="rounded-lg border border-border/80 px-4 py-3"><dt class="text-xs text-muted-fg">Productos</dt><dd class="mt-1.5 text-sm font-medium text-fg">{{ request.details.length }} líneas</dd></div>
-            <div class="rounded-lg border border-border/80 px-4 py-3"><dt class="text-xs text-muted-fg">Origen</dt><dd class="mt-1.5 text-sm font-medium text-fg">{{ request.quotationLinks?.length ?? 0 }} cotizaciones</dd></div>
+        <section v-else aria-labelledby="detail-data" class="rounded-[12px] border border-border bg-surface p-5">
+          <h2 id="detail-data" class="text-base font-semibold text-fg">Datos del documento</h2>
+          <dl class="mt-4 grid gap-x-8 gap-y-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
+            <div><dt class="text-muted-fg">Fecha requerida</dt><dd class="mt-0.5 font-medium text-fg">{{ shortDate(request.requiredDate) }}</dd></div>
+            <div><dt class="text-muted-fg">Creada</dt><dd class="mt-0.5 font-medium text-fg">{{ dateTime(request.requestDate) }}</dd></div>
+            <div><dt class="text-muted-fg">Solicitante</dt><dd class="mt-0.5 font-medium text-fg">{{ request.user?.username }}</dd></div>
+            <div><dt class="text-muted-fg">Centro de almacenaje</dt><dd class="mt-0.5 font-medium text-fg">{{ request.warehouse?.name || 'Por confirmar' }}</dd></div>
+            <div><dt class="text-muted-fg">Productos</dt><dd class="mt-0.5 font-medium text-fg">{{ request.details.length }} líneas</dd></div>
+            <div><dt class="text-muted-fg">Origen</dt><dd class="mt-0.5 font-medium text-fg">{{ request.quotationLinks?.length ?? 0 }} cotizaciones</dd></div>
           </dl>
         </section>
 
