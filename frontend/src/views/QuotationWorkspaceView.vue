@@ -480,7 +480,7 @@ onBeforeUnmount(() => { mounted = false; ++companyEpoch; ++loadVersion; ++openVe
           </div>
         </section>
 
-        <form v-if="offer" class="space-y-4" @submit.prevent="saveOffer">
+        <form v-if="offer" id="offer-form" class="space-y-4" @submit.prevent="saveOffer">
           <section class="rounded-[12px] border border-border bg-surface p-5">
             <div class="flex flex-wrap items-start justify-between gap-3"><div><h2 class="text-lg font-semibold">{{ offer.supplier.name }}</h2><p class="mt-0.5 text-sm text-muted-fg">Solicitud {{ offer.code }}</p></div><AppButton type="button" variant="outline" :disabled="busy" @click="change(() => { offer = null; })">Cerrar oferta</AppButton></div>
             <div class="mt-4 grid gap-4 sm:grid-cols-3">
@@ -539,7 +539,7 @@ onBeforeUnmount(() => { mounted = false; ++companyEpoch; ++loadVersion; ++openVe
             </div>
           </div>
 
-          <div class="sticky bottom-3 z-10 flex flex-wrap items-center justify-end gap-3 rounded-[12px] border border-border bg-surface px-5 py-3"><AppButton type="button" variant="outline" :disabled="busy" @click="change(() => { offer = null; })">Cancelar</AppButton><AppButton type="submit" :disabled="busy">Guardar oferta recibida</AppButton></div>
+
         </form>
 
         <QuotationComparison v-if="!offer && workspace === 'compare' && current" :key="'compare-' + current.id" embedded :process-id="current.id" @awarded="afterAward" />
@@ -549,6 +549,14 @@ onBeforeUnmount(() => { mounted = false; ++companyEpoch; ++loadVersion; ++openVe
         </section>
       </template>
     </div>
+    <template v-if="offer" #footer>
+      <div class="shrink-0 border-t border-border bg-surface py-3">
+        <div class="mx-auto flex w-full max-w-[1600px] flex-wrap items-center justify-end gap-3 px-4 sm:px-6 lg:px-8">
+          <AppButton type="button" variant="outline" :disabled="busy" @click="change(() => { offer = null; })">Cancelar</AppButton>
+          <AppButton type="submit" form="offer-form" :disabled="busy">Guardar oferta recibida</AppButton>
+        </div>
+      </div>
+    </template>
     <PurchaseActionDialog v-if="confirm" title="Confirmar adjudicación" description="Se generará una orden por proveedor con los productos y cantidades seleccionados. Revise cada orden antes de aprobarla." :busy="busy" :error="error" @close="confirm = false" @confirm="award" />
     <PurchaseActionDialog v-if="leaving || discardChanges" title="Descartar cambios" description="Tiene datos sin guardar en este proceso." :busy="false" @close="resolveDiscard(false)" @confirm="resolveDiscard(true)" />
   </AdminLayout>

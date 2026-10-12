@@ -34,6 +34,7 @@ watch(
                     <slot />
                 </div>
             </main>
+            <slot name="footer" />
         </div>
     </div>
 </template>
