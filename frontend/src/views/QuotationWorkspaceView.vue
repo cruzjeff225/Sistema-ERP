@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
-import { Building2, CalendarDays, ChevronLeft, ChevronRight, Search, Tag, Trash2, ArrowRight, Check } from 'lucide-vue-next';
+import { Building2, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Search, Tag, Trash2, ArrowRight, Check } from 'lucide-vue-next';
 import AdminLayout from '../layouts/AdminLayout.vue';
 import PurchaseTabs from '../components/purchases/PurchaseTabs.vue';
 import TrashButton from '../components/admin/TrashButton.vue';
@@ -292,10 +292,10 @@ onBeforeUnmount(() => { mounted = false; ++companyEpoch; ++loadVersion; ++openVe
       </ol>
 
       <p v-if="error" role="alert" class="rounded-[12px] bg-danger/10 p-4 text-sm text-danger">{{ error }}</p>
-      <p v-if="success" role="status" class="rounded-[12px] bg-success/10 p-4 text-sm text-success">{{ success }}</p>
+      <p v-if="success" role="status" class="flex items-center gap-2 text-sm font-medium text-success"><Check class="h-4 w-4 shrink-0" aria-hidden="true" />{{ success }}</p>
 
-      <section v-if="current && !showNew && !offer && !opening" aria-label="Gestión abierta" class="flex flex-wrap items-center justify-between gap-3 rounded-[12px] border border-border bg-surface px-5 py-3">
-        <div class="min-w-0"><p class="text-xs text-muted-fg">Gestión abierta</p><p class="font-semibold text-fg">{{ processLabel(current) }}<span v-if="originCodes.length" class="ml-2 text-sm font-normal text-muted-fg">· {{ originCodes.join(', ') }}</span></p></div>
+      <section v-if="current && !showNew && !offer && !opening" aria-label="Gestión abierta" class="flex flex-wrap items-start justify-between gap-3 rounded-[12px] border border-border bg-surface px-5 py-4">
+        <div class="min-w-0"><p class="text-sm text-muted-fg">Gestión abierta</p><p class="mt-0.5 text-lg font-semibold text-fg">{{ processLabel(current) }}</p><p v-if="originCodes.length" class="mt-0.5 text-sm text-muted-fg">{{ originCodes.join(', ') }}</p></div>
         <AppButton variant="ghost" size="sm" :disabled="busy || loading" @click="switching = !switching">{{ switching ? 'Cerrar' : 'Cambiar de gestión' }}</AppButton>
       </section>
 
@@ -394,24 +394,21 @@ onBeforeUnmount(() => { mounted = false; ++companyEpoch; ++loadVersion; ++openVe
         <section v-if="!offer" class="rounded-[12px] border border-border bg-surface p-5 sm:p-6">
           <div class="flex flex-wrap items-center justify-between gap-4">
             <div class="max-w-2xl"><p class="mb-1 text-xs font-medium text-muted-fg">Siguiente paso</p><h2 class="text-lg font-semibold">{{ nextStep.title }}</h2><p class="mt-1 text-sm text-muted-fg">{{ nextStep.description }}</p><TrackingLink class="-ml-2 mt-2" type="consolidation" :id="current.id" /></div>
-            <div class="flex flex-wrap gap-2">
+            <div class="flex flex-col items-stretch gap-2 sm:items-end"><div class="flex flex-wrap gap-2">
               <AppButton v-if="nextStep.action === 'suppliers' && can('purchase_quotations.create')" :disabled="busy || changed" @click="change(() => { workspace = 'suppliers'; })">Preparar solicitud al proveedor</AppButton>
               <AppButton v-if="nextStep.action === 'offer' && !severalPending && canRegisterResponse(pendingResponse)" :disabled="busy || changed" @click="change(() => { workspace = 'suppliers'; startOffer(pendingResponse); })">{{ pendingResponse.quotation ? 'Completar oferta' : 'Registrar oferta' }}</AppButton>
               <AppButton v-if="nextStep.action === 'offer' && severalPending && workspace !== 'suppliers'" :disabled="busy || changed" @click="change(() => { workspace = 'suppliers'; })">Elegir proveedor</AppButton>
               <AppButton v-if="nextStep.action === 'compare' && can('purchase_quotations.view')" :disabled="busy || changed" @click="change(() => { workspace = 'compare'; })">Comparar y elegir ofertas</AppButton>
               <AppButton v-if="nextStep.action === 'orders' && can('purchase_orders.view') && workspace !== 'orders'" :disabled="busy || changed" @click="change(() => { workspace = 'orders'; })">Ver órdenes</AppButton>
             </div>
+              <details v-if="can('trash.delete') || can('purchase_quotations.view')" class="relative">
+                <summary class="inline-flex h-9 cursor-pointer list-none items-center gap-2 rounded-lg border border-border bg-surface px-3 text-sm font-medium text-fg transition-colors hover:bg-surface-secondary [&::-webkit-details-marker]:hidden">Más acciones<ChevronDown class="h-4 w-4 text-muted-fg" aria-hidden="true" /></summary>
+                <div class="absolute right-0 top-full z-30 mt-2 flex min-w-52 flex-col gap-2 rounded-[12px] border border-border bg-surface p-3 shadow-subtle"><RouterLink v-if="can('purchase_quotations.view')" to="/purchases/quotations" class="rounded-lg border border-border px-3 py-2 text-center text-sm hover:bg-surface-secondary">Ver ofertas anteriores</RouterLink><TrashButton v-if="can('trash.delete')" entity="purchase_processes" :record-id="current.id" :label="current.code" :disabled="busy || changed" @deleted="load" /></div>
+              </details>
+            </div>
           </div>
         </section>
-        <div v-if="!offer" class="flex flex-wrap items-center justify-between gap-4">
-          <PurchaseTabs :model-value="workspace" :items="workspaceTabs" label="Secciones de la gestión" :disabled="busy || loading" @update:model-value="selectWorkspace" />
-          <div class="flex items-center gap-4">
-            <details v-if="can('trash.delete') || can('purchase_quotations.view')" class="relative">
-              <summary class="cursor-pointer text-sm text-muted-fg">Más acciones</summary>
-              <div class="absolute right-0 top-full z-30 mt-3 flex min-w-52 flex-col gap-2 rounded-[12px] border border-border bg-surface p-3 shadow-subtle"><RouterLink v-if="can('purchase_quotations.view')" to="/purchases/quotations" class="rounded-lg border border-border px-3 py-2 text-center text-sm hover:bg-surface-secondary">Ver ofertas anteriores</RouterLink><TrashButton v-if="can('trash.delete')" entity="purchase_processes" :record-id="current.id" :label="current.code" :disabled="busy || changed" @deleted="load" /></div>
-            </details>
-          </div>
-        </div>
+        <div v-if="!offer" class="border-b border-border"><PurchaseTabs variant="underline" :model-value="workspace" :items="workspaceTabs.map(tab => ({ value: tab.value, label: `${tab.label} (${tab.count})` }))" label="Secciones de la gestión" :disabled="busy || loading" @update:model-value="selectWorkspace" /></div>
 
         <section v-if="!offer && workspace === 'products'" class="overflow-hidden rounded-[12px] border border-border bg-surface">
           <div class="flex flex-wrap items-center justify-between gap-4 p-5 sm:p-6">
@@ -420,7 +417,7 @@ onBeforeUnmount(() => { mounted = false; ++companyEpoch; ++loadVersion; ++openVe
           </div>
           <div class="overflow-x-auto">
             <table class="w-full min-w-[600px] text-left text-sm">
-              <thead class="border-y border-border bg-surface-secondary text-xs text-muted-fg"><tr><th class="px-5 py-3 font-medium sm:px-6">Producto</th><th class="px-4 py-3 text-right font-medium">Solicitado</th><th class="px-4 py-3 text-right font-medium">A cotizar</th><th class="px-5 py-3 sm:px-6"><span class="sr-only">Acciones</span></th></tr></thead>
+              <thead class="border-y border-border bg-surface-secondary text-xs text-muted-fg"><tr><th class="px-5 py-3 font-medium sm:px-6">Producto</th><th class="px-4 py-3 text-right font-medium">Solicitado</th><th class="px-4 py-3 text-right font-medium">A cotizar</th><th class="px-5 py-3 text-right font-medium sm:px-6">Acción</th></tr></thead>
               <tbody>
                 <tr v-for="l in current.lines" :key="l.id" class="border-b border-border last:border-b-0">
                   <td class="px-5 py-4 sm:px-6">
@@ -456,12 +453,12 @@ onBeforeUnmount(() => { mounted = false; ++companyEpoch; ++loadVersion; ++openVe
             <div><h2 class="text-lg font-semibold">Consulta a proveedores</h2><p class="mt-1 text-sm text-muted-fg">Prepare el PDF y registre la oferta de cada proveedor.</p></div>
             <AppButton v-if="current.rfqs.length && availableSuppliers.length && can('purchase_quotations.create') && !addingSupplier" variant="outline" :disabled="busy" @click="addingSupplier = true">Consultar otro proveedor</AppButton>
           </div>
-          <form v-if="(!current.rfqs.length || addingSupplier) && can('purchase_quotations.create')" class="mt-5 space-y-5 rounded-[12px] border border-border bg-surface-secondary p-4 sm:p-5" @submit.prevent="requestQuote">
-            <label class="block max-w-lg text-sm font-medium">Proveedor<select v-model.number="supplierId" class="field-control" required><option :value="0" disabled>Seleccione</option><option v-for="s in availableSuppliers" :key="s.id" :value="s.id">{{ s.name }}</option></select></label>
+          <form v-if="(!current.rfqs.length || addingSupplier) && can('purchase_quotations.create')" class="mt-5 space-y-5 border-t border-border pt-5" @submit.prevent="requestQuote">
+            <label class="block max-w-lg text-sm font-medium">Proveedor<select v-model.number="supplierId" class="field-control !h-9" required><option :value="0" disabled>Seleccione</option><option v-for="s in availableSuppliers" :key="s.id" :value="s.id">{{ s.name }}</option></select></label>
             <p v-if="!availableSuppliers.length" class="text-sm text-muted-fg">No hay proveedores disponibles para una nueva consulta.</p>
             <fieldset><legend class="text-sm font-medium">Productos a consultar</legend><p class="mt-1 text-xs text-muted-fg">Puede consultar el mismo producto a varios proveedores.</p>
               <div class="mt-3 grid gap-2 sm:grid-cols-2">
-                <label v-for="l in current.lines.filter((l: any) => Number(l.purchaseQuantity) > 0)" :key="l.id" class="flex cursor-pointer items-center gap-3 rounded-lg border border-border bg-surface p-3"><input v-model="rfqLineIds" type="checkbox" :value="l.id" :disabled="busy" class="h-4 w-4 shrink-0" /><span class="min-w-0 flex-1 text-sm">{{ l.product.name }}</span><span class="text-sm font-medium tabular-nums">{{ l.purchaseQuantity }}</span></label>
+                <label v-for="l in current.lines.filter((l: any) => Number(l.purchaseQuantity) > 0)" :key="l.id" class="flex cursor-pointer items-center gap-3 rounded-lg border border-border bg-surface p-3"><input v-model="rfqLineIds" type="checkbox" :value="l.id" :disabled="busy" class="h-4 w-4 shrink-0 accent-accent" /><span class="min-w-0 flex-1 text-sm">{{ l.product.name }}</span><span class="text-sm font-medium tabular-nums">{{ l.purchaseQuantity }}</span></label>
               </div>
             </fieldset>
             <div class="flex flex-wrap justify-end gap-3"><AppButton v-if="addingSupplier" type="button" variant="outline" :disabled="busy" @click="addingSupplier = false">Cancelar</AppButton><AppButton type="submit" :disabled="busy || !supplierId || !rfqLineIds.length">Preparar solicitud</AppButton></div>
