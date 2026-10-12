@@ -312,7 +312,7 @@ onBeforeUnmount(() => { mounted = false; ++companyEpoch; ++loadVersion; ++openVe
               <AppButton v-if="nextStep.action === 'suppliers' && can('purchase_quotations.create')" :disabled="busy || changed" @click="change(() => { workspace = 'suppliers'; })">Preparar solicitud al proveedor</AppButton>
               <AppButton v-if="nextStep.action === 'offer' && !severalPending && canRegisterResponse(pendingResponse)" :disabled="busy || changed" @click="change(() => { workspace = 'suppliers'; startOffer(pendingResponse); })">{{ pendingResponse.quotation ? 'Completar oferta' : 'Registrar oferta' }}</AppButton>
               <AppButton v-if="nextStep.action === 'offer' && severalPending && workspace !== 'suppliers'" :disabled="busy || changed" @click="change(() => { workspace = 'suppliers'; })">Elegir proveedor</AppButton>
-              <AppButton v-if="nextStep.action === 'compare' && can('purchase_quotations.view')" :disabled="busy || changed" @click="change(() => { workspace = 'compare'; })">Comparar y elegir ofertas</AppButton>
+              <AppButton v-if="nextStep.action === 'compare' && can('purchase_quotations.view')" variant="outline" :disabled="busy || changed" @click="change(() => { workspace = 'compare'; })">Comparar y elegir ofertas</AppButton>
               <AppButton v-if="nextStep.action === 'orders' && can('purchase_orders.view') && workspace !== 'orders'" :disabled="busy || changed" @click="change(() => { workspace = 'orders'; })">Ver órdenes</AppButton>
             </div>
               <details v-if="can('trash.delete') || can('purchase_quotations.view')" class="relative">
