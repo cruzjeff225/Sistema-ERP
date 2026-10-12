@@ -43,7 +43,7 @@ const filterLabel = computed(() => filters.value.find(item => item.id === filter
         </div>
       </header>
 
-      <p v-if="!visible" role="status" class="mt-6 rounded-xl border border-border bg-surface px-4 py-6 text-sm text-muted-fg">Tu cuenta no tiene acceso al seguimiento de compras.</p>
+      <p v-if="!visible" role="status" class="mt-6 rounded-[12px] border border-border bg-surface px-4 py-6 text-sm text-muted-fg">Tu cuenta no tiene acceso al seguimiento de compras.</p>
 
       <template v-else>
         <div role="group" aria-label="Filtrar pendientes" class="mt-5 inline-flex max-w-full overflow-x-auto rounded-lg border border-border bg-surface-secondary p-0.5">
@@ -54,23 +54,23 @@ const filterLabel = computed(() => filters.value.find(item => item.id === filter
 
         <p class="sr-only" aria-live="polite">{{ loading ? 'Cargando pendientes' : failed ? '' : `${shown.length} ${shown.length === 1 ? 'pendiente' : 'pendientes'} en ${filterLabel}` }}</p>
 
-        <div v-if="loading && !rows.length" class="mt-4 overflow-hidden rounded-xl border border-border bg-surface" aria-busy="true" aria-label="Cargando pendientes">
+        <div v-if="loading && !rows.length" class="mt-4 overflow-hidden rounded-[12px] border border-border bg-surface" aria-busy="true" aria-label="Cargando pendientes">
           <div v-for="n in 4" :key="n" class="border-b border-border px-4 py-4 last:border-b-0 sm:px-5"><div class="h-4 w-2/3 animate-pulse rounded bg-surface-secondary" /><div class="mt-2.5 h-3 w-1/3 animate-pulse rounded bg-surface-secondary" /></div>
         </div>
 
-        <div v-else-if="failed" role="alert" class="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
+        <div v-else-if="failed" role="alert" class="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-[12px] border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
           <p>No se pudieron cargar tus pendientes. Intenta de nuevo en un momento.</p>
           <AppButton variant="outline" :disabled="loading" @click="load">Reintentar</AppButton>
         </div>
 
-        <div v-else-if="!items.length" class="mt-4 flex items-start gap-3 rounded-xl border border-dashed border-border bg-surface px-4 py-5 text-sm text-muted-fg">
+        <div v-else-if="!items.length" class="mt-4 flex items-start gap-3 rounded-[12px] border border-dashed border-border bg-surface px-4 py-5 text-sm text-muted-fg">
           <CircleCheck class="mt-0.5 h-5 w-5 shrink-0 text-success" aria-hidden="true" />
           <p><span class="font-medium text-fg">Estás al día.</span> Cuando una compra necesite tu acción aparecerá aquí.</p>
         </div>
 
-        <p v-else-if="!shown.length" class="mt-4 rounded-xl border border-dashed border-border bg-surface px-4 py-5 text-sm text-muted-fg">No tienes pendientes {{ filter === 'parallel' ? 'en paralelo' : 'a cargo tuyo' }} por ahora.</p>
+        <p v-else-if="!shown.length" class="mt-4 rounded-[12px] border border-dashed border-border bg-surface px-4 py-5 text-sm text-muted-fg">No tienes pendientes {{ filter === 'parallel' ? 'en paralelo' : 'a cargo tuyo' }} por ahora.</p>
 
-        <ul v-else class="mt-4 overflow-hidden rounded-xl border border-border bg-surface">
+        <ul v-else class="mt-4 overflow-hidden rounded-[12px] border border-border bg-surface">
           <li v-for="item in shown" :key="item.row.anchor.type + item.row.anchor.id" class="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-b border-border px-4 py-3.5 last:border-b-0 sm:px-5" :class="isFirst(item) && 'bg-accent-soft'">
             <div class="min-w-0 flex-1 basis-60">
               <p class="text-sm font-semibold text-fg">{{ item.step.label }}</p>

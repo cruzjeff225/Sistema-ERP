@@ -53,7 +53,7 @@ const pendingLabel = computed(() => pendingLoading.value || pendingFailed.value 
 <template>
  <AdminLayout title="Inicio">
   <div class="mx-auto w-full max-w-6xl">
-   <section class="grid min-h-[220px] grid-cols-[minmax(0,1fr)_auto] items-center gap-4 overflow-hidden rounded-xl border border-border bg-surface px-5 sm:px-8 lg:h-[240px]" aria-labelledby="welcome-title">
+   <section class="grid min-h-[220px] grid-cols-[minmax(0,1fr)_auto] items-center gap-4 overflow-hidden rounded-[12px] border border-border bg-surface px-5 sm:px-8 lg:h-[240px]" aria-labelledby="welcome-title">
     <div class="min-w-0 py-6">
      <h1 id="welcome-title" class="text-[26px] font-semibold leading-tight tracking-tight text-fg sm:text-4xl">{{ greeting }}<span v-if="displayName">, {{ displayName }}.</span><span v-else>.</span></h1>
      <p class="mt-2 text-sm text-muted-fg sm:text-base">Una nueva perspectiva para cada decisión.</p>
@@ -87,15 +87,15 @@ const pendingLabel = computed(() => pendingLoading.value || pendingFailed.value 
      </p>
     </div>
     <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-     <RouterLink v-for="item in quickAccess" :key="item.name" :to="item.route" class="flex min-h-14 items-center gap-4 rounded-xl border border-border bg-surface px-4 py-3 transition-colors hover:border-accent/50 hover:bg-surface-secondary">
+     <RouterLink v-for="item in quickAccess" :key="item.name" :to="item.route" class="flex min-h-14 items-center gap-4 rounded-[12px] border border-border bg-surface px-4 py-3 transition-colors hover:border-accent/50 hover:bg-surface-secondary">
       <component :is="item.icon" class="h-5 w-5 shrink-0 text-muted-fg" :stroke-width="1.5" aria-hidden="true" />
       <span class="min-w-0"><span class="block text-sm font-medium text-fg">{{ item.name }}</span><span v-if="item.detail" class="mt-0.5 block text-xs text-muted-fg">{{ item.detail }}</span></span>
      </RouterLink>
     </div>
-    <p v-if="!quickAccess.length" class="rounded-xl border border-dashed border-border px-4 py-5 text-sm text-muted-fg">Tu cuenta no tiene accesos disponibles por ahora.</p>
+    <p v-if="!quickAccess.length" class="rounded-[12px] border border-dashed border-border px-4 py-5 text-sm text-muted-fg">Tu cuenta no tiene accesos disponibles por ahora.</p>
    </section>
 
-   <section v-if="showRecent" class="mt-6 overflow-hidden rounded-xl border border-border bg-surface" aria-labelledby="recent-title">
+   <section v-if="showRecent" class="mt-6 overflow-hidden rounded-[12px] border border-border bg-surface" aria-labelledby="recent-title">
     <div class="flex items-center gap-3 px-4 pt-4 sm:px-5">
      <Clock class="h-5 w-5 shrink-0 text-muted-fg" :stroke-width="1.5" aria-hidden="true" />
      <div><h2 id="recent-title" class="text-base font-semibold leading-tight text-fg">Consultados recientemente</h2><p class="mt-0.5 text-xs text-muted-fg">Los últimos documentos que abriste en este equipo.</p></div>
