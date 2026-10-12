@@ -539,7 +539,7 @@ onBeforeUnmount(() => { mounted = false; ++companyEpoch; ++loadVersion; ++openVe
             </div>
           </div>
 
-          <div class="sticky bottom-0 z-10 -mx-4 -mb-5 flex flex-wrap items-center justify-end gap-3 border-t border-border bg-surface px-4 py-3 sm:-mx-6 sm:px-6 lg:-mx-8 lg:-mb-7 lg:px-8"><AppButton type="button" variant="outline" :disabled="busy" @click="change(() => { offer = null; })">Cancelar</AppButton><AppButton type="submit" :disabled="busy">Guardar oferta recibida</AppButton></div>
+          <div class="sticky bottom-3 z-10 flex flex-wrap items-center justify-end gap-3 rounded-[12px] border border-border bg-surface px-5 py-3"><AppButton type="button" variant="outline" :disabled="busy" @click="change(() => { offer = null; })">Cancelar</AppButton><AppButton type="submit" :disabled="busy">Guardar oferta recibida</AppButton></div>
         </form>
 
         <QuotationComparison v-if="!offer && workspace === 'compare' && current" :key="'compare-' + current.id" embedded :process-id="current.id" @awarded="afterAward" />
