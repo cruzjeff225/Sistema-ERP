@@ -89,26 +89,26 @@ onMounted(() => void load());
 <template>
   <div class="fixed inset-0 z-50 flex justify-end bg-black/35" @click.self="!saving && emit('close')">
     <aside role="dialog" aria-modal="true" aria-label="Registrar recepción" class="h-full w-full max-w-3xl overflow-y-auto bg-surface p-4 shadow-xl sm:p-6" @keydown.esc="!saving && emit('close')">
-      <div><p class="section-eyebrow">Proceso de compras</p><h2 class="mt-1 text-xl font-semibold text-fg">Registrar recepción</h2></div>
-      <p v-if="error" role="alert" class="sticky top-0 z-10 mt-4 rounded-lg border border-danger/30 bg-surface p-3 text-sm text-danger">{{ error }}</p>
+      <div><p class="text-sm text-muted-fg">Proceso de compras</p><h2 class="mt-0.5 text-2xl font-semibold tracking-tight text-fg">Registrar recepción</h2></div>
+      <p v-if="error" role="alert" class="sticky top-0 z-10 mt-4 rounded-[12px] border border-danger/30 bg-surface p-3 text-sm text-danger">{{ error }}</p>
       <p v-if="loading" role="status" class="mt-6 text-sm text-muted-fg">Consultando las cantidades pendientes…</p>
       <form v-else-if="order" class="mt-6 space-y-6" @submit.prevent="reviewReceipt">
         <fieldset :disabled="saving || !!review" class="min-w-0 space-y-6">
           <div class="grid gap-4 sm:grid-cols-2"><AppInput v-model="form.supplierInvoiceNumber" label="Factura del proveedor" placeholder="Opcional" /><AppInput v-model="form.supplierInvoiceDate" type="date" label="Fecha de factura" /></div>
           <div>
-            <p class="mb-4 text-sm text-muted-fg">{{ order.code }} · {{ order.supplier.name }} · {{ order.warehouse.name }}</p>
-            <div class="flex flex-wrap items-center justify-between gap-2"><h3 class="font-semibold text-fg">Mercadería recibida</h3><AppButton type="button" variant="outline" size="sm" @click="fillPending"><Check class="h-4 w-4" />Completar pendientes</AppButton></div>
-            <div class="mt-3 overflow-x-auto">
+            <p class="mb-3 text-sm text-muted-fg">{{ order.code }} · {{ order.supplier.name }} · {{ order.warehouse.name }}</p>
+            <div class="flex flex-wrap items-center justify-between gap-2"><h3 class="text-base font-semibold text-fg">Mercadería recibida</h3><AppButton type="button" variant="outline" @click="fillPending"><Check class="h-4 w-4" aria-hidden="true" />Recibir todo lo pendiente</AppButton></div>
+            <div class="mt-3 overflow-x-auto rounded-[12px] border border-border">
               <table class="w-full min-w-[650px] text-left text-sm">
-                <thead class="border-y border-border bg-surface-secondary text-xs text-muted-fg"><tr><th class="p-3">Producto / Ubicación</th><th class="p-3 text-right">Ordenado</th><th class="p-3 text-right">Recibido anteriormente</th><th class="w-32 p-3">Recibido ahora</th><th class="p-3 text-right">Pendiente</th></tr></thead>
+                <thead class="border-b border-border bg-surface-secondary text-sm text-muted-fg"><tr><th class="px-3 py-2.5 font-medium">Producto / Ubicación</th><th class="px-3 py-2.5 text-right font-medium">Ordenado</th><th class="px-3 py-2.5 text-right font-medium">Recibido anteriormente</th><th class="w-32 px-3 py-2.5 text-right font-medium">Recibido ahora</th><th class="px-3 py-2.5 text-right font-medium">Pendiente</th></tr></thead>
                 <tbody class="divide-y divide-border">
                   <tr v-for="row in rows" :key="row.item.orderDetailId">
-                    <td class="min-w-52 p-3"><p class="font-medium">{{ row.line?.product.name }}</p><p class="mt-1 text-xs text-muted-fg">{{ row.line?.unit.name }}</p>
-                      <select v-model.number="row.item.locationId" :aria-label="'Ubicación de ' + row.line?.product.name" :disabled="Number(row.item.quantity) <= 0" class="field-control mt-2"><option :value="0">Sugerir espacio (pendiente de confirmación)</option><option v-for="location in locations" :key="location.id" :value="location.id">{{ location.code }} · {{ location.aisle }} / {{ location.rack }} / {{ location.level }}</option></select>
+                    <td class="min-w-64 p-3"><p class="font-medium">{{ row.line?.product.name }}</p><p class="mt-1 text-xs text-muted-fg">{{ row.line?.unit.name }}</p>
+                      <select v-model.number="row.item.locationId" :aria-label="'Ubicación de ' + row.line?.product.name" :disabled="Number(row.item.quantity) <= 0" class="field-control !h-9 mt-2"><option :value="0">Sugerir espacio (pendiente de confirmación)</option><option v-for="location in locations" :key="location.id" :value="location.id">{{ location.code }} · {{ location.aisle }} / {{ location.rack }} / {{ location.level }}</option></select>
                     </td>
                     <td class="p-3 text-right tabular-nums">{{ Number(row.line?.quantity) }}</td>
                     <td class="p-3 text-right tabular-nums">{{ Number(row.line?.receivedQuantity) }}</td>
-                    <td class="p-3"><input v-model="row.item.quantity" type="number" min="0" :max="row.pending" step="1" :aria-label="'Recibido ahora de ' + row.line?.product.name" required class="field-control w-28" /></td>
+                    <td class="p-3"><input v-model="row.item.quantity" type="number" min="0" :max="row.pending" step="1" :aria-label="'Recibido ahora de ' + row.line?.product.name" required class="field-control !mt-0 !h-9 !w-24 ml-auto tabular-nums" /></td>
                     <td class="p-3 text-right font-medium tabular-nums">{{ row.remaining }}</td>
                   </tr>
                 </tbody>
@@ -116,7 +116,7 @@ onMounted(() => void load());
             </div>
             <p v-if="!locations.length" class="mt-4 text-sm text-muted-fg">La recepción quedará pendiente de ubicación hasta registrar un espacio.</p>
           </div>
-          <label class="block text-sm font-medium text-fg">Observaciones de recepción<textarea v-model="form.notes" class="mt-1.5 min-h-20 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-fg" maxlength="2000" /></label>
+          <label class="block text-base font-semibold text-fg">Observaciones de recepción<textarea v-model="form.notes" class="mt-2 min-h-24 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm font-normal text-fg" maxlength="2000" /></label>
           <div class="flex justify-end gap-2"><AppButton variant="outline" type="button" @click="emit('close')">Cancelar</AppButton><AppButton type="submit" :disabled="saving || !form.items.some(item => Number(item.quantity) > 0)">Revisar recepción</AppButton></div>
         </fieldset>
       </form>
