@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
 import JsBarcode from 'jsbarcode';
-import { ArrowLeft, ArrowRight, ChevronDown, Printer, ScanLine, Truck, ReceiptText, RefreshCw } from 'lucide-vue-next';
+import { ArrowLeft, ArrowRight, Check, ChevronDown, Copy, Printer, ScanLine, Truck, ReceiptText, RefreshCw } from 'lucide-vue-next';
 import AdminLayout from '../layouts/AdminLayout.vue';
 import OperationsNav from '../components/operations/OperationsNav.vue';
 import AppButton from '../components/base/AppButton.vue';
@@ -40,6 +40,17 @@ const visiblePending = computed(() => placementsForContext(pending.value, contex
 const openPlacement = ref<number | null | undefined>(undefined);
 const isPlacementOpen = (id: number) => openPlacement.value === undefined ? visiblePending.value[0]?.id === id : openPlacement.value === id;
 const togglePlacement = (id: number) => { openPlacement.value = isPlacementOpen(id) ? null : id; };
+// Copies the internal code of a product (the one its label encodes) so it can be used anywhere else.
+const copiedCode = ref<number | null>(null);
+let copiedTimer: ReturnType<typeof setTimeout> | undefined;
+async function copyInternalCode(p: any) {
+  const code = String(p.product.internalCode ?? '');
+  try {
+    if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(code);
+    else { const field = document.createElement('textarea'); field.value = code; field.setAttribute('readonly', ''); field.style.position = 'fixed'; field.style.opacity = '0'; document.body.appendChild(field); field.select(); const ok = document.execCommand('copy'); document.body.removeChild(field); if (!ok) throw new Error('copy'); }
+    copiedCode.value = p.id; clearTimeout(copiedTimer); copiedTimer = setTimeout(() => { copiedCode.value = null; }, 1800);
+  } catch { error.value = 'No se pudo copiar el código. Selecciónalo y cópialo manualmente.'; }
+}
 const visibleTransfers = computed(() => transfersForContext(transfers.value, context.value));
 const visibleRequests = computed(() => context.value ? context.value.kind === 'request' ? requests.value.filter(r => r.id === context.value?.id) : [] : requests.value);
 const visibleReceipts = computed(() => context.value ? context.value.kind === 'purchase' ? receipts.value.filter(r => r.id === context.value?.id) : [] : receipts.value);
@@ -259,12 +270,12 @@ onBeforeUnmount(() => { loadVersion++; stockVersion++; expenseVersion++; destina
         <div v-else class="overflow-hidden rounded-[12px] border border-border bg-surface">
           <div class="hidden grid-cols-[2.5rem_minmax(0,1fr)_12rem_10rem] gap-x-3 border-b border-border px-3 py-2.5 text-sm text-muted-fg sm:grid" aria-hidden="true"><span /><span>Producto</span><span>Cantidad</span><span>Estado</span></div>
           <article v-for="p in visiblePending" :key="p.id" class="border-b border-border last:border-b-0">
-            <button type="button" :aria-expanded="isPlacementOpen(p.id)" :aria-controls="'placement-' + p.id" class="grid w-full grid-cols-[2.5rem_minmax(0,1fr)] items-center gap-x-3 px-3 py-3 text-left transition-colors hover:bg-surface-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent sm:grid-cols-[2.5rem_minmax(0,1fr)_12rem_10rem]" @click="togglePlacement(p.id)">
-              <ChevronDown class="mx-auto h-5 w-5 text-muted-fg transition-transform" :class="isPlacementOpen(p.id) ? 'rotate-180' : ''" aria-hidden="true" />
-              <span class="min-w-0"><h2 class="font-semibold">{{ p.product.name }}<span class="sm:hidden"> · {{ p.quantity }} {{ p.unit.name }}</span></h2><span class="block text-sm text-muted-fg">Código interno {{ p.product.internalCode }}</span></span>
+            <div class="grid w-full cursor-pointer grid-cols-[2.5rem_minmax(0,1fr)] items-center gap-x-3 px-3 py-3 text-left transition-colors hover:bg-surface-secondary sm:grid-cols-[2.5rem_minmax(0,1fr)_12rem_10rem]" @click="togglePlacement(p.id)">
+              <button type="button" :aria-expanded="isPlacementOpen(p.id)" :aria-controls="'placement-' + p.id" :aria-label="(isPlacementOpen(p.id) ? 'Ocultar' : 'Mostrar') + ' la colocación de ' + p.product.name" class="mx-auto grid h-8 w-8 place-items-center rounded-lg text-muted-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent" @click.stop="togglePlacement(p.id)"><ChevronDown class="h-5 w-5 transition-transform" :class="isPlacementOpen(p.id) ? 'rotate-180' : ''" aria-hidden="true" /></button>
+              <div class="min-w-0"><h2 class="font-semibold">{{ p.product.name }}<span class="sm:hidden"> · {{ p.quantity }} {{ p.unit.name }}</span></h2><p class="flex items-center gap-1.5 text-sm text-muted-fg"><span>Código interno {{ p.product.internalCode }}</span><button type="button" class="grid h-7 w-7 place-items-center rounded-md text-muted-fg transition-colors hover:bg-surface hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent" :aria-label="'Copiar el código interno ' + p.product.internalCode" title="Copiar código" @click.stop="copyInternalCode(p)"><Check v-if="copiedCode === p.id" class="h-4 w-4 text-success" aria-hidden="true" /><Copy v-else class="h-4 w-4" aria-hidden="true" /></button><span class="sr-only" role="status" aria-live="polite">{{ copiedCode === p.id ? 'Código copiado' : '' }}</span></p></div>
               <span class="hidden text-sm sm:block">{{ p.quantity }} {{ p.unit.name }}</span>
               <span class="mt-1 inline-flex items-center gap-1.5 text-sm text-muted-fg max-sm:col-start-2 sm:mt-0"><span class="h-2 w-2 rounded-full bg-muted-fg/60" aria-hidden="true" />Por confirmar</span>
-            </button>
+            </div>
             <div v-show="isPlacementOpen(p.id)" :id="'placement-' + p.id" class="border-t border-border bg-surface-secondary/50 px-5 py-4 sm:pl-[3.75rem]">
               <div class="flex flex-wrap items-start justify-between gap-3"><p class="text-sm text-muted-fg">{{ p.purchase.documentNumber }} · {{ p.purchase.warehouse?.name }}</p><AppButton variant="outline" @click="printLabel(p)"><Printer class="h-4 w-4" aria-hidden="true" />Imprimir viñeta de código de barras</AppButton></div>
               <form v-if="can('inventory.adjust')" class="mt-3 grid gap-x-4 gap-y-3 sm:grid-cols-2" @submit.prevent="place(p)"><label class="text-sm font-medium">Leer código de barras colocado<input v-model="placement[p.id]!.barcode" required autocomplete="off" class="field-control !h-9 font-normal" /></label><label class="text-sm font-medium">Ubicación física<select v-model.number="placement[p.id]!.locationId" required class="field-control !h-9 font-normal"><option :value="0" disabled>Seleccione espacio</option><optgroup v-if="usableSlots(p).length" label="Espacios disponibles"><option v-for="l in usableSlots(p)" :key="l.id" :value="l.id">{{ slotLabel(l, p) }}</option></optgroup><optgroup v-if="blockedSlots(p).length" label="No disponibles para este producto"><option v-for="l in blockedSlots(p)" :key="l.id" :value="l.id" disabled>{{ slotLabel(l) }}</option></optgroup></select></label><label class="flex items-center gap-2 text-sm sm:col-span-1"><input v-model="placement[p.id]!.confirmed" type="checkbox" required class="h-4 w-4 accent-accent" /> Confirmo que coloqué la viñeta y dejé los productos en este espacio.</label><div class="flex justify-end"><AppButton type="submit" :disabled="busy || !placement[p.id]!.locationId">Confirmar colocación</AppButton></div></form>
