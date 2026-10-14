@@ -303,9 +303,13 @@ onBeforeUnmount(() => { mounted = false; ++companyEpoch; ++loadVersion; ++openVe
       <section v-if="current && !showNew && !offer && !opening" aria-label="Gestión abierta" class="rounded-[12px] border border-border bg-surface">
         <div class="flex flex-wrap items-start justify-between gap-3 px-5 py-3">
           <div class="min-w-0"><p class="text-xs text-muted-fg">Gestión abierta</p><p class="text-base font-semibold text-fg">{{ processLabel(current) }}</p><p class="flex flex-wrap items-center gap-x-4 text-sm text-muted-fg"><span v-if="originCodes.length">{{ originCodes.join(', ') }}</span><TrackingLink class="-ml-2" type="consolidation" :id="current.id" /></p></div>
-          <AppButton variant="ghost" size="sm" :disabled="busy || loading" @click="switching = !switching">{{ switching ? 'Cerrar' : 'Cambiar de gestión' }}</AppButton>
+          <div class="flex flex-wrap items-center gap-2"><AppButton variant="outline" :disabled="busy || loading" @click="switching = !switching">{{ switching ? 'Cerrar' : 'Cambiar de gestión' }}</AppButton>
+          <details v-if="can('trash.delete') || can('purchase_quotations.view')" class="relative">
+            <summary class="inline-flex h-9 cursor-pointer list-none items-center gap-2 rounded-lg border border-border bg-surface px-3 text-sm font-medium text-fg transition-colors hover:bg-surface-secondary [&::-webkit-details-marker]:hidden">Más acciones<ChevronDown class="h-4 w-4 text-muted-fg" aria-hidden="true" /></summary>
+            <div class="absolute right-0 top-full z-30 mt-2 flex min-w-52 flex-col gap-2 rounded-[12px] border border-border bg-surface p-3 shadow-subtle"><RouterLink v-if="can('purchase_quotations.view')" to="/purchases/quotations" class="rounded-lg border border-border px-3 py-2 text-center text-sm hover:bg-surface-secondary">Ver ofertas anteriores</RouterLink><TrashButton v-if="can('trash.delete')" entity="purchase_processes" :record-id="current.id" :label="current.code" :disabled="busy || changed" @deleted="load" /></div>
+              </details></div>
         </div>
-        <div v-if="visibleDocuments.some(d => d.id === current.id)" class="border-t border-border px-5 py-3">
+        <div v-if="visibleDocuments.some(d => d.id === current.id) && !(nextStep.action === 'orders' && workspace === 'orders')" class="border-t border-border px-5 py-3">
           <div class="flex flex-wrap items-center justify-between gap-4">
             <div class="max-w-3xl"><p class="sr-only">Siguiente paso</p><h2 class="text-base font-semibold">{{ nextStep.title }}</h2><p class="mt-0.5 text-sm text-muted-fg">{{ nextStep.description }}</p></div>
             <div class="flex flex-col items-stretch gap-2 sm:items-end"><div class="flex flex-wrap gap-2">
@@ -315,10 +319,6 @@ onBeforeUnmount(() => { mounted = false; ++companyEpoch; ++loadVersion; ++openVe
               <AppButton v-if="nextStep.action === 'compare' && can('purchase_quotations.view')" variant="outline" :disabled="busy || changed" @click="change(() => { workspace = 'compare'; })">Comparar y elegir ofertas</AppButton>
               <AppButton v-if="nextStep.action === 'orders' && can('purchase_orders.view') && workspace !== 'orders'" :disabled="busy || changed" @click="change(() => { workspace = 'orders'; })">Ver órdenes</AppButton>
             </div>
-              <details v-if="can('trash.delete') || can('purchase_quotations.view')" class="relative">
-                <summary class="inline-flex h-9 cursor-pointer list-none items-center gap-2 rounded-lg border border-border bg-surface px-3 text-sm font-medium text-fg transition-colors hover:bg-surface-secondary [&::-webkit-details-marker]:hidden">Más acciones<ChevronDown class="h-4 w-4 text-muted-fg" aria-hidden="true" /></summary>
-                <div class="absolute right-0 top-full z-30 mt-2 flex min-w-52 flex-col gap-2 rounded-[12px] border border-border bg-surface p-3 shadow-subtle"><RouterLink v-if="can('purchase_quotations.view')" to="/purchases/quotations" class="rounded-lg border border-border px-3 py-2 text-center text-sm hover:bg-surface-secondary">Ver ofertas anteriores</RouterLink><TrashButton v-if="can('trash.delete')" entity="purchase_processes" :record-id="current.id" :label="current.code" :disabled="busy || changed" @deleted="load" /></div>
-              </details>
             </div>
           </div>
         </div>
@@ -547,10 +547,19 @@ onBeforeUnmount(() => { mounted = false; ++companyEpoch; ++loadVersion; ++openVe
         </form>
 
         <QuotationComparison v-if="!offer && workspace === 'compare' && current" :key="'compare-' + current.id" embedded :process-id="current.id" @awarded="afterAward" />
-        <section v-if="!offer && workspace === 'orders' && current.orders.length" class="rounded-[12px] border border-border bg-surface p-5 sm:p-6">
-          <h2 class="text-lg font-semibold">Órdenes de esta compra</h2><p class="mt-1 text-sm text-muted-fg">Abra la orden para continuar con su aprobación y recepción.</p>
-          <div class="mt-5 divide-y divide-border"><RouterLink v-for="o in current.orders" :key="o.id" :to="`/purchases/orders?id=${o.id}`" class="flex items-center justify-between gap-4 py-4 text-sm"><span class="font-medium text-accent">{{ o.code }}</span><span class="text-muted-fg">{{ orderStatusLabel(o.status) }}</span><span class="text-accent" aria-hidden="true">→</span></RouterLink></div>
-        </section>
+        <template v-if="!offer && workspace === 'orders' && current.orders.length">
+          <div v-if="nextStep.action === 'orders'"><h2 class="text-xl font-semibold tracking-tight">{{ nextStep.title }}</h2><p class="mt-1 text-sm text-muted-fg">{{ nextStep.description }}</p></div>
+          <section class="overflow-hidden rounded-[12px] border border-border bg-surface">
+            <div class="border-b border-border px-5 py-4 sm:px-6"><h2 class="text-lg font-semibold">Órdenes de esta compra</h2><p class="mt-1 text-sm text-muted-fg">Abra la orden para continuar con su aprobación y recepción.</p></div>
+            <ul class="divide-y divide-border">
+              <li v-for="o in current.orders" :key="o.id" class="grid items-center gap-x-4 gap-y-2 px-5 py-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:px-6">
+                <RouterLink :to="`/purchases/orders?id=${o.id}`" class="font-semibold text-accent hover:underline">{{ o.code }}</RouterLink>
+                <span class="inline-flex items-center gap-2 text-sm text-fg"><span class="h-2 w-2 rounded-full" :class="statusDotClass(documentStatusVariant(o.status))" aria-hidden="true" />{{ orderStatusLabel(o.status) }}</span>
+                <RouterLink :to="`/purchases/orders?id=${o.id}`" :aria-label="'Abrir orden ' + o.code" class="inline-flex h-9 items-center justify-center rounded-lg border border-border bg-surface px-4 text-sm font-medium text-fg transition-colors hover:bg-surface-secondary">Abrir orden</RouterLink>
+              </li>
+            </ul>
+          </section>
+        </template>
       </template>
     </div>
     <PurchaseActionDialog v-if="confirm" title="Confirmar adjudicación" description="Se generará una orden por proveedor con los productos y cantidades seleccionados. Revise cada orden antes de aprobarla." :busy="busy" :error="error" @close="confirm = false" @confirm="award" />
