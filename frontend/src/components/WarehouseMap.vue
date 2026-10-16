@@ -84,7 +84,7 @@ const filtersActive = computed(() => !!query.value.trim() || !!stateFilter.value
 const productLocations = computed(() => slots.value.filter(containsProduct));
 const compare = (a: string, b: string) => a.localeCompare(b, 'es', { numeric: true });
 const aisleNames = computed(() => [...new Set(slots.value.map(slot => slot.aisle))].sort(compare));
-const aisles = computed(() => aisleNames.value.map(aisle => ({
+const allAisles = computed(() => aisleNames.value.map(aisle => ({
   name: aisle,
   racks: [...new Set(slots.value.filter(slot => slot.aisle === aisle).map(slot => slot.rack))].sort(compare).map(rack => {
     const members = slots.value.filter(slot => slot.aisle === aisle && slot.rack === rack);
@@ -93,73 +93,78 @@ const aisles = computed(() => aisleNames.value.map(aisle => ({
       levels: [...new Set(members.map(slot => slot.level))].sort((a, b) => compare(b, a)).map(level => ({
         name: level, cells: positions.map(position => members.find(slot => slot.level === level && slot.position === position)),
       })) };
-  }).filter(rack => rack.matches > 0),
-})).filter(aisle => aisle.racks.length));
-// Isometric scene: aisles run along gx, racks and positions along gy, levels along gz. Presentation only; the data is the same slots as the grid.
-type IsoOp =
-  | { kind: 'shelf' | 'floor'; key: string; points: string }
-  | { kind: 'post'; key: string; x1: number; y1: number; x2: number; y2: number }
-  | { kind: 'label'; key: string; x: number; y: number; text: string }
-  | { kind: 'slot'; key: string; slot: Slot; top: string; left: string; right: string; cx: number; cy: number };
-const U = 34, COS = Math.cos(Math.PI / 6);
-const project = (gx: number, gy: number, gz: number) => ({ x: (gx - gy) * COS * U, y: (gx + gy) * 0.5 * U - gz * U });
-const pts = (list: { x: number; y: number }[]) => list.map(point => `${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(' ');
-const logicalOrder = computed(() => aisles.value.flatMap(aisle => aisle.racks.flatMap(rack => rack.levels.flatMap(level => level.cells.filter((cell): cell is Slot => !!cell)))));
-const isoScene = computed(() => {
-  const ops: IsoOp[] = [];
-  const all: { x: number; y: number }[] = [];
-  const STEP = 1.18, AISLE = 3.2;
-  const PER_ROW = 4;
-  let rowOffset = 0, rowDepth = 0, maxX = 0;
-  const layout = aisles.value.map((aisle, ai) => {
-    const col = ai % PER_ROW;
-    if (ai > 0 && col === 0) { rowOffset += rowDepth + 1.6; rowDepth = 0; }
-    let cursor = rowOffset;
-    const racks = aisle.racks.map(rack => {
-      const start = cursor, length = rack.positions.length * STEP;
-      cursor += length + 1.1;
-      return { rack, start, end: start + length };
-    });
-    rowDepth = Math.max(rowDepth, cursor - rowOffset);
-    maxX = Math.max(maxX, col * AISLE + 1);
-    return { aisle, gx: col * AISLE, racks, labelY: cursor - 0.85 };
+  }),
+})));
+const aisles = computed(() => allAisles.value.map(aisle => ({ ...aisle, racks: aisle.racks.filter(rack => rack.matches > 0) })).filter(aisle => aisle.racks.length));
+// Aerial warehouse scene generated from the real records (warehouse > aisle > rack > level > slot). There are no physical coordinates, so the layout is
+// computed: aisles side by side, each aisle's racks next to each other, levels as columns and positions along the rack. Presentation only.
+const CW = 46, FR = 9, GAP = 18, LANE = 96, MARGIN = 60, TAG_H = 100, MIN_LEN = 270, POS_UNIT = 32, BRACE = 20, WALL_H = 84, TS = 0.9, YS = 0.9, OFFX = 70;
+type SceneCell = { slot: Slot; poly: string; fill: string | null; ratio: number | null };
+type SceneRack = { key: string; name: string; levelCount: number; frame: string; inner: string; posts: string[]; braces: string[]; tag: { x: number; y: number; w: number; text: string }; levelLabels: { x: number; y: number; text: string }[]; cells: SceneCell[] };
+type SceneAisle = { name: string; racks: SceneRack[]; pin: { x1: number; y1: number; x2: number; y2: number }; label: { x: number; y: number } };
+const fillRatio = (slot: Slot) => slot.usedCapacity !== null && slot.capacity > 0 ? Math.max(0, Math.min(1, Number(slot.usedCapacity) / slot.capacity)) : null;
+const scene = computed(() => {
+  const groups = allAisles.value.map(aisle => {
+    const racks = aisle.racks.map(rack => ({ rack, rw: rack.levels.length * CW + FR * 2 }));
+    return { aisle, racks, gw: racks.reduce((total, item) => total + item.rw, 0) + GAP * Math.max(0, racks.length - 1) };
   });
-  const maxY = rowOffset + rowDepth;
-  const floorCorners = [project(-1.2, -1, 0), project(maxX + 1.4, -1, 0), project(maxX + 1.4, maxY + 0.6, 0), project(-1.2, maxY + 0.6, 0)];
-  ops.push({ kind: 'floor', key: 'floor', points: pts(floorCorners) });
-  all.push(...floorCorners);
-  for (const { aisle, gx, racks, labelY } of layout) {
-    for (const { rack, start, end } of racks) {
-      const levels = rack.levels.length;
-      const x0 = gx - 0.08, x1 = gx + 1.08, y0 = start - 0.08, y1 = end - (STEP - 1) + 0.08;
-      const key = `${aisle.name}-${rack.name}`;
-      [[x0, y0], [x1, y0]].forEach(([px, py], i) => { const a = project(px!, py!, 0), b = project(px!, py!, levels); ops.push({ kind: 'post', key: `${key}-pb${i}`, x1: a.x, y1: a.y, x2: b.x, y2: b.y }); all.push(b); });
-      for (let li = 0; li < levels; li++) {
-        const gz = levels - 1 - li;
-        ops.push({ kind: 'shelf', key: `${key}-shelf${li}`, points: pts([project(x0, y0, gz), project(x1, y0, gz), project(x1, y1, gz), project(x0, y1, gz)]) });
-      }
-      for (let pi = 0; pi < rack.positions.length; pi++) {
-        for (let li = levels - 1; li >= 0; li--) {
-          const slot = rack.levels[li]!.cells[pi];
-          if (!slot) continue;
-          const gz = levels - 1 - li, ya = start + pi * STEP, yb = ya + 1, xa = gx, xb = gx + 1, za = gz + 0.05, zb = gz + 0.78;
-          const P = project;
-          ops.push({ kind: 'slot', key: `slot-${slot.id}`, slot,
-            top: pts([P(xa, ya, zb), P(xb, ya, zb), P(xb, yb, zb), P(xa, yb, zb)]),
-            right: pts([P(xb, ya, za), P(xb, yb, za), P(xb, yb, zb), P(xb, ya, zb)]),
-            left: pts([P(xa, yb, za), P(xb, yb, za), P(xb, yb, zb), P(xa, yb, zb)]),
-            cx: P(xa + 0.5, ya + 0.5, zb).x, cy: P(xa + 0.5, ya + 0.5, zb).y });
-        }
-      }
-      [[x0, y1], [x1, y1]].forEach(([px, py], i) => { const a = project(px!, py!, 0), b = project(px!, py!, levels); ops.push({ kind: 'post', key: `${key}-pf${i}`, x1: a.x, y1: a.y, x2: b.x, y2: b.y }); all.push(b); });
-    }
-    const label = project(gx + 0.5, labelY, 0);
-    ops.push({ kind: 'label', key: `label-${aisle.name}`, x: label.x, y: label.y + 4, text: `Pasillo ${aisle.name}` });
-  }
-  const minX = Math.min(...all.map(point => point.x)) - 20, maxPX = Math.max(...all.map(point => point.x)) + 20;
-  const minY = Math.min(...all.map(point => point.y)) - 20, maxPY = Math.max(...all.map(point => point.y)) + 26;
-  return { ops, viewBox: `${minX.toFixed(0)} ${minY.toFixed(0)} ${(maxPX - minX).toFixed(0)} ${(maxPY - minY).toFixed(0)}`, width: maxPX - minX, height: maxPY - minY };
+  const maxPositions = Math.max(1, ...groups.flatMap(group => group.racks.map(item => item.rack.positions.length)));
+  const rackLen = Math.max(MIN_LEN, maxPositions * POS_UNIT);
+  let cursor = MARGIN;
+  const lanes = [cursor];
+  const placed = groups.map(group => { const start = cursor + LANE / 2; cursor = start + group.gw + LANE / 2; lanes.push(cursor); return { ...group, start }; });
+  const W = Math.max(cursor + MARGIN, 320);
+  const vTop = TAG_H, vBottom = vTop + rackLen + BRACE, H = vBottom + 112, Y0 = WALL_H + 28;
+  const scale = (v: number) => TS + (1 - TS) * (v / H);
+  const P = (u: number, v: number) => ({ x: OFFX + W / 2 + (u - W / 2) * scale(v), y: Y0 + v * YS });
+  const poly = (...points: [number, number][]) => points.map(([u, v]) => { const point = P(u, v); return `${point.x.toFixed(1)},${point.y.toFixed(1)}`; }).join(' ');
+  const rect = (u0: number, v0: number, u1: number, v1: number) => poly([u0, v0], [u1, v0], [u1, v1], [u0, v1]);
+  const aislesOut: SceneAisle[] = placed.map(group => {
+    let ru = group.start;
+    const racks: SceneRack[] = group.racks.map(({ rack, rw }, rackIndex) => {
+      const levels = [...rack.levels].reverse();
+      const innerU0 = ru + FR, innerV0 = vTop + FR, rowH = (rackLen - FR * 2) / Math.max(1, rack.positions.length);
+      const cells: SceneCell[] = [];
+      levels.forEach((level, column) => level.cells.forEach((slot, row) => {
+        if (!slot) return;
+        const u0 = innerU0 + column * CW + 1.5, u1 = innerU0 + (column + 1) * CW - 1.5, v0 = innerV0 + row * rowH + 1.5, v1 = innerV0 + (row + 1) * rowH - 1.5;
+        const ratio = slot.state === 'OCCUPIED' ? fillRatio(slot) : null;
+        cells.push({ slot, poly: rect(u0, v0, u1, v1), ratio, fill: ratio !== null ? rect(u0, v1 - ratio * (v1 - v0), u1, v1) : null });
+      }));
+      const textWidth = `Estante ${rack.name}`.length * 12 + 28;
+      const top = P(ru + rw / 2, vTop);
+      const result: SceneRack = {
+        key: `${group.aisle.name}-${rack.name}`, name: rack.name, levelCount: levels.length,
+        frame: rect(ru, vTop, ru + rw, vTop + rackLen),
+        inner: rect(innerU0, innerV0, ru + rw - FR, vTop + rackLen - FR),
+        posts: [[ru, vTop], [ru + rw - 9, vTop], [ru, vTop + rackLen - 9], [ru + rw - 9, vTop + rackLen - 9]].map(([u, v]) => rect(u!, v!, u! + 9, v! + 9)),
+        braces: [poly([ru, vTop + rackLen], [ru + rw, vTop + rackLen + BRACE]), poly([ru + rw, vTop + rackLen], [ru, vTop + rackLen + BRACE]), poly([ru, vTop + rackLen + BRACE], [ru + rw, vTop + rackLen + BRACE])],
+        tag: { x: top.x, y: top.y - 38 - (rackIndex % 2) * 36, w: Math.max(textWidth, 92), text: `Estante ${rack.name}` },
+        levelLabels: levels.length > 1 ? levels.map((level, column) => ({ x: P(innerU0 + column * CW + CW / 2, vTop).x, y: P(innerU0, vTop).y - 6, text: `N${level.name}` })) : [],
+        cells,
+      };
+      ru += rw + GAP;
+      return result;
+    });
+    const mid = group.start + group.gw / 2;
+    const pinA = P(mid, vBottom + 8), pinB = P(mid, vBottom + 38), label = P(mid, vBottom + 74);
+    return { name: group.aisle.name, racks, pin: { x1: pinA.x, y1: pinA.y, x2: pinB.x, y2: pinB.y }, label };
+  });
+  const tl = P(0, 0), tr = P(W, 0), bl = P(0, H), br = P(W, H);
+  const pillars = Array.from({ length: Math.max(2, Math.floor(W / 150)) }, (_, index) => P(((index + 0.5) * W) / Math.max(2, Math.floor(W / 150)), 0));
+  return {
+    aisles: aislesOut, W, H, svgW: W + OFFX * 2, svgH: Y0 + H * YS + 48,
+    floor: rect(0, 0, W, H), safety: rect(16, 16, W - 16, H - 16),
+    lines: lanes.map(u => { const a = P(u, 30), b = P(u, H - 30); return { x1: a.x, y1: a.y, x2: b.x, y2: b.y }; }),
+    back: { x: tl.x - 4, y: tl.y - WALL_H, w: tr.x - tl.x + 8, h: WALL_H, pillars: pillars.map(point => point.x), door: (tl.x + tr.x) / 2 },
+    left: `${tl.x},${tl.y} ${bl.x},${bl.y} ${bl.x - 40},${bl.y - 56} ${tl.x - 18},${tl.y - WALL_H}`,
+    right: `${tr.x},${tr.y} ${br.x},${br.y} ${br.x + 40},${br.y - 56} ${tr.x + 18},${tr.y - WALL_H}`,
+    front: { x: bl.x - 6, y: bl.y, w: br.x - bl.x + 12, h: 28, pillars: lanes.map(u => P(u, H).x) },
+    hasRatio: allAisles.value.some(aisle => aisle.racks.some(rack => rack.levels.some(level => level.cells.some(slot => slot && slot.state === 'OCCUPIED' && fillRatio(slot) !== null)))),
+  };
 });
+// Keyboard order follows the data hierarchy, skipping what the filters hide.
+const logicalOrder = computed(() => allAisles.value.flatMap(aisle => aisle.racks.flatMap(rack => [...rack.levels].reverse().flatMap(level => level.cells.filter((cell): cell is Slot => !!cell && matches(cell))))));
 function isoKey(event: KeyboardEvent, slot: Slot) {
   if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); void selectSlot(slot); return; }
   const list = logicalOrder.value;
@@ -239,21 +244,36 @@ function moveFocus(event: KeyboardEvent) {
               <div class="flex items-center rounded-lg border border-border bg-surface px-1"><button type="button" class="icon-button !border-0" title="Reducir mapa" aria-label="Reducir mapa" :disabled="cellSize <= 36" @click="cellSize -= 12"><Minus class="h-4 w-4"/></button><span class="w-12 text-center text-sm tabular-nums text-fg" role="status">{{ Math.round(cellSize / 48 * 100) }}%</span><button type="button" class="icon-button !border-0" title="Ampliar mapa" aria-label="Ampliar mapa" :disabled="cellSize >= 84" @click="cellSize += 12"><Plus class="h-4 w-4"/></button></div>
             </div>
           </div>
-          <div ref="mapRoot" class="scrollbar-thin max-h-[70dvh] min-h-64 min-w-0 max-w-full overflow-auto bg-surface-secondary/50 p-4 sm:p-5" @keydown="viewMode === 'grid' && moveFocus($event)">
+          <div class="relative"><div v-if="viewMode === 'iso' && found.length" class="pointer-events-none absolute left-3 top-3 z-10 rounded-md border border-border bg-surface px-2.5 py-1 text-xs font-medium text-fg shadow-sm" aria-hidden="true">Pasillo → Estante → Nivel → Espacio</div>
+          <div ref="mapRoot" class="scrollbar-thin max-h-[72dvh] min-h-64 min-w-0 max-w-full overflow-auto bg-surface-secondary/50" :class="viewMode === 'iso' ? 'p-0' : 'p-4 sm:p-5'" @keydown="viewMode === 'grid' && moveFocus($event)">
             <div v-if="!found.length" class="py-12 text-center"><Search class="mx-auto mb-3 h-5 w-5 text-muted-fg"/><p class="text-sm font-medium">No encontramos espacios con estos filtros</p><button type="button" class="mt-3 text-xs font-medium text-accent hover:underline" @click="clearFilters">Ver todos los espacios</button></div>
-            <svg v-if="found.length && viewMode === 'iso'" role="group" aria-label="Distribución esquemática del almacén por pasillo y estante" class="mx-auto block max-w-none" :viewBox="isoScene.viewBox" :width="isoScene.width * cellSize / 48 * 0.9" :height="isoScene.height * cellSize / 48 * 0.9">
-              <template v-for="op in isoScene.ops" :key="op.key">
-                <polygon v-if="op.kind === 'floor'" :points="op.points" class="iso-floor" />
-                <polygon v-else-if="op.kind === 'shelf'" :points="op.points" class="iso-shelf" />
-                <line v-else-if="op.kind === 'post'" :x1="op.x1" :y1="op.y1" :x2="op.x2" :y2="op.y2" class="iso-post" />
-                <text v-else-if="op.kind === 'label'" :x="op.x" :y="op.y" text-anchor="middle" class="iso-label">{{ op.text }}</text>
-                <g v-else-if="op.kind === 'slot'" :data-location-id="op.slot.id" role="button" :tabindex="isoTabbable === op.slot.id ? 0 : -1" :aria-pressed="selectedId === op.slot.id" :aria-label="`${op.slot.code}, ${singleLabels[op.slot.state]}, pasillo ${op.slot.aisle}, estante ${op.slot.rack}, nivel ${op.slot.level}, posición ${op.slot.position}${containsProduct(op.slot) ? ', ubicación del producto' : ''}`" class="iso-slot" :class="[`iso-${op.slot.state}`, { 'iso-selected': selectedId === op.slot.id, 'iso-product': containsProduct(op.slot), 'iso-muted': !matches(op.slot) }]" @click="selectSlot(op.slot)" @keydown="isoKey($event, op.slot)">
-                  <title>{{ op.slot.code }} · {{ singleLabels[op.slot.state] }}</title>
-                  <polygon :points="op.left" class="iso-l" /><polygon :points="op.right" class="iso-r" /><polygon :points="op.top" class="iso-t" />
-                </g>
-              </template>
-            </svg>
-            <p v-if="found.length && viewMode === 'iso'" class="mt-3 text-center text-xs text-muted-fg">Distribución esquemática · Representación sin escala</p>
+            <div v-if="found.length && viewMode === 'iso'" class="mx-auto" :style="{ width: `${cellSize / 48 * 100}%`, minWidth: `${Math.round(scene.svgW * 0.5 * cellSize / 48)}px` }">
+              <svg role="group" aria-label="Distribución esquemática del almacén por pasillo, estante, nivel y espacio" class="block h-auto w-full" :viewBox="`0 0 ${scene.svgW} ${scene.svgH}`">
+                <polygon :points="scene.left" class="wall wall-side" /><polygon :points="scene.right" class="wall wall-side" />
+                <rect :x="scene.back.x" :y="scene.back.y" :width="scene.back.w" :height="scene.back.h" class="wall wall-back" />
+                <rect v-for="(x, index) in scene.back.pillars" :key="`pillar-${index}`" :x="x - 7" :y="scene.back.y" width="14" :height="scene.back.h" class="wall-pillar" />
+                <g class="wall-door"><rect :x="scene.back.door - 62" :y="scene.back.y + 8" width="124" :height="scene.back.h - 8" /><line v-for="n in 4" :key="n" :x1="scene.back.door - 62" :x2="scene.back.door + 62" :y1="scene.back.y + 8 + n * 12" :y2="scene.back.y + 8 + n * 12" /></g>
+                <polygon :points="scene.floor" class="iso-floor" />
+                <line v-for="(line, index) in scene.lines" :key="`lane-${index}`" :x1="line.x1" :y1="line.y1" :x2="line.x2" :y2="line.y2" class="lane-line" />
+                <polygon :points="scene.safety" class="safety-line" />
+                <template v-for="aisle in scene.aisles" :key="aisle.name">
+                  <g v-for="rack in aisle.racks" :key="rack.key" role="group" :aria-label="`Pasillo ${aisle.name}, estante ${rack.name}`">
+                    <polygon :points="rack.frame" class="rack-frame" /><polygon :points="rack.inner" class="rack-inner" />
+                    <g v-for="cell in rack.cells" :key="cell.slot.id" :data-location-id="cell.slot.id" role="button" :tabindex="isoTabbable === cell.slot.id ? 0 : -1" :aria-pressed="selectedId === cell.slot.id" :aria-label="`${cell.slot.code}, ${singleLabels[cell.slot.state]}, pasillo ${cell.slot.aisle}, estante ${cell.slot.rack}, nivel ${cell.slot.level}, posición ${cell.slot.position}${cell.ratio !== null ? `, ocupación ${Math.round(cell.ratio * 100)}%` : ''}${containsProduct(cell.slot) ? ', ubicación del producto' : ''}`" class="cell" :class="[`cell-${cell.slot.state}`, { 'cell-selected': selectedId === cell.slot.id, 'cell-product': containsProduct(cell.slot), 'cell-muted': !matches(cell.slot) }]" @click="selectSlot(cell.slot)" @keydown="isoKey($event, cell.slot)">
+                      <title>{{ cell.slot.code }} · {{ singleLabels[cell.slot.state] }}</title>
+                      <polygon :points="cell.poly" class="cell-bg" /><polygon v-if="cell.fill" :points="cell.fill" class="cell-fill" /><polygon :points="cell.poly" class="cell-edge" />
+                    </g>
+                    <polygon v-for="(post, index) in rack.posts" :key="`post-${index}`" :points="post" class="rack-post" />
+                    <polyline v-for="(brace, index) in rack.braces" :key="`brace-${index}`" :points="brace" class="rack-brace" />
+                    <text v-for="level in rack.levelLabels" :key="level.text" :x="level.x" :y="level.y" text-anchor="middle" class="level-label">{{ level.text }}</text>
+                    <g class="rack-tag"><rect :x="rack.tag.x - rack.tag.w / 2" :y="rack.tag.y - 16" :width="rack.tag.w" height="32" rx="6" /><text :x="rack.tag.x" :y="rack.tag.y + 6" text-anchor="middle">{{ rack.tag.text }}</text></g>
+                  </g>
+                  <line :x1="aisle.pin.x1" :y1="aisle.pin.y1" :x2="aisle.pin.x2" :y2="aisle.pin.y2" class="aisle-pin" /><circle :cx="aisle.pin.x1" :cy="aisle.pin.y1" r="3.5" class="aisle-dot" />
+                  <text :x="aisle.label.x" :y="aisle.label.y" text-anchor="middle" class="aisle-label">Pasillo {{ aisle.name }}</text>
+                </template>
+                <rect :x="scene.front.x" :y="scene.front.y" :width="scene.front.w" :height="scene.front.h" class="wall wall-front" /><rect v-for="(x, index) in scene.front.pillars" :key="`fp-${index}`" :x="x - 8" :y="scene.front.y - 2" width="16" :height="scene.front.h + 4" class="wall-pillar" />
+              </svg>
+            </div>
             <section v-for="aisle in (viewMode === 'grid' ? aisles : [])" :key="aisle.name" class="mb-7 last:mb-0" :aria-label="`Pasillo ${aisle.name}`">
               <h3 class="mb-3 flex items-center gap-2 text-sm font-semibold"><span class="grid h-7 min-w-7 place-items-center rounded-md border border-border bg-surface px-1.5 text-xs">{{ aisle.name }}</span>Pasillo {{ aisle.name }}</h3>
               <div class="flex flex-wrap items-start gap-4">
@@ -275,8 +295,9 @@ function moveFocus(event: KeyboardEvent) {
                 </section>
               </div>
             </section>
-          </div>
-          <p class="border-t border-border px-5 py-3 text-sm text-muted-fg">Selecciona un espacio para consultar su contenido. Representación sin escala.</p>
+          </div></div>
+          <p v-if="viewMode === 'grid'" class="border-t border-border px-5 py-3 text-sm text-muted-fg">Selecciona un espacio para consultar su contenido. Representación sin escala.</p>
+          <div v-else class="flex flex-wrap items-center justify-between gap-x-6 gap-y-1 border-t border-border px-5 py-3 text-sm text-muted-fg"><span>{{ scene.hasRatio ? 'Llenado calculado con la capacidad registrada' : 'Capacidad por definir · se muestra el estado real de cada espacio' }}</span><span>Distribución esquemática · Sin escala</span></div>
         </div>
         <aside ref="detailRoot" aria-label="Contenido del espacio" aria-live="polite" class="min-w-0 self-start rounded-[12px] border border-border bg-surface p-5 lg:min-h-[28rem]">
           <template v-if="selected">
@@ -315,28 +336,47 @@ function moveFocus(event: KeyboardEvent) {
 .selected-seat { outline: 2px solid hsl(var(--fg)); outline-offset: 2px; }
 .seat-check { position: absolute; right: -5px; top: -5px; border-radius: 50%; background: hsl(var(--fg)); color: hsl(var(--surface)); }
 .muted-seat { opacity: .3; }
-.iso-floor, .iso-shelf, .iso-post, .iso-label { pointer-events: none; }
+.wall, .wall-pillar, .wall-door, .iso-floor, .lane-line, .safety-line, .rack-frame, .rack-inner, .rack-post, .rack-brace, .aisle-pin, .aisle-dot, .aisle-label, .level-label, .rack-tag { pointer-events: none; }
+.wall { stroke: hsl(var(--border)); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.wall-back { fill: hsl(var(--muted-fg) / .22); }
+.wall-side { fill: hsl(var(--muted-fg) / .3); }
+.wall-front { fill: hsl(var(--muted-fg) / .18); }
+.wall-pillar { fill: hsl(var(--muted-fg) / .45); }
+.wall-door rect { fill: hsl(var(--surface-secondary)); stroke: hsl(var(--muted-fg) / .5); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.wall-door line { stroke: hsl(var(--muted-fg) / .4); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .iso-floor { fill: hsl(var(--surface-secondary)); stroke: hsl(var(--border)); stroke-width: 1; vector-effect: non-scaling-stroke; }
-.iso-shelf { fill: hsl(var(--surface)); stroke: hsl(var(--border)); stroke-width: 1; vector-effect: non-scaling-stroke; }
-.iso-post { stroke: hsl(var(--muted-fg) / .55); stroke-width: 2; vector-effect: non-scaling-stroke; stroke-linecap: round; }
-.iso-label { fill: hsl(var(--fg)); font-size: 15px; font-weight: 600; }
-.iso-slot { cursor: pointer; outline: none; transition: opacity .15s; }
-.iso-slot polygon { stroke: hsl(var(--fg) / .28); stroke-width: 1; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
-.iso-t { fill: var(--iso-t); } .iso-l { fill: var(--iso-l); } .iso-r { fill: var(--iso-r); }
-.iso-AVAILABLE { --iso-t: #8fdcaa; --iso-l: #5fbf84; --iso-r: #48a56c; }
-.iso-OCCUPIED { --iso-t: #8dbcf0; --iso-l: #5f9be0; --iso-r: #4682cb; }
-.iso-FULL { --iso-t: #f5c47c; --iso-l: #e3a14a; --iso-r: #cb8736; }
-.iso-INACTIVE { --iso-t: #d5dae0; --iso-l: #b9c0c8; --iso-r: #a2aab4; }
-.iso-slot:hover polygon { stroke: hsl(var(--fg)); }
-.iso-slot:focus-visible polygon { stroke: hsl(var(--accent)); stroke-width: 3; }
-.iso-product polygon { stroke: hsl(var(--accent)); stroke-width: 2; }
-.iso-selected polygon { stroke: hsl(var(--fg)); stroke-width: 3; }
-.iso-muted { opacity: .25; }
+.lane-line { stroke: hsl(var(--fg) / .3); stroke-width: 2; stroke-dasharray: 9 8; vector-effect: non-scaling-stroke; }
+.safety-line { fill: none; stroke: #e5aa00; stroke-width: 3; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+.rack-frame { fill: hsl(var(--muted-fg) / .4); stroke: hsl(var(--fg) / .85); stroke-width: 2.5; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+.rack-inner { fill: hsl(var(--surface)); stroke: hsl(var(--border)); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.rack-post { fill: hsl(var(--fg) / .85); }
+.rack-brace { fill: none; stroke: hsl(var(--fg) / .75); stroke-width: 1.6; vector-effect: non-scaling-stroke; }
+.level-label { fill: hsl(var(--muted-fg)); font-size: 14px; font-weight: 600; }
+.rack-tag rect { fill: hsl(var(--surface)); stroke: hsl(var(--border)); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.rack-tag text { fill: hsl(var(--fg)); font-size: 20px; font-weight: 600; }
+.aisle-pin { stroke: hsl(var(--fg)); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.aisle-dot { fill: hsl(var(--fg)); }
+.aisle-label { fill: hsl(var(--fg)); font-size: 26px; font-weight: 600; }
+.cell { cursor: pointer; outline: none; transition: opacity .15s; }
+.cell-bg { fill: hsl(var(--surface-secondary)); }
+.cell-edge { fill: none; stroke: hsl(var(--border)); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.cell-fill { fill: #1f7af2; }
+.cell-AVAILABLE .cell-bg { fill: hsl(var(--success) / .08); }
+.cell-AVAILABLE .cell-edge { stroke: hsl(var(--success)); stroke-width: 1.6; }
+.cell-OCCUPIED .cell-bg { fill: #1f7af2; }
+.cell-OCCUPIED .cell-fill { fill: #1f7af2; }
+.cell-OCCUPIED .cell-edge { stroke: #1560c8; }
+.cell-FULL .cell-bg { fill: #e29a2f; }
+.cell-FULL .cell-edge { stroke: #b87a1d; }
+.cell-INACTIVE .cell-bg { fill: hsl(var(--muted-fg) / .3); }
+.cell-INACTIVE .cell-edge { stroke: hsl(var(--muted-fg)); stroke-dasharray: 4 3; }
+.cell-OCCUPIED:has(.cell-fill) .cell-bg { fill: #1f7af2; fill-opacity: .22; }
+.cell:hover .cell-edge { stroke: hsl(var(--fg)); stroke-width: 2; }
+.cell:focus-visible .cell-edge { stroke: hsl(var(--accent)); stroke-width: 3.5; }
+.cell-product .cell-edge { stroke: hsl(var(--accent)); stroke-width: 2.5; }
+.cell-selected .cell-edge { stroke: hsl(var(--fg)); stroke-width: 3.5; }
+.cell-muted { opacity: .25; }
 .seat-gap { width: var(--slot-size); height: var(--slot-size); }
-:global(.dark .warehouse-location-map .iso-AVAILABLE) { --iso-t: #4fae75; --iso-l: #3b8f5c; --iso-r: #2f774c; }
-:global(.dark .warehouse-location-map .iso-OCCUPIED) { --iso-t: #5b8fcf; --iso-l: #4575b3; --iso-r: #365f96; }
-:global(.dark .warehouse-location-map .iso-FULL) { --iso-t: #d29a4a; --iso-l: #b47f35; --iso-r: #98692a; }
-:global(.dark .warehouse-location-map .iso-INACTIVE) { --iso-t: #6a7078; --iso-l: #555b63; --iso-r: #464b52; }
 :global(.dark .warehouse-location-map .state-OCCUPIED) { color: #96bede; background: #233544; border-color: #4b697f; }
 :global(.dark .warehouse-location-map .state-FULL) { color: #e6c58e; background: #393225; border-color: #796342; }
 </style>
