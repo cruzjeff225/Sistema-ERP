@@ -469,15 +469,15 @@ onMounted(load);
     <div v-if="drawerOpen" class="fixed inset-0 z-50 bg-black/45" @click.self="closeDrawer()"><aside role="dialog" aria-modal="true" aria-labelledby="retaceo-title" class="ml-auto h-full w-full max-w-3xl overflow-y-auto bg-surface shadow-2xl" @keydown.esc="closeDrawer()">
       <header class="sticky top-0 z-10 border-b border-border bg-surface px-4 pt-4 sm:px-6 sm:pt-5">
         <div class="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
-          <div class="min-w-0 flex-1 basis-60"><p class="section-eyebrow">{{ editingId ? 'Modificar borrador' : 'Nueva distribución' }}</p><h2 id="retaceo-title" class="mt-1 text-2xl font-semibold tracking-tight text-fg">Retaceo de importación</h2></div>
+          <div class="min-w-0 flex-1 basis-60"><p v-if="editingId" class="section-eyebrow">Modificar borrador</p><h2 id="retaceo-title" class="text-2xl font-semibold tracking-tight text-fg">Retaceo de importación</h2></div>
           <div class="flex shrink-0 flex-wrap items-center gap-2">
             <AppButton variant="outline" type="button" :disabled="saving" @click="formStep > 1 ? (formStep--, errorMessage = '') : closeDrawer()">{{ formStep > 1 ? 'Atrás' : 'Cancelar' }}</AppButton>
             <AppButton type="submit" form="retaceo-form" :disabled="saving || !form.purchaseId || !form.details.length">{{ saving ? 'Guardando...' : formStep === 1 ? 'Continuar a gastos' : formStep === 2 ? 'Revisar importes' : 'Guardar borrador' }}</AppButton>
             <button type="button" class="icon-button" aria-label="Cerrar" title="Cerrar" @click="closeDrawer()"><X class="h-5 w-5" /></button>
           </div>
         </div>
-        <ol aria-label="Etapas del retaceo" class="mt-4 flex flex-wrap gap-x-6">
-          <li v-for="(step, index) in steps" :key="step" :aria-current="formStep === index + 1 ? 'step' : undefined" class="-mb-px whitespace-nowrap border-b-2 pb-2.5 text-sm font-medium" :class="formStep === index + 1 ? 'border-accent text-accent' : 'border-transparent text-muted-fg'"><span class="sr-only">Paso {{ index + 1 }}: </span>{{ step }}</li>
+        <ol aria-label="Etapas del retaceo" class="mt-4 grid grid-cols-3">
+          <li v-for="(step, index) in steps" :key="step" :aria-current="formStep === index + 1 ? 'step' : undefined" class="-mb-px border-b-2 pb-3 text-sm font-medium" :class="[index > 0 ? 'pl-3' : '', formStep === index + 1 ? 'border-accent text-accent' : 'border-transparent text-muted-fg']"><span class="sr-only">Paso {{ index + 1 }}: </span>{{ step }}</li>
         </ol>
       </header>
       <div class="p-4 sm:p-6">
