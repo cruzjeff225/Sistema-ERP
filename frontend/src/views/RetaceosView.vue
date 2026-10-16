@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onBeforeUnmount, reactive, ref, watch } from "vue";
-import { Calculator, Check, ChevronDown, ChevronLeft, ChevronRight, Settings2, LockKeyhole, Pencil, Plus, RefreshCw, Search, ShieldCheck, X, XCircle } from "lucide-vue-next";
+import { Calculator, Check, ChevronDown, FileText, ChevronLeft, ChevronRight, Settings2, LockKeyhole, Pencil, Plus, RefreshCw, Search, ShieldCheck, X, XCircle } from "lucide-vue-next";
 import { statusDotClass } from "../utils/purchase-tracking";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 import ExpenseTypesManager from '../components/purchases/ExpenseTypesManager.vue';
@@ -150,7 +150,7 @@ const statusTextClass = (status: string) => ({ success: 'text-success', danger: 
 function statusVariant(status: string): "success" | "danger" | "warning" | "info" | "neutral" {
   if (status === "closed") return "success";
   if (status === "cancelled") return "danger";
-  if (status === "verified") return "info";
+  if (status === "verified") return "success";
   if (status === "calculated") return "warning";
   return "neutral";
 }
@@ -451,16 +451,16 @@ onMounted(load);
           <div class="mt-5 flex items-center justify-between gap-4 px-1 pt-1"><span class="text-base text-muted-fg">{{ selected.status === 'draft' ? 'Costo previsto' : 'Costo de adquisición' }}</span><strong class="text-2xl font-semibold tracking-tight tabular-nums">{{ money(selected.totalCost) }}</strong></div>
         </section>
         <section v-if="detailView === 'documents'" :key="'import-' + selected.id" class="p-5 sm:p-6">
-          <h3 class="font-semibold">Datos de importación</h3>
-          <dl class="mt-3 grid gap-4 text-sm sm:grid-cols-2">
-            <div><dt class="text-muted-fg">Factura</dt><dd>{{ selected.importInvoiceNumber || 'Sin factura' }}<span v-if="selected.importInvoiceDate"> · {{ shortDate(selected.importInvoiceDate) }}</span></dd></div>
-            <div><dt class="text-muted-fg">Póliza</dt><dd>{{ selected.importPolicyNumber || 'Sin póliza' }}<span v-if="selected.importPolicyDate"> · {{ shortDate(selected.importPolicyDate) }}</span></dd></div>
-            <div><dt class="text-muted-fg">Origen</dt><dd>{{ selected.originCountry || 'No indicado' }}</dd></div>
-            <div><dt class="text-muted-fg">Destino</dt><dd>{{ selected.purchase.branch?.name }} · {{ selected.purchase.warehouse?.name }}</dd></div>
+          <h3 class="text-xl font-semibold tracking-tight text-fg">Datos de importación</h3>
+          <dl class="mt-4 grid gap-x-8 gap-y-5 text-base sm:grid-cols-2">
+            <div><dt class="text-muted-fg">Factura</dt><dd class="mt-0.5 text-fg">{{ selected.importInvoiceNumber || 'Sin factura' }}<span v-if="selected.importInvoiceDate"> · {{ shortDate(selected.importInvoiceDate) }}</span></dd></div>
+            <div><dt class="text-muted-fg">Póliza</dt><dd class="mt-0.5 text-fg">{{ selected.importPolicyNumber || 'Sin póliza' }}<span v-if="selected.importPolicyDate"> · {{ shortDate(selected.importPolicyDate) }}</span></dd></div>
+            <div><dt class="text-muted-fg">Origen</dt><dd class="mt-0.5 text-fg">{{ selected.originCountry || 'No indicado' }}</dd></div>
+            <div><dt class="text-muted-fg">Destino</dt><dd class="mt-0.5 text-fg">{{ selected.purchase.branch?.name }} · {{ selected.purchase.warehouse?.name }}</dd></div>
           </dl>
-          <p v-if="selected.notes" class="mt-4 whitespace-pre-wrap break-words text-sm text-muted-fg">{{ selected.notes }}</p>
-          <div class="mt-6 border-t border-border pt-5"><h3 class="font-semibold">Documentos relacionados</h3>
-          <nav aria-label="Documentos de origen del retaceo" class="mt-4 flex flex-wrap items-center gap-4 text-sm"><RouterLink v-for="document in traceDocuments(selected)" :key="document.path" :to="document.path" class="font-medium text-accent hover:underline">{{ document.code }}</RouterLink></nav>
+          <p v-if="selected.notes" class="mt-4 whitespace-pre-wrap break-words text-base text-muted-fg">{{ selected.notes }}</p>
+          <div class="mt-6 border-t border-border pt-6"><h3 class="text-xl font-semibold tracking-tight text-fg">Documentos relacionados</h3>
+          <nav aria-label="Documentos de origen del retaceo" class="mt-4 flex flex-wrap items-center gap-x-8 gap-y-3 text-base"><RouterLink v-for="document in traceDocuments(selected)" :key="document.path" :to="document.path" class="inline-flex items-center gap-2 font-medium text-accent underline underline-offset-2 hover:opacity-80"><FileText class="h-5 w-5 shrink-0 text-muted-fg" aria-hidden="true" />{{ document.code }}</RouterLink></nav>
           </div>
         </section>
       </section>
