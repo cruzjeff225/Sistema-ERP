@@ -265,8 +265,15 @@ onBeforeUnmount(() => { loadVersion++; stockVersion++; expenseVersion++; destina
         <RouterLink v-if="can('purchases.view')" :to="taskLink('expenses')" class="flex items-center gap-3 rounded-[12px] border border-border/70 px-5 py-4 text-sm text-muted-fg transition-colors hover:bg-surface"><ReceiptText class="h-5 w-5" :stroke-width="1.5" /><span class="flex-1">Gastos de recepción</span><ArrowRight class="h-4 w-4" /></RouterLink>
       </section>
       <section v-if="tab === 'placement'" class="space-y-4">
-        <p class="text-sm text-muted-fg">Coloque la viñeta y confirme dónde dejó cada producto. El mapa se actualiza al confirmar.</p>
-        <section v-if="!visiblePending.length" class="rounded-[12px] border border-border bg-surface p-5"><h2 class="font-semibold">{{ context?.kind === 'purchase' ? contextDocument?.status === 'CANCELLED' ? 'Recepción cancelada' : 'Colocación completada' : 'No hay productos pendientes de ubicación' }}</h2><p v-if="context?.kind === 'purchase' && contextDocument?.status !== 'CANCELLED'" class="mt-2 text-sm text-muted-fg">Los productos de esta recepción ya tienen ubicación confirmada.</p><RouterLink v-if="backToDocument" :to="backToDocument" class="mt-4 inline-block text-sm font-medium text-accent">Continuar con la recepción</RouterLink></section>
+        <p v-if="visiblePending.length" class="text-sm text-muted-fg">Coloque la viñeta y confirme dónde dejó cada producto. El mapa se actualiza al confirmar.</p>
+        <section v-if="!visiblePending.length" class="flex max-w-3xl items-start gap-4 rounded-[12px] border border-border bg-surface p-5 sm:p-6" :aria-live="'polite'">
+          <span v-if="context?.kind === 'purchase' && contextDocument?.status !== 'CANCELLED'" class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-2 border-success text-success" aria-hidden="true"><Check class="h-5 w-5" /></span>
+          <div class="min-w-0">
+            <h2 class="text-lg font-semibold text-fg">{{ context?.kind === 'purchase' ? contextDocument?.status === 'CANCELLED' ? 'Recepción cancelada' : 'Colocación completada' : 'No hay productos pendientes de ubicación' }}</h2>
+            <template v-if="context?.kind === 'purchase' && contextDocument?.status !== 'CANCELLED'"><p class="mt-1.5 text-sm text-fg">Los productos de esta recepción ya tienen ubicación confirmada.</p><p class="mt-1 text-sm text-muted-fg">El mapa y las existencias ya muestran este producto.</p></template>
+            <RouterLink v-if="backToDocument" :to="backToDocument" class="mt-4 inline-flex h-10 items-center rounded-lg bg-accent px-5 text-sm font-semibold text-accent-foreground shadow-sm transition-colors hover:bg-accent/90 dark:bg-[#c92a2d] dark:text-white dark:hover:bg-[#df3639]">Continuar con la recepción</RouterLink>
+          </div>
+        </section>
         <div v-else class="overflow-hidden rounded-[12px] border border-border bg-surface">
           <div class="hidden grid-cols-[2.5rem_minmax(0,1fr)_12rem_10rem] gap-x-3 border-b border-border px-3 py-2.5 text-sm text-muted-fg sm:grid" aria-hidden="true"><span /><span>Producto</span><span>Cantidad</span><span>Estado</span></div>
           <article v-for="p in visiblePending" :key="p.id" class="border-b border-border last:border-b-0">
