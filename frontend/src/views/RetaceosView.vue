@@ -463,12 +463,23 @@ onMounted(load);
 
     </div>
 
-    <div v-if="drawerOpen" class="fixed inset-0 z-50 bg-black/45" @click.self="closeDrawer()"><aside role="dialog" aria-modal="true" aria-label="Retaceo de importación" class="ml-auto h-full w-full max-w-3xl overflow-y-auto bg-surface p-4 shadow-2xl sm:p-6" @keydown.esc="closeDrawer()"><div class="flex items-start justify-between"><div><p class="section-eyebrow">{{ editingId ? 'Modificar borrador' : 'Nueva distribución' }}</p><h2 class="mt-1 text-xl font-semibold text-fg">Retaceo de importación</h2></div><button class="icon-button" title="Cerrar" @click="closeDrawer()"><X class="h-5 w-5" /></button></div>
-      <p v-if="errorMessage" role="alert" class="sticky top-0 z-10 mt-4 rounded-lg border border-danger/30 bg-surface p-3 text-sm text-danger">{{ errorMessage }}</p>
-      <ol aria-label="Etapas del retaceo" class="mt-5 grid grid-cols-3 gap-2 border-b border-border pb-4">
-        <li v-for="(step, index) in steps" :key="step" :aria-current="formStep === index + 1 ? 'step' : undefined" class="flex items-center gap-2 text-sm" :class="formStep === index + 1 ? 'font-semibold text-accent' : 'text-muted-fg'"><span class="grid h-6 w-6 shrink-0 place-items-center rounded-full border border-current text-xs">{{ index + 1 }}</span>{{ step }}</li>
-      </ol>
-      <form class="mt-6 space-y-6" @submit.prevent="submitForm"><fieldset :disabled="saving" class="min-w-0 space-y-6">
+    <div v-if="drawerOpen" class="fixed inset-0 z-50 bg-black/45" @click.self="closeDrawer()"><aside role="dialog" aria-modal="true" aria-labelledby="retaceo-title" class="ml-auto h-full w-full max-w-3xl overflow-y-auto bg-surface shadow-2xl" @keydown.esc="closeDrawer()">
+      <header class="sticky top-0 z-10 border-b border-border bg-surface px-4 pt-4 sm:px-6 sm:pt-5">
+        <div class="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+          <div class="min-w-0 flex-1 basis-60"><p class="section-eyebrow">{{ editingId ? 'Modificar borrador' : 'Nueva distribución' }}</p><h2 id="retaceo-title" class="mt-1 text-2xl font-semibold tracking-tight text-fg">Retaceo de importación</h2></div>
+          <div class="flex shrink-0 flex-wrap items-center gap-2">
+            <AppButton variant="outline" type="button" :disabled="saving" @click="formStep > 1 ? (formStep--, errorMessage = '') : closeDrawer()">{{ formStep > 1 ? 'Atrás' : 'Cancelar' }}</AppButton>
+            <AppButton type="submit" form="retaceo-form" :disabled="saving || !form.purchaseId || !form.details.length">{{ saving ? 'Guardando...' : formStep === 1 ? 'Continuar a gastos' : formStep === 2 ? 'Revisar importes' : 'Guardar borrador' }}</AppButton>
+            <button type="button" class="icon-button" aria-label="Cerrar" title="Cerrar" @click="closeDrawer()"><X class="h-5 w-5" /></button>
+          </div>
+        </div>
+        <ol aria-label="Etapas del retaceo" class="mt-4 flex gap-6 overflow-x-auto">
+          <li v-for="(step, index) in steps" :key="step" :aria-current="formStep === index + 1 ? 'step' : undefined" class="-mb-px whitespace-nowrap border-b-2 pb-2.5 text-sm font-medium" :class="formStep === index + 1 ? 'border-accent text-accent' : 'border-transparent text-muted-fg'"><span class="sr-only">Paso {{ index + 1 }}: </span>{{ step }}</li>
+        </ol>
+      </header>
+      <div class="p-4 sm:p-6">
+      <p v-if="errorMessage" role="alert" class="mb-4 rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger">{{ errorMessage }}</p>
+      <form id="retaceo-form" class="space-y-6" @submit.prevent="submitForm"><fieldset :disabled="saving" class="min-w-0 space-y-6">
         <section v-if="formStep === 1" class="space-y-5">
           <div class="grid gap-4 sm:grid-cols-2">
             <label class="text-sm font-medium text-fg">Recepción<select :value="form.purchaseId" @change="changePurchase" :disabled="!!editingId" required class="field-control"><option :value="0" disabled>Seleccionar recepción</option><option v-for="purchase in eligiblePurchases" :key="purchase.id" :value="purchase.id">{{ purchase.documentNumber }} · {{ purchase.supplier.name }}</option><option v-if="editingId && selectedPurchase" :value="selectedPurchase.id">{{ selectedPurchase.documentNumber }} · {{ selectedPurchase.supplier.name }}</option></select></label>
@@ -501,11 +512,8 @@ onMounted(load);
           </dl>
           <details :open="!!form.notes" class="border-t border-border pt-4"><summary class="cursor-pointer text-sm font-medium text-muted-fg">Observaciones (opcional)</summary><textarea v-model="form.notes" aria-label="Observaciones" maxlength="2000" class="field-control mt-3 min-h-24" /></details>
         </section>
-        <footer class="sticky bottom-0 flex flex-wrap items-center justify-between gap-3 border-t border-border bg-surface py-4">
-          <AppButton variant="outline" type="button" @click="formStep > 1 ? (formStep--, errorMessage = '') : closeDrawer()">{{ formStep > 1 ? 'Atrás' : 'Cancelar' }}</AppButton>
-          <AppButton type="submit" :disabled="saving || !form.purchaseId || !form.details.length">{{ saving ? 'Guardando...' : formStep === 1 ? 'Continuar a gastos' : formStep === 2 ? 'Revisar importes' : 'Guardar borrador' }}</AppButton>
-        </footer>
       </fieldset></form>
+      </div>
     </aside></div>
     <PurchaseActionDialog v-if="confirmation" :title="confirmation.title" :description="confirmation.description" :require-reason="confirmation.reason" :busy="saving" :error="errorMessage" @confirm="confirmWorkflow" @close="confirmation = null" />
     <PurchaseActionDialog v-if="discardChanges" title="Descartar cambios" description="Los cambios del retaceo no se han guardado." @confirm="closeDrawer(true)" @close="discardChanges = false" />
