@@ -63,8 +63,8 @@ const emit = defineEmits<{ select: [slot: MapSlot]; key: [event: KeyboardEvent, 
 .cell-INACTIVE .cell-bg { fill: hsl(var(--muted-fg) / .3); }
 .cell-INACTIVE .cell-edge { stroke: hsl(var(--muted-fg)); stroke-dasharray: 4 3; }
 .cell:hover .cell-ring { stroke: hsl(var(--fg) / .55); stroke-width: 2; }
-.cell-product .cell-ring { stroke: hsl(var(--accent)); stroke-width: 2.5; }
+.cell-product .cell-ring { stroke: hsl(var(--accent) / .65); stroke-width: 2.5; stroke-dasharray: 5 3; }
 .cell:focus-visible .cell-ring { stroke: hsl(var(--accent)); stroke-width: 3.5; }
-.cell-selected .cell-ring { stroke: hsl(var(--fg)); stroke-width: 3; }
+.cell-selected .cell-ring { stroke: hsl(var(--accent)); stroke-width: 3.5; }
 .cell-muted { opacity: .25; }
 </style>

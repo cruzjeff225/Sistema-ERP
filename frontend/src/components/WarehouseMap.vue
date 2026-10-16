@@ -11,7 +11,7 @@ import { matchesMapSearch, resolveMapWarehouse, warehouseBranchKey, warehouseBra
 
 type State = SlotState;
 type Slot = MapSlot;
-const props = defineProps<{ warehouses: MapWarehouse[]; initialWarehouse?: number; initialLocation?: number;
+const props = defineProps<{ panel?: boolean; warehouses: MapWarehouse[]; initialWarehouse?: number; initialLocation?: number;
   productId?: number; productName?: string; refresh: number }>();
 const emit = defineEmits<{ movements: [context: { productId: number; productName: string; warehouseId: number; locationId: number; locationCode: string; warehouse?: MapWarehouse }]; 'warehouse-change': [warehouseId: number, branchId?: number] }>();
 const { can } = usePermissions();
@@ -75,6 +75,7 @@ watch([warehouseId, () => props.refresh, () => props.productId, () => props.init
   finally { if (current === version) { busy.value = false; await nextTick(); if (current === version && company === activeCompanyId.value && props.productId && contextChanged) centerProduct(false); } }
 }, { immediate: true });
 const selected = computed(() => slots.value.find(slot => slot.id === selectedId.value));
+const ready = computed(() => !error.value && !busy.value && !!warehouseId.value && slots.value.length > 0);
 const selectedStocks = computed(() => [...(selected.value?.stocks ?? [])].sort((a, b) => Number(b.product.id === props.productId) - Number(a.product.id === props.productId)));
 function matches(slot: Slot) {
   return matchesMapSearch(slot, query.value) && (!stateFilter.value || slot.state === stateFilter.value) && (!aisleFilter.value || slot.aisle === aisleFilter.value);
@@ -150,12 +151,13 @@ function moveFocus(event: KeyboardEvent) {
 </script>
 
 <template>
-  <section aria-label="Mapa de almacén" class="warehouse-location-map min-w-0">
-    <div class="grid gap-3 rounded-xl border border-border bg-surface p-4 sm:grid-cols-2">
-      <label class="min-w-0 text-xs font-medium text-muted-fg">Sucursal
+  <section aria-label="Mapa de almacén" class="warehouse-location-map grid min-w-0 gap-5 lg:items-start" :class="panel ? 'lg:grid-cols-[minmax(0,1fr)_340px]' : 'lg:grid-cols-[minmax(0,1fr)_280px]'">
+    <div class="min-w-0" :class="panel ? 'surface-panel p-4 sm:p-5' : ''">
+    <div class="grid gap-3 rounded-[12px] border border-border bg-surface p-4 sm:grid-cols-2">
+      <label class="min-w-0 text-sm text-muted-fg">Sucursal
         <select :value="branchKey" class="field-control" :disabled="!branches.length" @change="chooseBranch"><option value="" disabled>{{ branches.length ? 'Selecciona una sucursal' : 'Sin sucursales disponibles' }}</option><option v-for="branch in branches" :key="branch.key" :value="branch.key">{{ branch.name }}</option></select>
       </label>
-      <label class="min-w-0 text-xs font-medium text-muted-fg">Almacén
+      <label class="min-w-0 text-sm text-muted-fg">Almacén
         <select :value="warehouseId" class="field-control" :disabled="!branchKey || !warehouseOptions.length" @change="chooseWarehouse"><option :value="0" disabled>{{ branchKey ? 'Selecciona un almacén' : 'Selecciona primero la sucursal' }}</option><option v-for="warehouse in warehouseOptions" :key="warehouse.id" :value="warehouse.id">{{ warehouse.name }}</option></select>
       </label>
     </div>
@@ -165,14 +167,14 @@ function moveFocus(event: KeyboardEvent) {
     <template v-else>
       <div v-if="productId" class="mt-4 flex flex-wrap items-center gap-3 rounded-xl bg-accent-soft px-4 py-3"><MapPin class="h-4 w-4 shrink-0 text-accent"/><div class="min-w-0 flex-1"><strong class="block break-words text-sm">{{ productName }}</strong><span role="status" class="text-xs text-muted-fg">{{ productLocations.length ? `${productLocations.length} ${productLocations.length === 1 ? 'ubicación con existencias' : 'ubicaciones con existencias'}` : 'Sin existencias en este almacén' }}</span></div><button type="button" title="Encontrar producto en el mapa" aria-label="Encontrar producto en el mapa" class="icon-button shrink-0" :disabled="!productLocations.length" @click="centerProduct()"><Focus class="h-4 w-4"/></button></div>
       <div class="my-4 grid items-end gap-3 sm:grid-cols-[minmax(0,1fr)_180px]">
-        <label class="min-w-0 text-sm font-medium text-fg">Buscar espacio o producto<div class="relative mt-1.5"><Search class="pointer-events-none absolute left-3 top-3 h-4 w-4"/><input v-model="query" type="search" maxlength="100" class="field-control !mt-0 !pl-9" placeholder="Código, producto o SKU" /></div></label>
-        <label class="text-sm font-medium text-fg">Pasillo<select v-model="aisleFilter" class="field-control"><option value="">Todos los pasillos</option><option v-for="aisle in aisleNames" :key="aisle" :value="aisle">Pasillo {{ aisle }}</option></select></label>
+        <label class="min-w-0 text-base text-fg">Buscar espacio o producto<div class="relative mt-1.5"><Search class="pointer-events-none absolute left-3 top-3 h-4 w-4"/><input v-model="query" type="search" maxlength="100" class="field-control !mt-0 !pl-9" placeholder="Código, producto o SKU" /></div></label>
+        <label class="text-base text-fg">Pasillo<select v-model="aisleFilter" class="field-control"><option value="">Todos los pasillos</option><option v-for="aisle in aisleNames" :key="aisle" :value="aisle">Pasillo {{ aisle }}</option></select></label>
       </div>
       <div class="mb-5 flex flex-wrap items-center gap-2" aria-label="Filtrar espacios por estado">
         <button type="button" class="state-filter" :class="!stateFilter ? 'active-filter' : ''" :aria-pressed="!stateFilter" @click="stateFilter = ''">Todos <span class="tabular-nums text-muted-fg">{{ slots.length }}</span></button>
         <button v-for="state in states" :key="state" type="button" class="state-filter" :class="stateFilter === state ? 'active-filter' : ''" :aria-pressed="stateFilter === state" @click="stateFilter = stateFilter === state ? '' : state"><span class="state-dot" :class="`state-${state}`"/>{{ labels[state] }} <span class="tabular-nums text-muted-fg">{{ slots.filter(slot => slot.state === state).length }}</span></button>
       </div>
-      <div class="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_280px]">
+      <div class="min-w-0">
         <div class="min-w-0 overflow-hidden rounded-[12px] border border-border bg-surface">
           <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-b border-border px-5 py-4">
             <div class="min-w-0"><h2 class="truncate text-xl font-semibold tracking-tight">{{ currentWarehouse?.name }}</h2><p role="status" class="mt-0.5 text-sm text-muted-fg">{{ filtersActive ? `${found.length} coincidencias` : `${slots.length} espacios` }} · Vista por pasillo y estante</p></div>
@@ -241,24 +243,30 @@ function moveFocus(event: KeyboardEvent) {
             </section>
           </div></div>
           <p v-if="viewMode === 'grid'" class="border-t border-border px-5 py-3 text-sm text-muted-fg">Selecciona un espacio para consultar su contenido. Representación sin escala.</p>
-          <div v-else class="flex flex-wrap items-center justify-between gap-x-6 gap-y-1 border-t border-border px-5 py-3 text-sm text-muted-fg"><span>{{ scene.hasRatio ? 'Llenado calculado con la capacidad registrada' : 'Capacidad por definir · se muestra el estado real de cada espacio' }}</span><span>Distribución esquemática · Sin escala</span></div>
-        </div>
-        <aside ref="detailRoot" aria-label="Contenido del espacio" aria-live="polite" class="min-w-0 self-start rounded-[12px] border border-border bg-surface p-5 lg:min-h-[28rem]">
-          <template v-if="selected">
-            <p class="text-xs text-muted-fg">Espacio seleccionado</p><h2 class="mt-1 break-all text-lg font-semibold">{{ selected.code }}</h2>
-            <p class="mt-2 flex items-center gap-2 text-xs"><span class="state-dot" :class="`state-${selected.state}`"/>{{ singleLabels[selected.state] }}</p>
-            <p v-if="!matches(selected)" class="mt-3 text-xs text-muted-fg">Este espacio está fuera del filtro. <button type="button" class="text-accent hover:underline" @click="clearFilters">Mostrarlo</button></p>
-            <dl class="my-4 grid grid-cols-2 gap-x-4 gap-y-3 rounded-lg bg-surface-secondary/70 p-3 text-xs"><div><dt class="text-muted-fg">Pasillo</dt><dd class="mt-0.5 break-words font-medium">{{ selected.aisle }}</dd></div><div><dt class="text-muted-fg">Estante</dt><dd class="mt-0.5 break-words font-medium">{{ selected.rack }}</dd></div><div><dt class="text-muted-fg">Nivel</dt><dd class="mt-0.5 break-words font-medium">{{ selected.level }}</dd></div><div><dt class="text-muted-fg">Posición</dt><dd class="mt-0.5 break-words font-medium">{{ selected.position }}</dd></div></dl>
-            <div v-if="selected.usedCapacity !== null" class="mb-4 flex justify-between gap-3 text-xs"><span class="text-muted-fg">Ocupación / capacidad</span><span class="font-medium tabular-nums">{{ format(selected.usedCapacity) }} / {{ format(selected.capacity) }}</span></div>
-            <p v-else class="mb-4 text-xs leading-5 text-muted-fg">Hay unidades distintas; la capacidad no se compara como una sola cantidad.</p>
-            <h3 class="border-t border-border pt-4 text-xs font-semibold">Contenido del espacio</h3>
-            <ul class="divide-y divide-border"><li v-for="stock in selectedStocks" :key="stock.product.id" class="py-3" :class="stock.product.id === productId ? 'border-l-2 border-accent pl-3' : ''"><strong class="block break-words text-sm">{{ stock.product.name }}</strong><span class="mt-1 block break-all text-xs text-muted-fg">{{ stock.product.sku }}</span><p class="mt-2 text-sm font-semibold tabular-nums">{{ format(stock.quantity) }} <span class="text-xs font-normal text-muted-fg">{{ stock.product.purchaseUnit.name }}</span></p><button v-if="can('inventory.view')" type="button" class="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-accent hover:underline" @click="emit('movements', { productId: stock.product.id, productName: stock.product.name, warehouseId, locationId: selected.id, locationCode: selected.code, warehouse: currentWarehouse })"><History class="h-3.5 w-3.5"/>Ver movimientos</button></li></ul>
-            <p v-if="!selected.stocks.length" class="py-5 text-xs text-muted-fg">Sin existencias en este espacio.</p>
-          </template>
-          <div v-else class="grid min-h-60 place-items-center py-8 text-center"><div><MapPin class="mx-auto mb-4 h-7 w-7 text-muted-fg"/><h2 class="text-lg font-semibold">Detalle del espacio</h2><p class="mx-auto mt-2 max-w-52 text-sm leading-6 text-muted-fg">Elige una ubicación del mapa para ver coordenadas y productos.</p></div></div>
-        </aside>
+                  </div>
+        <div v-if="viewMode === 'iso'" class="flex flex-wrap items-center justify-between gap-x-6 gap-y-1 px-1 pt-3 text-sm text-muted-fg"><span>{{ scene.hasRatio ? 'Llenado calculado con la capacidad registrada' : 'Capacidad por definir · se muestra el estado real de cada espacio' }}</span><span>Distribución esquemática · Sin escala</span></div>
       </div>
     </template>
+    </div>
+    <aside v-if="ready" ref="detailRoot" aria-label="Contenido del espacio" aria-live="polite" class="min-w-0 rounded-[12px] border border-border bg-surface p-5 sm:p-6 lg:min-h-[32rem]">
+      <template v-if="selected">
+        <p class="text-base text-muted-fg">Espacio seleccionado</p>
+        <h2 class="mt-1 break-all text-3xl font-semibold tracking-tight">{{ selected.code }}</h2>
+        <p class="mt-3 flex items-center gap-2.5 text-lg"><span class="state-dot big" :class="`state-${selected.state}`" aria-hidden="true"/>{{ singleLabels[selected.state] }}</p>
+        <p v-if="!matches(selected)" class="mt-3 text-sm text-muted-fg">Este espacio está fuera del filtro. <button type="button" class="text-accent hover:underline" @click="clearFilters">Mostrarlo</button></p>
+        <h3 class="mt-6 text-lg font-semibold">Ubicación</h3>
+        <dl class="mt-3 grid grid-cols-2 gap-x-6 gap-y-4"><div><dt class="text-base text-muted-fg">Pasillo</dt><dd class="mt-0.5 break-words text-xl font-semibold">{{ selected.aisle }}</dd></div><div><dt class="text-base text-muted-fg">Estante</dt><dd class="mt-0.5 break-words text-xl font-semibold">{{ selected.rack }}</dd></div><div><dt class="text-base text-muted-fg">Nivel</dt><dd class="mt-0.5 break-words text-xl font-semibold">{{ selected.level }}</dd></div><div><dt class="text-base text-muted-fg">Posición</dt><dd class="mt-0.5 break-words text-xl font-semibold">{{ selected.position }}</dd></div></dl>
+        <div v-if="selected.usedCapacity !== null" class="mt-4 flex justify-between gap-3 text-base"><span class="text-muted-fg">Ocupación / capacidad</span><span class="font-semibold tabular-nums">{{ format(selected.usedCapacity) }} / {{ format(selected.capacity) }}</span></div>
+        <p v-else class="mt-4 text-base leading-6 text-muted-fg">Hay unidades distintas; la capacidad no se compara como una sola cantidad.</p>
+        <div class="mt-6 border-t border-border pt-5">
+          <h3 class="text-lg font-semibold">Contenido del espacio</h3>
+          <ul class="mt-2 divide-y divide-border"><li v-for="stock in selectedStocks" :key="stock.product.id" class="py-4" :class="stock.product.id === productId ? 'border-l-2 border-accent pl-3' : ''"><strong class="block break-words text-lg">{{ stock.product.name }}</strong><span class="mt-0.5 block break-all text-base text-muted-fg">{{ stock.product.sku }}</span><p class="mt-2 text-xl font-semibold tabular-nums">{{ format(stock.quantity) }} <span class="text-lg font-normal">{{ stock.product.purchaseUnit.name }}</span></p>
+            <button v-if="can('inventory.view')" type="button" class="mt-3 inline-flex items-center gap-2 text-base font-medium text-accent hover:underline" @click="emit('movements', { productId: stock.product.id, productName: stock.product.name, warehouseId, locationId: selected.id, locationCode: selected.code, warehouse: currentWarehouse })"><History class="h-5 w-5" aria-hidden="true"/>Ver movimientos</button></li></ul>
+          <p v-if="!selected.stocks.length" class="py-4 text-base text-muted-fg">Sin existencias en este espacio.</p>
+        </div>
+      </template>
+      <div v-else class="grid min-h-60 place-items-center py-8 text-center"><div><MapPin class="mx-auto mb-4 h-7 w-7 text-muted-fg"/><h2 class="text-lg font-semibold">Detalle del espacio</h2><p class="mx-auto mt-2 max-w-52 text-sm leading-6 text-muted-fg">Elige una ubicación del mapa para ver coordenadas y productos.</p></div></div>
+    </aside>
   </section>
 </template>
 
@@ -267,6 +275,7 @@ function moveFocus(event: KeyboardEvent) {
 .state-OCCUPIED { color: #37658a; background: #edf3f8; border-color: #b5c9db; }
 .state-FULL { color: #94681f; background: #fbf5e9; border-color: #dacaac; }
 .state-INACTIVE { color: hsl(var(--muted-fg)); background: hsl(var(--surface-secondary)); border-color: hsl(var(--border)); }
+.state-dot.big { width: 12px; height: 12px; border-width: 0; background: currentColor; }
 .state-dot { display: inline-block; width: 8px; height: 8px; flex-shrink: 0; border: 2px solid currentColor; border-radius: 50%; }
 .state-dot.state-OCCUPIED, .state-dot.state-FULL { background: currentColor; }
 .state-filter { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 36px; padding: 5px 12px; border: 1px solid transparent; border-radius: 8px; font-size: 14px; color: hsl(var(--muted-fg)); }

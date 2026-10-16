@@ -202,7 +202,7 @@ async function save() {
         </template>
         <footer v-if="total" class="flex items-center justify-between gap-3 border-t border-border/70 px-4 py-3 sm:px-5"><span class="text-xs text-muted-fg">Página {{ page }} de {{ pages }}</span><div class="flex items-center gap-1"><button type="button" class="icon-button" aria-label="Página anterior" :disabled="loading || page <= 1" @click="page--; load()"><ChevronLeft class="h-4 w-4" /></button><button type="button" class="icon-button" aria-label="Página siguiente" :disabled="loading || page >= pages" @click="page++; load()"><ChevronRight class="h-4 w-4" /></button></div></footer>
       </section>
-      <section v-else class="surface-panel min-w-0 p-4 sm:p-5"><WarehouseMap :warehouses="warehouses" :initial-warehouse="warehouseId" :refresh="mapRefresh" @warehouse-change="selectMapWarehouse" @movements="openMovements" /></section>
+      <section v-else class="min-w-0"><WarehouseMap panel :warehouses="warehouses" :initial-warehouse="warehouseId" :refresh="mapRefresh" @warehouse-change="selectMapWarehouse" @movements="openMovements" /></section>
     </div>
     <InventoryProductDetail v-if="detailStock" :key="detailStock.id" :stock="detailStock" :warehouses="warehouses" :show-map="detailMap" @close="detailStock = null" @movements="openMovements" />
     <Teleport to="body">
