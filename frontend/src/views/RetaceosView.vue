@@ -146,6 +146,7 @@ function statusLabel(status: string) {
   return ({ draft: "Borrador", calculated: "Calculado", verified: "Verificado", closed: "Cerrado", cancelled: "Cancelado" } as Record<string, string>)[status] ?? status;
 }
 
+const statusTextClass = (status: string) => ({ success: 'text-success', danger: 'text-danger', warning: 'text-warning', info: 'text-accent', neutral: 'text-muted-fg' })[statusVariant(status)];
 function statusVariant(status: string): "success" | "danger" | "warning" | "info" | "neutral" {
   if (status === "closed") return "success";
   if (status === "cancelled") return "danger";
@@ -398,7 +399,7 @@ onMounted(load);
         </div>
         <div class="scrollbar-thin max-h-[250px] lg:max-h-[650px] overflow-y-auto p-2">
           <button v-for="record in filteredRecords" :key="record.id" type="button" :aria-pressed="selectedId === record.id" class="mb-1 w-full rounded-lg border-l-[3px] px-3 py-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent" :class="selectedId === record.id ? 'border-accent bg-accent-soft' : 'border-transparent hover:bg-surface-secondary'" :disabled="saving" @click="selectRecord(record.id)">
-            <span class="flex items-start justify-between gap-3"><span class="min-w-0"><strong class="flex items-center gap-2 truncate text-fg"><span class="h-2 w-2 shrink-0 rounded-full" :class="statusDotClass(statusVariant(record.status))" aria-hidden="true" />{{ record.code }}</strong><span class="mt-1 block truncate text-sm text-muted-fg">{{ record.supplier.name }} · {{ record.purchase.documentNumber }}</span></span><AppBadge :variant="statusVariant(record.status)">{{ statusLabel(record.status) }}</AppBadge></span>
+            <span class="flex items-start justify-between gap-3"><span class="min-w-0"><strong class="flex items-center gap-2 truncate text-fg"><span class="h-2 w-2 shrink-0 rounded-full" :class="statusDotClass(statusVariant(record.status))" aria-hidden="true" />{{ record.code }}</strong><span class="mt-1 block truncate text-sm text-muted-fg">{{ record.supplier.name }} · {{ record.purchase.documentNumber }}</span></span><AppBadge v-if="statusVariant(record.status) === 'neutral'" :variant="statusVariant(record.status)">{{ statusLabel(record.status) }}</AppBadge><span v-else class="shrink-0 text-sm font-semibold" :class="statusTextClass(record.status)">{{ statusLabel(record.status) }}</span></span>
             <span class="mt-2 flex justify-between text-sm text-muted-fg"><span>{{ shortDate(record.retaceoDate) }}</span><strong class="text-fg">{{ money(record.totalCost, record.purchase.currency) }}</strong></span>
           </button>
           <p v-if="!filteredRecords.length" class="px-4 py-12 text-center text-sm text-muted-fg">{{ loading ? 'Cargando retaceos…' : search || filterCount ? 'No hay retaceos para estos filtros.' : ageTab === 'recent' ? 'Sin retaceos esta semana.' : 'Sin retaceos registrados.' }}</p>
@@ -408,7 +409,7 @@ onMounted(load);
       <section aria-label="Detalle de retaceo" v-if="selected" class="min-w-0 overflow-hidden rounded-[12px] border border-border bg-surface">
         <header class="p-5 pb-4">
           <div class="flex flex-wrap items-start justify-between gap-4">
-            <div class="min-w-0"><div class="flex flex-wrap items-center gap-x-3 gap-y-1"><h2 class="text-2xl font-semibold tracking-tight text-fg">{{ selected.code }}</h2><span class="inline-flex items-center gap-2"><span class="h-2.5 w-2.5 shrink-0 rounded-full" :class="statusDotClass(statusVariant(selected.status))" aria-hidden="true" /><AppBadge :variant="statusVariant(selected.status)">{{ statusLabel(selected.status) }}</AppBadge></span><TrackingLink type="retaceo" :id="selected.id" /></div><p class="mt-1.5 text-base text-muted-fg">{{ selected.supplier.name }} · Recepción {{ selected.purchase.documentNumber }}</p></div>
+            <div class="min-w-0"><div class="flex flex-wrap items-center gap-x-3 gap-y-1"><h2 class="text-2xl font-semibold tracking-tight text-fg">{{ selected.code }}</h2><span class="inline-flex items-center gap-2"><span class="h-2.5 w-2.5 shrink-0 rounded-full" :class="statusDotClass(statusVariant(selected.status))" aria-hidden="true" /><AppBadge v-if="statusVariant(selected.status) === 'neutral'" :variant="statusVariant(selected.status)">{{ statusLabel(selected.status) }}</AppBadge><span v-else class="text-sm font-semibold" :class="statusTextClass(selected.status)">{{ statusLabel(selected.status) }}</span></span><TrackingLink type="retaceo" :id="selected.id" /></div><p class="mt-1.5 text-base text-muted-fg">{{ selected.supplier.name }} · Recepción {{ selected.purchase.documentNumber }}</p></div>
             <fieldset :disabled="saving" class="flex flex-wrap gap-2">
               <AppButton v-if="selected.status === 'draft' && can('retaceos.calculate')" @click="workflow('calculate','Retaceo calculado')"><Calculator class="h-4 w-4" />Distribuir gastos</AppButton>
               <AppButton v-if="selected.status === 'calculated' && can('retaceos.verify')" @click="workflow('verify','Retaceo verificado')"><ShieldCheck class="h-4 w-4" />Confirmar revisión</AppButton>
@@ -430,14 +431,16 @@ onMounted(load);
 
         <div class="border-b border-border px-5"><PurchaseTabs variant="underline" v-model="detailView" :items="[{ value: 'products', label: 'Costo por producto' }, { value: 'expenses', label: 'Gastos' }, { value: 'documents', label: 'Datos y documentos' }]" label="Detalle del retaceo" :disabled="saving" /></div>
         <section v-if="detailView === 'expenses'" class="p-5 sm:p-6">
-          <h3 class="font-semibold">Gastos y costo de adquisición</h3>
-          <dl class="mt-5 max-w-2xl space-y-4 text-sm">
-            <div class="flex items-center justify-between gap-4"><dt class="text-muted-fg">Mercadería (FOB)</dt><dd class="font-medium">{{ money(selected.totalFob) }}</dd></div>
-            <div class="flex items-center justify-between gap-4"><dt class="text-muted-fg">Flete</dt><dd class="font-medium">{{ money(selected.totalFreight) }}</dd></div>
-            <div class="flex items-center justify-between gap-4"><dt class="text-muted-fg">Otros gastos</dt><dd class="font-medium">{{ money(selected.totalExpenses) }}</dd></div>
-            <div class="flex items-center justify-between gap-4"><dt class="text-muted-fg">Aranceles de importación (DAI)</dt><dd class="font-medium">{{ money(selected.totalDai) }}</dd></div>
-            <div class="flex items-center justify-between gap-4 border-t border-border pt-4"><dt class="font-semibold">{{ selected.status === 'draft' ? 'Costo previsto' : 'Costo de adquisición' }}</dt><dd class="text-lg font-semibold">{{ money(selected.totalCost) }}</dd></div>
-            <div class="flex items-center justify-between gap-4 rounded-xl bg-surface-secondary p-3 text-muted-fg"><dt>IVA de importación · excluido del costo</dt><dd class="font-medium">{{ money(selected.importVat) }}</dd></div>
+          <h3 class="text-xl font-semibold tracking-tight text-fg">Gastos y costo de adquisición</h3>
+          <dl class="mt-5 text-base text-fg">
+            <div class="space-y-4 px-1">
+              <div class="flex items-center justify-between gap-4"><dt>Mercadería (FOB)</dt><dd class="tabular-nums">{{ money(selected.totalFob) }}</dd></div>
+              <div class="flex items-center justify-between gap-4"><dt>Flete</dt><dd class="tabular-nums">{{ money(selected.totalFreight) }}</dd></div>
+              <div class="flex items-center justify-between gap-4"><dt>Otros gastos</dt><dd class="tabular-nums">{{ money(selected.totalExpenses) }}</dd></div>
+              <div class="flex items-center justify-between gap-4"><dt>Aranceles de importación (DAI)</dt><dd class="tabular-nums">{{ money(selected.totalDai) }}</dd></div>
+            </div>
+            <div class="mt-5 flex items-center justify-between gap-4 border-t border-border px-1 pt-5"><dt class="font-semibold">{{ selected.status === 'draft' ? 'Costo previsto' : 'Costo de adquisición' }}</dt><dd class="text-2xl font-semibold tracking-tight tabular-nums">{{ money(selected.totalCost) }}</dd></div>
+            <div class="mt-5 flex items-center justify-between gap-4 border-t border-border px-1 pt-5 text-muted-fg"><dt>IVA de importación · excluido del costo</dt><dd class="tabular-nums">{{ money(selected.importVat) }}</dd></div>
           </dl>
           <RouterLink v-if="selected.status === 'draft' && can('purchase_expenses.create') && can('purchases.view') && can('inventory.view')" :to="{ path: '/inventory/warehouse', query: { purchaseId: selected.purchaseId, tab: 'expenses' } }" class="mt-5 inline-flex rounded-lg border border-border px-4 py-2 text-sm font-medium text-accent">Registrar gastos reales</RouterLink>
         </section>
