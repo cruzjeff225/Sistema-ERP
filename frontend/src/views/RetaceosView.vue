@@ -498,10 +498,22 @@ onMounted(load);
           <details :open="!!form.importPolicyNumber || !!form.originCountry" class="border-t border-border pt-4"><summary class="cursor-pointer text-sm font-medium text-muted-fg">Documentos de importación</summary><div class="mt-4 grid gap-4 sm:grid-cols-2"><AppInput v-model="form.originCountry" label="País de origen" maxlength="100" /><AppInput v-model="form.importPolicyNumber" label="Póliza de importación" maxlength="100" /><AppInput v-model="form.importPolicyDate" type="date" label="Fecha de póliza" /></div></details>
         </section>
         <section v-else-if="formStep === 2" class="space-y-5">
-          <h3 class="font-semibold">Gastos de la recepción</h3>
+          <h3 class="text-xl font-semibold tracking-tight text-fg">Gastos de la recepción</h3>
           <div class="grid gap-4 sm:grid-cols-2"><AppInput :disabled="!!selectedPurchase?.actualExpenses?.length" v-model="form.totalFreight as any" type="number" min="0" step="0.01" label="Transporte / flete" required /><AppInput :disabled="!!selectedPurchase?.actualExpenses?.length" v-model="form.totalExpenses as any" type="number" min="0" step="0.01" label="Otros gastos" required /><AppInput :disabled="!!selectedPurchase?.actualExpenses?.length" v-model="form.totalDai as any" type="number" min="0" step="0.01" label="Aranceles de importación (DAI)" required /><AppInput v-model="form.importVat as any" type="number" min="0" step="0.01" label="IVA de importación · fuera del costo" required /></div>
-          <h3 class="border-t border-border pt-4 font-semibold">Valor total por producto (FOB)</h3>
-          <div v-for="line in form.details" :key="line.purchaseItemId" class="grid items-end gap-3 border-b border-border pb-4 sm:grid-cols-[1fr_180px]"><div class="min-w-0"><p class="break-words font-medium">{{ selectedPurchase?.items.find((item: any) => item.id === line.purchaseItemId)?.product.name }}</p><p class="text-xs text-muted-fg">Cantidad recibida: {{ selectedPurchase?.items.find((item: any) => item.id === line.purchaseItemId)?.quantity }}</p></div><AppInput v-model="line.costFob as any" type="number" min="0" step="0.01" label="Valor total, no unitario" required /></div>
+          <h3 class="border-t border-border pt-5 text-xl font-semibold tracking-tight text-fg">Valor total por producto (FOB)</h3>
+          <div class="overflow-x-auto rounded-[12px]">
+            <table class="w-full min-w-[460px] text-left text-sm">
+              <caption class="sr-only">Cantidad recibida y valor total FOB de cada producto de la recepción</caption>
+              <thead class="bg-surface-secondary text-muted-fg"><tr><th scope="col" class="rounded-tl-[12px] px-4 py-3 font-semibold text-fg">Producto</th><th scope="col" class="px-3 py-3 text-right font-semibold text-fg">Cantidad recibida</th><th scope="col" class="w-40 rounded-tr-[12px] px-4 py-3 font-semibold text-fg">Valor total, no unitario</th></tr></thead>
+              <tbody class="divide-y divide-border border-b border-border">
+                <tr v-for="line in form.details" :key="line.purchaseItemId">
+                  <th scope="row" class="min-w-48 break-words px-4 py-3 text-left font-normal text-fg">{{ selectedPurchase?.items.find((item: any) => item.id === line.purchaseItemId)?.product.name }}</th>
+                  <td class="px-3 py-3 text-right tabular-nums">{{ Number(selectedPurchase?.items.find((item: any) => item.id === line.purchaseItemId)?.quantity) }}</td>
+                  <td class="px-4 py-2.5"><input v-model="line.costFob as any" type="number" min="0" step="0.01" required class="field-control !mt-0 !h-10 w-full tabular-nums" :aria-label="'Valor total de ' + selectedPurchase?.items.find((item: any) => item.id === line.purchaseItemId)?.product.name + ', no unitario'" /></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </section>
         <section v-else class="space-y-5">
           <div><h3 class="font-semibold">Resumen del retaceo</h3><p class="mt-1 text-sm text-muted-fg">{{ selectedPurchase?.documentNumber }} · {{ selectedPurchase?.supplier.name }}</p></div>
