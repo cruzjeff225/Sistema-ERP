@@ -516,14 +516,16 @@ onMounted(load);
           </div>
         </section>
         <section v-else class="space-y-5">
-          <div><h3 class="font-semibold">Resumen del retaceo</h3><p class="mt-1 text-sm text-muted-fg">{{ selectedPurchase?.documentNumber }} · {{ selectedPurchase?.supplier.name }}</p></div>
-          <dl class="space-y-3 text-sm">
-            <div class="flex justify-between gap-4"><dt>Valor de mercadería (FOB)</dt><dd>{{ money(preview.fob) }}</dd></div>
-            <div class="flex justify-between gap-4"><dt>Transporte / flete</dt><dd>{{ money(form.totalFreight) }}</dd></div>
-            <div class="flex justify-between gap-4"><dt>Otros gastos</dt><dd>{{ money(form.totalExpenses) }}</dd></div>
-            <div class="flex justify-between gap-4"><dt>Aranceles (DAI)</dt><dd>{{ money(form.totalDai) }}</dd></div>
-            <div class="flex justify-between gap-4 border-t border-border pt-3 text-base font-semibold"><dt>Costo total de adquisición</dt><dd>{{ money(preview.acquisition) }}</dd></div>
-            <div class="flex justify-between gap-4 text-muted-fg"><dt>IVA de importación · excluido del costo</dt><dd>{{ money(form.importVat) }}</dd></div>
+          <div><h3 class="text-xl font-semibold tracking-tight text-fg">Resumen del retaceo</h3><p class="mt-1 text-base text-muted-fg">{{ selectedPurchase?.documentNumber }} · {{ selectedPurchase?.supplier.name }}</p></div>
+          <dl class="text-base text-fg">
+            <div class="space-y-3 px-1">
+              <div class="flex justify-between gap-4"><dt>Valor de mercadería (FOB)</dt><dd class="tabular-nums">{{ money(preview.fob) }}</dd></div>
+              <div class="flex justify-between gap-4"><dt>Transporte / flete</dt><dd class="tabular-nums">{{ money(form.totalFreight) }}</dd></div>
+              <div class="flex justify-between gap-4"><dt>Otros gastos</dt><dd class="tabular-nums">{{ money(form.totalExpenses) }}</dd></div>
+              <div class="flex justify-between gap-4"><dt>Aranceles (DAI)</dt><dd class="tabular-nums">{{ money(form.totalDai) }}</dd></div>
+            </div>
+            <div class="mt-5 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-[8px] bg-surface-secondary px-4 py-4"><dt class="text-lg font-semibold">Costo total de adquisición</dt><dd class="text-2xl font-semibold tabular-nums tracking-tight">{{ money(preview.acquisition) }}</dd></div>
+            <div class="mt-4 flex justify-between gap-4 px-1 text-muted-fg"><dt>IVA de importación · excluido del costo</dt><dd class="tabular-nums">{{ money(form.importVat) }}</dd></div>
           </dl>
           <details :open="!!form.notes" class="border-t border-border pt-4"><summary class="cursor-pointer text-sm font-medium text-muted-fg">Observaciones (opcional)</summary><textarea v-model="form.notes" aria-label="Observaciones" maxlength="2000" class="field-control mt-3 min-h-24" /></details>
         </section>
