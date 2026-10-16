@@ -157,7 +157,7 @@ async function save() {
     <div class="mx-auto max-w-7xl space-y-5">
       <OperationsNav />
       <header class="flex flex-wrap items-start justify-between gap-4">
-        <div><h1 class="page-title">Inventario</h1><p class="page-subtitle">Consulte existencias, encuentre productos y revise sus movimientos.</p></div>
+        <div><h1 class="page-title">Existencias y mapa</h1><p class="page-subtitle">Consulte existencias, encuentre productos y revise sus movimientos.</p></div>
         <div class="flex items-center gap-2">
           <AppButton variant="outline" :disabled="loading || busy" @click="load(true)"><RefreshCw class="h-4 w-4" :class="loading && 'animate-spin'" /><span class="hidden sm:inline">Actualizar</span></AppButton>
           <details ref="optionsMenu" class="relative"><summary class="grid h-9 w-9 cursor-pointer list-none place-items-center rounded-lg border border-border bg-surface text-muted-fg hover:text-fg" aria-label="Opciones de inventario"><MoreHorizontal class="h-5 w-5" /></summary><div class="absolute right-0 z-20 mt-2 w-60 rounded-xl border border-border bg-surface p-1.5 shadow-subtle">

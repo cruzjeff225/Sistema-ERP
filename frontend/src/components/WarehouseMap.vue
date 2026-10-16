@@ -26,6 +26,7 @@ const busy = ref(false);
 const error = ref('');
 const reloadKey = ref(0);
 const cellSize = ref(48);
+const viewMode = ref<'iso' | 'grid'>('iso');
 const mapRoot = ref<HTMLElement>();
 const detailRoot = ref<HTMLElement>();
 const branches = computed(() => warehouseBranches(props.warehouses));
@@ -94,6 +95,82 @@ const aisles = computed(() => aisleNames.value.map(aisle => ({
       })) };
   }).filter(rack => rack.matches > 0),
 })).filter(aisle => aisle.racks.length));
+// Isometric scene: aisles run along gx, racks and positions along gy, levels along gz. Presentation only; the data is the same slots as the grid.
+type IsoOp =
+  | { kind: 'shelf' | 'floor'; key: string; points: string }
+  | { kind: 'post'; key: string; x1: number; y1: number; x2: number; y2: number }
+  | { kind: 'label'; key: string; x: number; y: number; text: string }
+  | { kind: 'slot'; key: string; slot: Slot; top: string; left: string; right: string; cx: number; cy: number };
+const U = 34, COS = Math.cos(Math.PI / 6);
+const project = (gx: number, gy: number, gz: number) => ({ x: (gx - gy) * COS * U, y: (gx + gy) * 0.5 * U - gz * U });
+const pts = (list: { x: number; y: number }[]) => list.map(point => `${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(' ');
+const logicalOrder = computed(() => aisles.value.flatMap(aisle => aisle.racks.flatMap(rack => rack.levels.flatMap(level => level.cells.filter((cell): cell is Slot => !!cell)))));
+const isoScene = computed(() => {
+  const ops: IsoOp[] = [];
+  const all: { x: number; y: number }[] = [];
+  const STEP = 1.18, AISLE = 3.2;
+  const PER_ROW = 4;
+  let rowOffset = 0, rowDepth = 0, maxX = 0;
+  const layout = aisles.value.map((aisle, ai) => {
+    const col = ai % PER_ROW;
+    if (ai > 0 && col === 0) { rowOffset += rowDepth + 1.6; rowDepth = 0; }
+    let cursor = rowOffset;
+    const racks = aisle.racks.map(rack => {
+      const start = cursor, length = rack.positions.length * STEP;
+      cursor += length + 1.1;
+      return { rack, start, end: start + length };
+    });
+    rowDepth = Math.max(rowDepth, cursor - rowOffset);
+    maxX = Math.max(maxX, col * AISLE + 1);
+    return { aisle, gx: col * AISLE, racks, labelY: cursor - 0.85 };
+  });
+  const maxY = rowOffset + rowDepth;
+  const floorCorners = [project(-1.2, -1, 0), project(maxX + 1.4, -1, 0), project(maxX + 1.4, maxY + 0.6, 0), project(-1.2, maxY + 0.6, 0)];
+  ops.push({ kind: 'floor', key: 'floor', points: pts(floorCorners) });
+  all.push(...floorCorners);
+  for (const { aisle, gx, racks, labelY } of layout) {
+    for (const { rack, start, end } of racks) {
+      const levels = rack.levels.length;
+      const x0 = gx - 0.08, x1 = gx + 1.08, y0 = start - 0.08, y1 = end - (STEP - 1) + 0.08;
+      const key = `${aisle.name}-${rack.name}`;
+      [[x0, y0], [x1, y0]].forEach(([px, py], i) => { const a = project(px!, py!, 0), b = project(px!, py!, levels); ops.push({ kind: 'post', key: `${key}-pb${i}`, x1: a.x, y1: a.y, x2: b.x, y2: b.y }); all.push(b); });
+      for (let li = 0; li < levels; li++) {
+        const gz = levels - 1 - li;
+        ops.push({ kind: 'shelf', key: `${key}-shelf${li}`, points: pts([project(x0, y0, gz), project(x1, y0, gz), project(x1, y1, gz), project(x0, y1, gz)]) });
+      }
+      for (let pi = 0; pi < rack.positions.length; pi++) {
+        for (let li = levels - 1; li >= 0; li--) {
+          const slot = rack.levels[li]!.cells[pi];
+          if (!slot) continue;
+          const gz = levels - 1 - li, ya = start + pi * STEP, yb = ya + 1, xa = gx, xb = gx + 1, za = gz + 0.05, zb = gz + 0.78;
+          const P = project;
+          ops.push({ kind: 'slot', key: `slot-${slot.id}`, slot,
+            top: pts([P(xa, ya, zb), P(xb, ya, zb), P(xb, yb, zb), P(xa, yb, zb)]),
+            right: pts([P(xb, ya, za), P(xb, yb, za), P(xb, yb, zb), P(xb, ya, zb)]),
+            left: pts([P(xa, yb, za), P(xb, yb, za), P(xb, yb, zb), P(xa, yb, zb)]),
+            cx: P(xa + 0.5, ya + 0.5, zb).x, cy: P(xa + 0.5, ya + 0.5, zb).y });
+        }
+      }
+      [[x0, y1], [x1, y1]].forEach(([px, py], i) => { const a = project(px!, py!, 0), b = project(px!, py!, levels); ops.push({ kind: 'post', key: `${key}-pf${i}`, x1: a.x, y1: a.y, x2: b.x, y2: b.y }); all.push(b); });
+    }
+    const label = project(gx + 0.5, labelY, 0);
+    ops.push({ kind: 'label', key: `label-${aisle.name}`, x: label.x, y: label.y + 4, text: `Pasillo ${aisle.name}` });
+  }
+  const minX = Math.min(...all.map(point => point.x)) - 20, maxPX = Math.max(...all.map(point => point.x)) + 20;
+  const minY = Math.min(...all.map(point => point.y)) - 20, maxPY = Math.max(...all.map(point => point.y)) + 26;
+  return { ops, viewBox: `${minX.toFixed(0)} ${minY.toFixed(0)} ${(maxPX - minX).toFixed(0)} ${(maxPY - minY).toFixed(0)}`, width: maxPX - minX, height: maxPY - minY };
+});
+function isoKey(event: KeyboardEvent, slot: Slot) {
+  if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); void selectSlot(slot); return; }
+  const list = logicalOrder.value;
+  const index = list.findIndex(item => item.id === slot.id);
+  const moves: Record<string, number> = { ArrowRight: index + 1, ArrowDown: index + 1, ArrowLeft: index - 1, ArrowUp: index - 1, Home: 0, End: list.length - 1 };
+  if (!(event.key in moves)) return;
+  event.preventDefault();
+  const next = list[Math.max(0, Math.min(list.length - 1, moves[event.key]!))];
+  if (next) mapRoot.value?.querySelector<SVGGElement>(`[data-location-id="${next.id}"]`)?.focus();
+}
+const isoTabbable = computed(() => selected.value && matches(selected.value) ? selected.value.id : logicalOrder.value[0]?.id ?? 0);
 const format = (value: string | number) => new Intl.NumberFormat('es-SV', { maximumFractionDigits: 2 }).format(Number(value));
 function clearFilters() { query.value = ''; stateFilter.value = ''; aisleFilter.value = ''; }
 function centerProduct(focus = true) {
@@ -145,19 +222,39 @@ function moveFocus(event: KeyboardEvent) {
     <template v-else>
       <div v-if="productId" class="mt-4 flex flex-wrap items-center gap-3 rounded-xl bg-accent-soft px-4 py-3"><MapPin class="h-4 w-4 shrink-0 text-accent"/><div class="min-w-0 flex-1"><strong class="block break-words text-sm">{{ productName }}</strong><span role="status" class="text-xs text-muted-fg">{{ productLocations.length ? `${productLocations.length} ${productLocations.length === 1 ? 'ubicación con existencias' : 'ubicaciones con existencias'}` : 'Sin existencias en este almacén' }}</span></div><button type="button" title="Encontrar producto en el mapa" aria-label="Encontrar producto en el mapa" class="icon-button shrink-0" :disabled="!productLocations.length" @click="centerProduct()"><Focus class="h-4 w-4"/></button></div>
       <div class="my-4 grid items-end gap-3 sm:grid-cols-[minmax(0,1fr)_180px]">
-        <label class="min-w-0 text-xs font-medium text-muted-fg">Buscar espacio o producto<div class="relative mt-1.5"><Search class="pointer-events-none absolute left-3 top-3 h-4 w-4"/><input v-model="query" type="search" maxlength="100" class="field-control !mt-0 !pl-9" placeholder="Código, producto o SKU" /></div></label>
-        <label class="text-xs font-medium text-muted-fg">Pasillo<select v-model="aisleFilter" class="field-control"><option value="">Todos los pasillos</option><option v-for="aisle in aisleNames" :key="aisle" :value="aisle">Pasillo {{ aisle }}</option></select></label>
+        <label class="min-w-0 text-sm font-medium text-fg">Buscar espacio o producto<div class="relative mt-1.5"><Search class="pointer-events-none absolute left-3 top-3 h-4 w-4"/><input v-model="query" type="search" maxlength="100" class="field-control !mt-0 !pl-9" placeholder="Código, producto o SKU" /></div></label>
+        <label class="text-sm font-medium text-fg">Pasillo<select v-model="aisleFilter" class="field-control"><option value="">Todos los pasillos</option><option v-for="aisle in aisleNames" :key="aisle" :value="aisle">Pasillo {{ aisle }}</option></select></label>
       </div>
       <div class="mb-5 flex flex-wrap items-center gap-2" aria-label="Filtrar espacios por estado">
         <button type="button" class="state-filter" :class="!stateFilter ? 'active-filter' : ''" :aria-pressed="!stateFilter" @click="stateFilter = ''">Todos <span class="tabular-nums text-muted-fg">{{ slots.length }}</span></button>
         <button v-for="state in states" :key="state" type="button" class="state-filter" :class="stateFilter === state ? 'active-filter' : ''" :aria-pressed="stateFilter === state" @click="stateFilter = stateFilter === state ? '' : state"><span class="state-dot" :class="`state-${state}`"/>{{ labels[state] }} <span class="tabular-nums text-muted-fg">{{ slots.filter(slot => slot.state === state).length }}</span></button>
       </div>
       <div class="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_280px]">
-        <div class="min-w-0 overflow-hidden rounded-xl border border-border bg-surface">
-          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3"><div class="min-w-0"><h2 class="truncate text-sm font-semibold">{{ currentWarehouse?.name }}</h2><p role="status" class="mt-1 text-xs text-muted-fg">{{ filtersActive ? `${found.length} coincidencias` : `${slots.length} espacios` }} · Vista por pasillo y estante</p></div><div class="flex items-center gap-1"><button v-if="filtersActive" type="button" class="mr-2 text-xs font-medium text-accent hover:underline" @click="clearFilters">Limpiar</button><button type="button" class="icon-button" title="Reducir mapa" aria-label="Reducir mapa" :disabled="cellSize <= 40" @click="cellSize -= 8"><Minus class="h-4 w-4"/></button><span class="w-10 text-center text-xs tabular-nums text-muted-fg">{{ Math.round(cellSize / 48 * 100) }}%</span><button type="button" class="icon-button" title="Ampliar mapa" aria-label="Ampliar mapa" :disabled="cellSize >= 72" @click="cellSize += 8"><Plus class="h-4 w-4"/></button></div></div>
-          <div ref="mapRoot" class="scrollbar-thin max-h-[60dvh] min-h-64 min-w-0 max-w-full overflow-auto bg-surface-secondary/50 p-4 sm:p-5" @keydown="moveFocus">
+        <div class="min-w-0 overflow-hidden rounded-[12px] border border-border bg-surface">
+          <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-b border-border px-5 py-4">
+            <div class="min-w-0"><h2 class="truncate text-xl font-semibold tracking-tight">{{ currentWarehouse?.name }}</h2><p role="status" class="mt-0.5 text-sm text-muted-fg">{{ filtersActive ? `${found.length} coincidencias` : `${slots.length} espacios` }} · Vista por pasillo y estante</p></div>
+            <div class="flex flex-wrap items-center gap-2">
+              <button v-if="filtersActive" type="button" class="text-sm font-medium text-accent hover:underline" @click="clearFilters">Limpiar</button>
+              <div class="inline-flex rounded-lg border border-border p-0.5 text-sm" role="group" aria-label="Tipo de vista"><button type="button" class="rounded-md px-2.5 py-1 font-medium" :class="viewMode === 'iso' ? 'bg-surface-secondary text-fg' : 'text-muted-fg hover:text-fg'" :aria-pressed="viewMode === 'iso'" @click="viewMode = 'iso'">Esquema</button><button type="button" class="rounded-md px-2.5 py-1 font-medium" :class="viewMode === 'grid' ? 'bg-surface-secondary text-fg' : 'text-muted-fg hover:text-fg'" :aria-pressed="viewMode === 'grid'" @click="viewMode = 'grid'">Cuadrícula</button></div>
+              <div class="flex items-center rounded-lg border border-border bg-surface px-1"><button type="button" class="icon-button !border-0" title="Reducir mapa" aria-label="Reducir mapa" :disabled="cellSize <= 36" @click="cellSize -= 12"><Minus class="h-4 w-4"/></button><span class="w-12 text-center text-sm tabular-nums text-fg" role="status">{{ Math.round(cellSize / 48 * 100) }}%</span><button type="button" class="icon-button !border-0" title="Ampliar mapa" aria-label="Ampliar mapa" :disabled="cellSize >= 84" @click="cellSize += 12"><Plus class="h-4 w-4"/></button></div>
+            </div>
+          </div>
+          <div ref="mapRoot" class="scrollbar-thin max-h-[70dvh] min-h-64 min-w-0 max-w-full overflow-auto bg-surface-secondary/50 p-4 sm:p-5" @keydown="viewMode === 'grid' && moveFocus($event)">
             <div v-if="!found.length" class="py-12 text-center"><Search class="mx-auto mb-3 h-5 w-5 text-muted-fg"/><p class="text-sm font-medium">No encontramos espacios con estos filtros</p><button type="button" class="mt-3 text-xs font-medium text-accent hover:underline" @click="clearFilters">Ver todos los espacios</button></div>
-            <section v-for="aisle in aisles" :key="aisle.name" class="mb-7 last:mb-0" :aria-label="`Pasillo ${aisle.name}`">
+            <svg v-if="found.length && viewMode === 'iso'" role="group" aria-label="Distribución esquemática del almacén por pasillo y estante" class="mx-auto block max-w-none" :viewBox="isoScene.viewBox" :width="isoScene.width * cellSize / 48 * 0.9" :height="isoScene.height * cellSize / 48 * 0.9">
+              <template v-for="op in isoScene.ops" :key="op.key">
+                <polygon v-if="op.kind === 'floor'" :points="op.points" class="iso-floor" />
+                <polygon v-else-if="op.kind === 'shelf'" :points="op.points" class="iso-shelf" />
+                <line v-else-if="op.kind === 'post'" :x1="op.x1" :y1="op.y1" :x2="op.x2" :y2="op.y2" class="iso-post" />
+                <text v-else-if="op.kind === 'label'" :x="op.x" :y="op.y" text-anchor="middle" class="iso-label">{{ op.text }}</text>
+                <g v-else-if="op.kind === 'slot'" :data-location-id="op.slot.id" role="button" :tabindex="isoTabbable === op.slot.id ? 0 : -1" :aria-pressed="selectedId === op.slot.id" :aria-label="`${op.slot.code}, ${singleLabels[op.slot.state]}, pasillo ${op.slot.aisle}, estante ${op.slot.rack}, nivel ${op.slot.level}, posición ${op.slot.position}${containsProduct(op.slot) ? ', ubicación del producto' : ''}`" class="iso-slot" :class="[`iso-${op.slot.state}`, { 'iso-selected': selectedId === op.slot.id, 'iso-product': containsProduct(op.slot), 'iso-muted': !matches(op.slot) }]" @click="selectSlot(op.slot)" @keydown="isoKey($event, op.slot)">
+                  <title>{{ op.slot.code }} · {{ singleLabels[op.slot.state] }}</title>
+                  <polygon :points="op.left" class="iso-l" /><polygon :points="op.right" class="iso-r" /><polygon :points="op.top" class="iso-t" />
+                </g>
+              </template>
+            </svg>
+            <p v-if="found.length && viewMode === 'iso'" class="mt-3 text-center text-xs text-muted-fg">Distribución esquemática · Representación sin escala</p>
+            <section v-for="aisle in (viewMode === 'grid' ? aisles : [])" :key="aisle.name" class="mb-7 last:mb-0" :aria-label="`Pasillo ${aisle.name}`">
               <h3 class="mb-3 flex items-center gap-2 text-sm font-semibold"><span class="grid h-7 min-w-7 place-items-center rounded-md border border-border bg-surface px-1.5 text-xs">{{ aisle.name }}</span>Pasillo {{ aisle.name }}</h3>
               <div class="flex flex-wrap items-start gap-4">
                 <section v-for="rack in aisle.racks" :key="rack.name" class="shrink-0 rounded-lg border border-border bg-surface p-3" :aria-label="`Estante ${rack.name}`">
@@ -179,9 +276,9 @@ function moveFocus(event: KeyboardEvent) {
               </div>
             </section>
           </div>
-          <p class="border-t border-border px-4 py-2.5 text-[11px] text-muted-fg">Selecciona un espacio para consultar su contenido. Representación sin escala.</p>
+          <p class="border-t border-border px-5 py-3 text-sm text-muted-fg">Selecciona un espacio para consultar su contenido. Representación sin escala.</p>
         </div>
-        <aside ref="detailRoot" aria-label="Contenido del espacio" aria-live="polite" class="min-w-0 self-start rounded-xl border border-border bg-surface p-4">
+        <aside ref="detailRoot" aria-label="Contenido del espacio" aria-live="polite" class="min-w-0 self-start rounded-[12px] border border-border bg-surface p-5 lg:min-h-[28rem]">
           <template v-if="selected">
             <p class="text-xs text-muted-fg">Espacio seleccionado</p><h2 class="mt-1 break-all text-lg font-semibold">{{ selected.code }}</h2>
             <p class="mt-2 flex items-center gap-2 text-xs"><span class="state-dot" :class="`state-${selected.state}`"/>{{ singleLabels[selected.state] }}</p>
@@ -193,7 +290,7 @@ function moveFocus(event: KeyboardEvent) {
             <ul class="divide-y divide-border"><li v-for="stock in selectedStocks" :key="stock.product.id" class="py-3" :class="stock.product.id === productId ? 'border-l-2 border-accent pl-3' : ''"><strong class="block break-words text-sm">{{ stock.product.name }}</strong><span class="mt-1 block break-all text-xs text-muted-fg">{{ stock.product.sku }}</span><p class="mt-2 text-sm font-semibold tabular-nums">{{ format(stock.quantity) }} <span class="text-xs font-normal text-muted-fg">{{ stock.product.purchaseUnit.name }}</span></p><button v-if="can('inventory.view')" type="button" class="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-accent hover:underline" @click="emit('movements', { productId: stock.product.id, productName: stock.product.name, warehouseId, locationId: selected.id, locationCode: selected.code, warehouse: currentWarehouse })"><History class="h-3.5 w-3.5"/>Ver movimientos</button></li></ul>
             <p v-if="!selected.stocks.length" class="py-5 text-xs text-muted-fg">Sin existencias en este espacio.</p>
           </template>
-          <div v-else class="py-8 text-center"><MapPin class="mx-auto mb-3 h-5 w-5 text-muted-fg"/><h2 class="text-sm font-medium">Detalle del espacio</h2><p class="mt-2 text-xs leading-5 text-muted-fg">Elige una ubicación del mapa para ver coordenadas y productos.</p></div>
+          <div v-else class="grid min-h-60 place-items-center py-8 text-center"><div><MapPin class="mx-auto mb-4 h-7 w-7 text-muted-fg"/><h2 class="text-lg font-semibold">Detalle del espacio</h2><p class="mx-auto mt-2 max-w-52 text-sm leading-6 text-muted-fg">Elige una ubicación del mapa para ver coordenadas y productos.</p></div></div>
         </aside>
       </div>
     </template>
@@ -207,7 +304,7 @@ function moveFocus(event: KeyboardEvent) {
 .state-INACTIVE { color: hsl(var(--muted-fg)); background: hsl(var(--surface-secondary)); border-color: hsl(var(--border)); }
 .state-dot { display: inline-block; width: 8px; height: 8px; flex-shrink: 0; border: 2px solid currentColor; border-radius: 50%; }
 .state-dot.state-OCCUPIED, .state-dot.state-FULL { background: currentColor; }
-.state-filter { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 32px; padding: 5px 10px; border: 1px solid transparent; border-radius: 8px; font-size: 11px; color: hsl(var(--muted-fg)); }
+.state-filter { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 36px; padding: 5px 12px; border: 1px solid transparent; border-radius: 8px; font-size: 14px; color: hsl(var(--muted-fg)); }
 .state-filter:hover { background: hsl(var(--surface-secondary)); color: hsl(var(--fg)); }
 .active-filter { border-color: hsl(var(--border)); background: hsl(var(--surface)); color: hsl(var(--fg)); font-weight: 600; }
 .location-seat { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; width: var(--slot-size); height: var(--slot-size); border-width: 1px; border-radius: 7px; transition: opacity .15s, box-shadow .15s; }
@@ -218,7 +315,28 @@ function moveFocus(event: KeyboardEvent) {
 .selected-seat { outline: 2px solid hsl(var(--fg)); outline-offset: 2px; }
 .seat-check { position: absolute; right: -5px; top: -5px; border-radius: 50%; background: hsl(var(--fg)); color: hsl(var(--surface)); }
 .muted-seat { opacity: .3; }
+.iso-floor, .iso-shelf, .iso-post, .iso-label { pointer-events: none; }
+.iso-floor { fill: hsl(var(--surface-secondary)); stroke: hsl(var(--border)); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.iso-shelf { fill: hsl(var(--surface)); stroke: hsl(var(--border)); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.iso-post { stroke: hsl(var(--muted-fg) / .55); stroke-width: 2; vector-effect: non-scaling-stroke; stroke-linecap: round; }
+.iso-label { fill: hsl(var(--fg)); font-size: 15px; font-weight: 600; }
+.iso-slot { cursor: pointer; outline: none; transition: opacity .15s; }
+.iso-slot polygon { stroke: hsl(var(--fg) / .28); stroke-width: 1; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+.iso-t { fill: var(--iso-t); } .iso-l { fill: var(--iso-l); } .iso-r { fill: var(--iso-r); }
+.iso-AVAILABLE { --iso-t: #8fdcaa; --iso-l: #5fbf84; --iso-r: #48a56c; }
+.iso-OCCUPIED { --iso-t: #8dbcf0; --iso-l: #5f9be0; --iso-r: #4682cb; }
+.iso-FULL { --iso-t: #f5c47c; --iso-l: #e3a14a; --iso-r: #cb8736; }
+.iso-INACTIVE { --iso-t: #d5dae0; --iso-l: #b9c0c8; --iso-r: #a2aab4; }
+.iso-slot:hover polygon { stroke: hsl(var(--fg)); }
+.iso-slot:focus-visible polygon { stroke: hsl(var(--accent)); stroke-width: 3; }
+.iso-product polygon { stroke: hsl(var(--accent)); stroke-width: 2; }
+.iso-selected polygon { stroke: hsl(var(--fg)); stroke-width: 3; }
+.iso-muted { opacity: .25; }
 .seat-gap { width: var(--slot-size); height: var(--slot-size); }
+:global(.dark .warehouse-location-map .iso-AVAILABLE) { --iso-t: #4fae75; --iso-l: #3b8f5c; --iso-r: #2f774c; }
+:global(.dark .warehouse-location-map .iso-OCCUPIED) { --iso-t: #5b8fcf; --iso-l: #4575b3; --iso-r: #365f96; }
+:global(.dark .warehouse-location-map .iso-FULL) { --iso-t: #d29a4a; --iso-l: #b47f35; --iso-r: #98692a; }
+:global(.dark .warehouse-location-map .iso-INACTIVE) { --iso-t: #6a7078; --iso-l: #555b63; --iso-r: #464b52; }
 :global(.dark .warehouse-location-map .state-OCCUPIED) { color: #96bede; background: #233544; border-color: #4b697f; }
 :global(.dark .warehouse-location-map .state-FULL) { color: #e6c58e; background: #393225; border-color: #796342; }
 </style>
