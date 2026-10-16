@@ -28,7 +28,7 @@ defineEmits<{ 'update:modelValue': [value: string] }>();
     >
       <component :is="item.icon" v-if="item.icon" class="h-4 w-4 shrink-0" aria-hidden="true" />
       {{ item.label }}
-      <span v-if="item.count !== undefined" class="rounded-md bg-surface-secondary px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-muted-fg">{{ item.count }}</span>
+      <span v-if="item.count !== undefined && variant === 'underline'" class="font-normal tabular-nums text-muted-fg">({{ item.count }})</span><span v-else-if="item.count !== undefined" class="rounded-md bg-surface-secondary px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-muted-fg">{{ item.count }}</span>
     </button>
   </nav>
 </template>

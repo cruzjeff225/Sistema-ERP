@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
-import { ArrowLeft, ArrowRight, ChevronDown, ChevronRight, CircleCheck, CircleX, EllipsisVertical, FileText, ListChecks, Package, Pencil, PlusCircle, RefreshCw, Send, Truck } from 'lucide-vue-next';
+import { ArrowLeft, ArrowRight, ChevronDown, ChevronRight, CircleCheck, CircleX, EllipsisVertical, FileText, ListChecks, Pencil, PlusCircle, RefreshCw, Send } from 'lucide-vue-next';
 import AdminLayout from '../layouts/AdminLayout.vue';
 import AppButton from '../components/base/AppButton.vue';
 import PurchaseActionDialog from '../components/base/PurchaseActionDialog.vue';
@@ -44,9 +44,9 @@ let version = 0;
 const id = computed(() => Number(route.params.id));
 const editable = computed(() => !!request.value && isEditableRequest(request.value.status) && can('purchase_requests.update'));
 const tabs = computed(() => [
-  { value: 'products', label: 'Productos', count: request.value?.details?.length ?? 0, icon: Package },
-  { value: 'deliveries', label: 'Entregas', icon: Truck },
-  { value: 'information', label: 'Información', icon: FileText },
+  { value: 'products', label: 'Productos', count: request.value?.details?.length ?? 0 },
+  { value: 'deliveries', label: 'Entregas' },
+  { value: 'information', label: 'Información' },
 ]);
 
 const shortDate = (value?: string | null) => value ? new Date(value.slice(0, 10) + 'T12:00:00').toLocaleDateString('es-SV', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Por confirmar';
@@ -195,17 +195,11 @@ watch([() => route.params.id, activeCompanyId], () => { tab.value = route.query.
         </header>
 
         <!-- Where the request is and what comes next -->
-        <section v-if="summary" aria-labelledby="next-step-title" class="flex flex-wrap items-start justify-between gap-x-8 gap-y-3">
+        <section v-if="summary" aria-labelledby="next-step-title">
           <div class="min-w-0">
             <h2 id="next-step-title" class="text-base font-medium" :class="summary.tone === 'success' ? 'text-success' : 'text-fg'">{{ summary.primary }}</h2>
             <p v-if="summary.secondary" class="mt-0.5 text-sm text-muted-fg"><span v-if="summary.next" class="sr-only">Siguiente paso: </span>{{ summary.secondary }}</p>
           </div>
-          <!-- Draft, sent, in process, completed -->
-          <ol v-if="lifecycle" class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs" aria-label="Avance de la solicitud">
-            <li v-for="step in lifecycle" :key="step.key" class="inline-flex items-center gap-1.5" :class="step.state === 'pending' ? 'text-muted-fg' : 'font-medium text-fg'" :aria-current="step.state === 'current' || step.state === 'attention' ? 'step' : undefined">
-              <span class="h-2 w-2 rounded-full" :class="{ 'bg-success': step.state === 'done', 'bg-warning': step.state === 'current', 'bg-danger': step.state === 'attention', 'bg-border': step.state === 'pending' }" aria-hidden="true" />{{ step.label }}<span v-if="stepDate(step.key)" class="font-normal text-muted-fg">· {{ stepDate(step.key) }}</span>
-            </li>
-          </ol>
         </section>
 
         <div class="border-b border-border"><PurchaseTabs variant="underline" :model-value="tab" :items="tabs" label="Secciones de la solicitud" @update:model-value="tab = $event" /></div>
@@ -249,6 +243,7 @@ watch([() => route.params.id, activeCompanyId], () => { tab.value = route.query.
                 <div><dt class="text-muted-fg">Motivo de la compra</dt><dd class="mt-0.5 font-medium text-fg">{{ request.justification }}</dd></div>
                 <div v-if="request.createdAt"><dt class="text-muted-fg">Creada el</dt><dd class="mt-0.5 font-medium tabular-nums text-fg">{{ dateTime(request.createdAt) }}</dd></div>
               </dl>
+              <ol v-if="lifecycle && lifecycle.some(step => stepDate(step.key))" class="mt-5 space-y-1 border-t border-border pt-4 text-sm text-muted-fg" aria-label="Fechas de la solicitud"><template v-for="step in lifecycle" :key="step.key"><li v-if="stepDate(step.key)">{{ step.label }} · {{ stepDate(step.key) }}</li></template></ol>
             </section>
           </div>
 
