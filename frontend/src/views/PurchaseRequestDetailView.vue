@@ -257,18 +257,20 @@ watch([() => route.params.id, activeCompanyId], () => { tab.value = route.query.
         </div>
 
         <!-- Entregas -->
-        <section v-else-if="tab === 'deliveries'" aria-labelledby="detail-deliveries" class="rounded-[12px] border border-border bg-surface p-5">
-          <h2 id="detail-deliveries" class="text-base font-semibold text-fg">Entrega a la sucursal solicitante</h2>
-          <div class="mt-4 overflow-x-auto rounded-lg border border-border">
+        <div v-else-if="tab === 'deliveries'" class="space-y-5">
+        <section aria-labelledby="detail-deliveries" class="rounded-[12px] border border-border bg-surface p-5 sm:p-6">
+          <h2 id="detail-deliveries" class="text-xl font-semibold tracking-tight text-fg">Entrega a la sucursal solicitante</h2>
+          <div class="mt-4 overflow-x-auto rounded-[12px] border border-border">
             <table class="w-full min-w-[560px] text-left text-sm">
-              <thead class="border-b border-border bg-surface-secondary text-xs text-muted-fg"><tr><th scope="col" class="px-4 py-2.5 font-medium">Producto</th><th scope="col" class="px-4 py-2.5 text-right font-medium">Solicitado</th><th scope="col" class="px-4 py-2.5 text-right font-medium">Despachado</th><th scope="col" class="px-4 py-2.5 text-right font-medium">Recibido en sucursal</th><th scope="col" class="px-4 py-2.5 text-right font-medium">Pendiente</th></tr></thead>
+              <thead class="border-b border-border bg-surface-secondary text-sm text-muted-fg"><tr><th scope="col" class="px-4 py-3 font-medium">Producto</th><th scope="col" class="px-4 py-3 text-right font-medium">Solicitado</th><th scope="col" class="px-4 py-3 text-right font-medium">Despachado</th><th scope="col" class="px-4 py-3 text-right font-medium">Recibido en sucursal</th><th scope="col" class="px-4 py-3 text-right font-medium">Pendiente</th></tr></thead>
               <tbody class="divide-y divide-border">
-                <tr v-for="line in request.details" :key="line.id"><td class="px-4 py-3"><p class="font-medium text-fg">{{ line.product.name }}</p><p class="mt-1 text-xs text-muted-fg">{{ line.unit.name }}</p></td><td class="px-4 py-3 text-right tabular-nums">{{ formatQuantity(Number(line.quantity)) }}</td><td class="px-4 py-3 text-right tabular-nums">{{ formatQuantity(deliveredQuantity(line, 'quantity')) }}</td><td class="px-4 py-3 text-right tabular-nums">{{ formatQuantity(deliveredQuantity(line, 'receivedQuantity')) }}</td><td class="px-4 py-3 text-right font-medium tabular-nums text-fg">{{ formatQuantity(Math.max(0, Number(line.quantity) - deliveredQuantity(line, 'receivedQuantity'))) }}</td></tr>
+                <tr v-for="line in request.details" :key="line.id"><td class="px-4 py-3"><p class="font-medium text-fg">{{ line.product.name }}</p><p class="mt-0.5 text-sm text-muted-fg">{{ line.unit.name }}</p></td><td class="px-4 py-3 text-right tabular-nums">{{ formatQuantity(Number(line.quantity)) }}</td><td class="px-4 py-3 text-right tabular-nums">{{ formatQuantity(deliveredQuantity(line, 'quantity')) }}</td><td class="px-4 py-3 text-right tabular-nums">{{ formatQuantity(deliveredQuantity(line, 'receivedQuantity')) }}</td><td class="px-4 py-3 text-right font-medium tabular-nums text-fg">{{ formatQuantity(Math.max(0, Number(line.quantity) - deliveredQuantity(line, 'receivedQuantity'))) }}</td></tr>
               </tbody>
             </table>
           </div>
-          <ReceiveTransferPanel v-if="can('inventory.view') && can('inventory.adjust')" :request-id="request.id" @received="load" />
         </section>
+          <ReceiveTransferPanel v-if="can('inventory.view') && can('inventory.adjust')" :request-id="request.id" @received="load" />
+        </div>
 
         <!-- Información -->
         <section v-else aria-labelledby="detail-data" class="rounded-[12px] border border-border bg-surface p-5">
