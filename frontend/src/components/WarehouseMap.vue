@@ -1,16 +1,16 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from 'vue';
 import { Check, Circle, Focus, History, Layers, MapPin, Minus, Plus, RefreshCw, Search, X } from 'lucide-vue-next';
 import { http } from '../services/http.service';
 import { activeCompanyId } from '../services/company-context';
 import { usePermissions } from '../composables/usePermissions';
 import { getApiErrorMessage } from '../utils/api-error';
+import WarehouseMapRack from './WarehouseMapRack.vue';
+import { buildWarehouseScene, type MapSlot, type SlotState } from '../utils/warehouse-scene';
 import { matchesMapSearch, resolveMapWarehouse, warehouseBranchKey, warehouseBranches, type MapWarehouse } from '../utils/warehouse-map';
 
-type State = 'AVAILABLE' | 'OCCUPIED' | 'FULL' | 'INACTIVE';
-type Slot = { id: number; code: string; aisle: string; rack: string; level: string; position: string; capacity: number;
-  state: State; usedCapacity: string | null; freeCapacity: string | null;
-  stocks: { quantity: string; product: { id: number; name: string; sku: string; purchaseUnit: { id: number; name: string } } }[] };
+type State = SlotState;
+type Slot = MapSlot;
 const props = defineProps<{ warehouses: MapWarehouse[]; initialWarehouse?: number; initialLocation?: number;
   productId?: number; productName?: string; refresh: number }>();
 const emit = defineEmits<{ movements: [context: { productId: number; productName: string; warehouseId: number; locationId: number; locationCode: string; warehouse?: MapWarehouse }]; 'warehouse-change': [warehouseId: number, branchId?: number] }>();
@@ -96,73 +96,11 @@ const allAisles = computed(() => aisleNames.value.map(aisle => ({
   }),
 })));
 const aisles = computed(() => allAisles.value.map(aisle => ({ ...aisle, racks: aisle.racks.filter(rack => rack.matches > 0) })).filter(aisle => aisle.racks.length));
-// Aerial warehouse scene generated from the real records (warehouse > aisle > rack > level > slot). There are no physical coordinates, so the layout is
-// computed: aisles side by side, each aisle's racks next to each other, levels as columns and positions along the rack. Presentation only.
-const CW = 46, FR = 9, GAP = 18, LANE = 96, MARGIN = 60, TAG_H = 100, MIN_LEN = 270, POS_UNIT = 32, BRACE = 20, WALL_H = 84, TS = 0.9, YS = 0.9, OFFX = 70;
-type SceneCell = { slot: Slot; poly: string; fill: string | null; ratio: number | null };
-type SceneRack = { key: string; name: string; levelCount: number; frame: string; inner: string; posts: string[]; braces: string[]; tag: { x: number; y: number; w: number; text: string }; levelLabels: { x: number; y: number; text: string }[]; cells: SceneCell[] };
-type SceneAisle = { name: string; racks: SceneRack[]; pin: { x1: number; y1: number; x2: number; y2: number }; label: { x: number; y: number } };
-const fillRatio = (slot: Slot) => slot.usedCapacity !== null && slot.capacity > 0 ? Math.max(0, Math.min(1, Number(slot.usedCapacity) / slot.capacity)) : null;
-const scene = computed(() => {
-  const groups = allAisles.value.map(aisle => {
-    const racks = aisle.racks.map(rack => ({ rack, rw: rack.levels.length * CW + FR * 2 }));
-    return { aisle, racks, gw: racks.reduce((total, item) => total + item.rw, 0) + GAP * Math.max(0, racks.length - 1) };
-  });
-  const maxPositions = Math.max(1, ...groups.flatMap(group => group.racks.map(item => item.rack.positions.length)));
-  const rackLen = Math.max(MIN_LEN, maxPositions * POS_UNIT);
-  let cursor = MARGIN;
-  const lanes = [cursor];
-  const placed = groups.map(group => { const start = cursor + LANE / 2; cursor = start + group.gw + LANE / 2; lanes.push(cursor); return { ...group, start }; });
-  const W = Math.max(cursor + MARGIN, 320);
-  const vTop = TAG_H, vBottom = vTop + rackLen + BRACE, H = vBottom + 112, Y0 = WALL_H + 28;
-  const scale = (v: number) => TS + (1 - TS) * (v / H);
-  const P = (u: number, v: number) => ({ x: OFFX + W / 2 + (u - W / 2) * scale(v), y: Y0 + v * YS });
-  const poly = (...points: [number, number][]) => points.map(([u, v]) => { const point = P(u, v); return `${point.x.toFixed(1)},${point.y.toFixed(1)}`; }).join(' ');
-  const rect = (u0: number, v0: number, u1: number, v1: number) => poly([u0, v0], [u1, v0], [u1, v1], [u0, v1]);
-  const aislesOut: SceneAisle[] = placed.map(group => {
-    let ru = group.start;
-    const racks: SceneRack[] = group.racks.map(({ rack, rw }, rackIndex) => {
-      const levels = [...rack.levels].reverse();
-      const innerU0 = ru + FR, innerV0 = vTop + FR, rowH = (rackLen - FR * 2) / Math.max(1, rack.positions.length);
-      const cells: SceneCell[] = [];
-      levels.forEach((level, column) => level.cells.forEach((slot, row) => {
-        if (!slot) return;
-        const u0 = innerU0 + column * CW + 1.5, u1 = innerU0 + (column + 1) * CW - 1.5, v0 = innerV0 + row * rowH + 1.5, v1 = innerV0 + (row + 1) * rowH - 1.5;
-        const ratio = slot.state === 'OCCUPIED' ? fillRatio(slot) : null;
-        cells.push({ slot, poly: rect(u0, v0, u1, v1), ratio, fill: ratio !== null ? rect(u0, v1 - ratio * (v1 - v0), u1, v1) : null });
-      }));
-      const textWidth = `Estante ${rack.name}`.length * 12 + 28;
-      const top = P(ru + rw / 2, vTop);
-      const result: SceneRack = {
-        key: `${group.aisle.name}-${rack.name}`, name: rack.name, levelCount: levels.length,
-        frame: rect(ru, vTop, ru + rw, vTop + rackLen),
-        inner: rect(innerU0, innerV0, ru + rw - FR, vTop + rackLen - FR),
-        posts: [[ru, vTop], [ru + rw - 9, vTop], [ru, vTop + rackLen - 9], [ru + rw - 9, vTop + rackLen - 9]].map(([u, v]) => rect(u!, v!, u! + 9, v! + 9)),
-        braces: [poly([ru, vTop + rackLen], [ru + rw, vTop + rackLen + BRACE]), poly([ru + rw, vTop + rackLen], [ru, vTop + rackLen + BRACE]), poly([ru, vTop + rackLen + BRACE], [ru + rw, vTop + rackLen + BRACE])],
-        tag: { x: top.x, y: top.y - 38 - (rackIndex % 2) * 36, w: Math.max(textWidth, 92), text: `Estante ${rack.name}` },
-        levelLabels: levels.length > 1 ? levels.map((level, column) => ({ x: P(innerU0 + column * CW + CW / 2, vTop).x, y: P(innerU0, vTop).y - 6, text: `N${level.name}` })) : [],
-        cells,
-      };
-      ru += rw + GAP;
-      return result;
-    });
-    const mid = group.start + group.gw / 2;
-    const pinA = P(mid, vBottom + 8), pinB = P(mid, vBottom + 38), label = P(mid, vBottom + 74);
-    return { name: group.aisle.name, racks, pin: { x1: pinA.x, y1: pinA.y, x2: pinB.x, y2: pinB.y }, label };
-  });
-  const tl = P(0, 0), tr = P(W, 0), bl = P(0, H), br = P(W, H);
-  const pillars = Array.from({ length: Math.max(2, Math.floor(W / 150)) }, (_, index) => P(((index + 0.5) * W) / Math.max(2, Math.floor(W / 150)), 0));
-  return {
-    aisles: aislesOut, W, H, svgW: W + OFFX * 2, svgH: Y0 + H * YS + 48,
-    floor: rect(0, 0, W, H), safety: rect(16, 16, W - 16, H - 16),
-    lines: lanes.map(u => { const a = P(u, 30), b = P(u, H - 30); return { x1: a.x, y1: a.y, x2: b.x, y2: b.y }; }),
-    back: { x: tl.x - 4, y: tl.y - WALL_H, w: tr.x - tl.x + 8, h: WALL_H, pillars: pillars.map(point => point.x), door: (tl.x + tr.x) / 2 },
-    left: `${tl.x},${tl.y} ${bl.x},${bl.y} ${bl.x - 40},${bl.y - 56} ${tl.x - 18},${tl.y - WALL_H}`,
-    right: `${tr.x},${tr.y} ${br.x},${br.y} ${br.x + 40},${br.y - 56} ${tr.x + 18},${tr.y - WALL_H}`,
-    front: { x: bl.x - 6, y: bl.y, w: br.x - bl.x + 12, h: 28, pillars: lanes.map(u => P(u, H).x) },
-    hasRatio: allAisles.value.some(aisle => aisle.racks.some(rack => rack.levels.some(level => level.cells.some(slot => slot && slot.state === 'OCCUPIED' && fillRatio(slot) !== null)))),
-  };
-});
+// Aerial scene generated from the real records; see utils/warehouse-scene.ts.
+const scene = computed(() => buildWarehouseScene(allAisles.value));
+const sceneId = useId().replace(/[^a-zA-Z0-9_-]/g, '');
+const gid = (name: string) => `${sceneId}-${name}`;
+const rackIds = { top: gid('metal-top'), side: gid('metal-side'), front: gid('metal-front'), blur: gid('blur') };
 // Keyboard order follows the data hierarchy, skipping what the filters hide.
 const logicalOrder = computed(() => allAisles.value.flatMap(aisle => aisle.racks.flatMap(rack => [...rack.levels].reverse().flatMap(level => level.cells.filter((cell): cell is Slot => !!cell && matches(cell))))));
 function isoKey(event: KeyboardEvent, slot: Slot) {
@@ -249,29 +187,35 @@ function moveFocus(event: KeyboardEvent) {
             <div v-if="!found.length" class="py-12 text-center"><Search class="mx-auto mb-3 h-5 w-5 text-muted-fg"/><p class="text-sm font-medium">No encontramos espacios con estos filtros</p><button type="button" class="mt-3 text-xs font-medium text-accent hover:underline" @click="clearFilters">Ver todos los espacios</button></div>
             <div v-if="found.length && viewMode === 'iso'" class="mx-auto" :style="{ width: `${cellSize / 48 * 100}%`, minWidth: `${Math.round(scene.svgW * 0.5 * cellSize / 48)}px` }">
               <svg role="group" aria-label="Distribución esquemática del almacén por pasillo, estante, nivel y espacio" class="block h-auto w-full" :viewBox="`0 0 ${scene.svgW} ${scene.svgH}`">
-                <polygon :points="scene.left" class="wall wall-side" /><polygon :points="scene.right" class="wall wall-side" />
-                <rect :x="scene.back.x" :y="scene.back.y" :width="scene.back.w" :height="scene.back.h" class="wall wall-back" />
-                <rect v-for="(x, index) in scene.back.pillars" :key="`pillar-${index}`" :x="x - 7" :y="scene.back.y" width="14" :height="scene.back.h" class="wall-pillar" />
-                <g class="wall-door"><rect :x="scene.back.door - 62" :y="scene.back.y + 8" width="124" :height="scene.back.h - 8" /><line v-for="n in 4" :key="n" :x1="scene.back.door - 62" :x2="scene.back.door + 62" :y1="scene.back.y + 8 + n * 12" :y2="scene.back.y + 8 + n * 12" /></g>
-                <polygon :points="scene.floor" class="iso-floor" />
+                <defs>
+                  <linearGradient :id="gid('floor')" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color: hsl(var(--surface-secondary))" /><stop offset=".55" style="stop-color: hsl(var(--border) / .8)" /><stop offset="1" style="stop-color: hsl(var(--surface-secondary))" /></linearGradient>
+                  <linearGradient :id="gid('wall-face')" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color: hsl(var(--muted-fg) / .38)" /><stop offset="1" style="stop-color: hsl(var(--muted-fg) / .6)" /></linearGradient>
+                  <linearGradient :id="gid('wall-cap')" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color: hsl(var(--surface))" /><stop offset="1" style="stop-color: hsl(var(--muted-fg) / .25)" /></linearGradient>
+                  <linearGradient :id="gid('shade-v')" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#000" stop-opacity=".22" /><stop offset="1" stop-color="#000" stop-opacity="0" /></linearGradient>
+                  <linearGradient :id="gid('shade-l')" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#000" stop-opacity=".2" /><stop offset="1" stop-color="#000" stop-opacity="0" /></linearGradient>
+                  <linearGradient :id="gid('shade-r')" x1="1" y1="0" x2="0" y2="0"><stop offset="0" stop-color="#000" stop-opacity=".2" /><stop offset="1" stop-color="#000" stop-opacity="0" /></linearGradient>
+                  <linearGradient :id="rackIds.top" x1="0" y1="0" x2="1" y2="1"><stop offset="0" class="ms-top-a" /><stop offset="1" class="ms-top-b" /></linearGradient>
+                  <linearGradient :id="rackIds.side" x1="0" y1="0" x2="1" y2="0"><stop offset="0" class="ms-side-a" /><stop offset="1" class="ms-side-b" /></linearGradient>
+                  <linearGradient :id="rackIds.front" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="ms-front-a" /><stop offset="1" class="ms-front-b" /></linearGradient>
+                  <filter :id="rackIds.blur" x="-20%" y="-10%" width="150%" height="130%"><feGaussianBlur stdDeviation="5" /></filter>
+                </defs>
+                <polygon :points="scene.leftWall.face" :fill="`url(#${gid('wall-face')})`" class="wall" /><polygon :points="scene.leftWall.cap" :fill="`url(#${gid('wall-cap')})`" class="wall" />
+                <polygon :points="scene.rightWall.face" :fill="`url(#${gid('wall-face')})`" class="wall" /><polygon :points="scene.rightWall.cap" :fill="`url(#${gid('wall-cap')})`" class="wall" />
+                <rect :x="scene.back.x" :y="scene.back.y" :width="scene.back.w" :height="scene.back.h" :fill="`url(#${gid('wall-face')})`" class="wall" />
+                <polygon :points="scene.back.cap" :fill="`url(#${gid('wall-cap')})`" class="wall" />
+                <g v-for="(x, index) in scene.back.pillars" :key="`pillar-${index}`" class="wall-pillar"><rect :x="x - 9" :y="scene.back.y - 4" width="18" :height="scene.back.h + 4" class="pillar-face" /><rect :x="x + 9" :y="scene.back.y - 4" width="6" :height="scene.back.h + 4" class="pillar-side" /><rect :x="x - 9" :y="scene.back.y - 9" width="24" height="5" class="pillar-top" /></g>
+                <g class="wall-door"><rect :x="scene.back.door - 64" :y="scene.back.y + 10" width="128" :height="scene.back.h - 10" /><line v-for="n in 4" :key="n" :x1="scene.back.door - 64" :x2="scene.back.door + 64" :y1="scene.back.y + 10 + n * 13" :y2="scene.back.y + 10 + n * 13" /></g>
+                <polygon :points="scene.floor" :fill="`url(#${gid('floor')})`" class="iso-floor" />
+                <line v-for="(line, index) in scene.joints" :key="`joint-${index}`" :x1="line.x1" :y1="line.y1" :x2="line.x2" :y2="line.y2" class="floor-joint" />
+                <polygon :points="scene.shades.back" :fill="`url(#${gid('shade-v')})`" class="shade" /><polygon :points="scene.shades.left" :fill="`url(#${gid('shade-l')})`" class="shade" /><polygon :points="scene.shades.right" :fill="`url(#${gid('shade-r')})`" class="shade" />
                 <line v-for="(line, index) in scene.lines" :key="`lane-${index}`" :x1="line.x1" :y1="line.y1" :x2="line.x2" :y2="line.y2" class="lane-line" />
                 <polygon :points="scene.safety" class="safety-line" />
                 <template v-for="aisle in scene.aisles" :key="aisle.name">
-                  <g v-for="rack in aisle.racks" :key="rack.key" role="group" :aria-label="`Pasillo ${aisle.name}, estante ${rack.name}`">
-                    <polygon :points="rack.frame" class="rack-frame" /><polygon :points="rack.inner" class="rack-inner" />
-                    <g v-for="cell in rack.cells" :key="cell.slot.id" :data-location-id="cell.slot.id" role="button" :tabindex="isoTabbable === cell.slot.id ? 0 : -1" :aria-pressed="selectedId === cell.slot.id" :aria-label="`${cell.slot.code}, ${singleLabels[cell.slot.state]}, pasillo ${cell.slot.aisle}, estante ${cell.slot.rack}, nivel ${cell.slot.level}, posición ${cell.slot.position}${cell.ratio !== null ? `, ocupación ${Math.round(cell.ratio * 100)}%` : ''}${containsProduct(cell.slot) ? ', ubicación del producto' : ''}`" class="cell" :class="[`cell-${cell.slot.state}`, { 'cell-selected': selectedId === cell.slot.id, 'cell-product': containsProduct(cell.slot), 'cell-muted': !matches(cell.slot) }]" @click="selectSlot(cell.slot)" @keydown="isoKey($event, cell.slot)">
-                      <title>{{ cell.slot.code }} · {{ singleLabels[cell.slot.state] }}</title>
-                      <polygon :points="cell.poly" class="cell-bg" /><polygon v-if="cell.fill" :points="cell.fill" class="cell-fill" /><polygon :points="cell.poly" class="cell-edge" />
-                    </g>
-                    <polygon v-for="(post, index) in rack.posts" :key="`post-${index}`" :points="post" class="rack-post" />
-                    <polyline v-for="(brace, index) in rack.braces" :key="`brace-${index}`" :points="brace" class="rack-brace" />
-                    <text v-for="level in rack.levelLabels" :key="level.text" :x="level.x" :y="level.y" text-anchor="middle" class="level-label">{{ level.text }}</text>
-                    <g class="rack-tag"><rect :x="rack.tag.x - rack.tag.w / 2" :y="rack.tag.y - 16" :width="rack.tag.w" height="32" rx="6" /><text :x="rack.tag.x" :y="rack.tag.y + 6" text-anchor="middle">{{ rack.tag.text }}</text></g>
-                  </g>
+                  <WarehouseMapRack v-for="rack in aisle.racks" :key="rack.key" :rack="rack" :aisle-name="aisle.name" :ids="rackIds" :selected-id="selectedId" :tabbable-id="isoTabbable" :labels="singleLabels" :is-muted="slot => !matches(slot)" :is-product="containsProduct" @select="selectSlot" @key="isoKey" />
                   <line :x1="aisle.pin.x1" :y1="aisle.pin.y1" :x2="aisle.pin.x2" :y2="aisle.pin.y2" class="aisle-pin" /><circle :cx="aisle.pin.x1" :cy="aisle.pin.y1" r="3.5" class="aisle-dot" />
                   <text :x="aisle.label.x" :y="aisle.label.y" text-anchor="middle" class="aisle-label">Pasillo {{ aisle.name }}</text>
                 </template>
-                <rect :x="scene.front.x" :y="scene.front.y" :width="scene.front.w" :height="scene.front.h" class="wall wall-front" /><rect v-for="(x, index) in scene.front.pillars" :key="`fp-${index}`" :x="x - 8" :y="scene.front.y - 2" width="16" :height="scene.front.h + 4" class="wall-pillar" />
+                <g class="wall-front"><rect :x="scene.front.x" :y="scene.front.y" :width="scene.front.w" :height="scene.front.h" class="front-face" /><polygon :points="scene.front.cap" class="front-cap" /><g v-for="(x, index) in scene.front.pillars" :key="`fp-${index}`"><rect :x="x - 9" :y="scene.front.y - 10" width="18" :height="scene.front.h + 12" class="pillar-face" /><rect :x="x - 9" :y="scene.front.y - 14" width="18" height="4" class="pillar-top" /></g></g>
               </svg>
             </div>
             <section v-for="aisle in (viewMode === 'grid' ? aisles : [])" :key="aisle.name" class="mb-7 last:mb-0" :aria-label="`Pasillo ${aisle.name}`">
@@ -336,46 +280,28 @@ function moveFocus(event: KeyboardEvent) {
 .selected-seat { outline: 2px solid hsl(var(--fg)); outline-offset: 2px; }
 .seat-check { position: absolute; right: -5px; top: -5px; border-radius: 50%; background: hsl(var(--fg)); color: hsl(var(--surface)); }
 .muted-seat { opacity: .3; }
-.wall, .wall-pillar, .wall-door, .iso-floor, .lane-line, .safety-line, .rack-frame, .rack-inner, .rack-post, .rack-brace, .aisle-pin, .aisle-dot, .aisle-label, .level-label, .rack-tag { pointer-events: none; }
-.wall { stroke: hsl(var(--border)); stroke-width: 1; vector-effect: non-scaling-stroke; }
-.wall-back { fill: hsl(var(--muted-fg) / .22); }
-.wall-side { fill: hsl(var(--muted-fg) / .3); }
-.wall-front { fill: hsl(var(--muted-fg) / .18); }
-.wall-pillar { fill: hsl(var(--muted-fg) / .45); }
-.wall-door rect { fill: hsl(var(--surface-secondary)); stroke: hsl(var(--muted-fg) / .5); stroke-width: 1; vector-effect: non-scaling-stroke; }
-.wall-door line { stroke: hsl(var(--muted-fg) / .4); stroke-width: 1; vector-effect: non-scaling-stroke; }
-.iso-floor { fill: hsl(var(--surface-secondary)); stroke: hsl(var(--border)); stroke-width: 1; vector-effect: non-scaling-stroke; }
-.lane-line { stroke: hsl(var(--fg) / .3); stroke-width: 2; stroke-dasharray: 9 8; vector-effect: non-scaling-stroke; }
-.safety-line { fill: none; stroke: #e5aa00; stroke-width: 3; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
-.rack-frame { fill: hsl(var(--muted-fg) / .4); stroke: hsl(var(--fg) / .85); stroke-width: 2.5; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
-.rack-inner { fill: hsl(var(--surface)); stroke: hsl(var(--border)); stroke-width: 1; vector-effect: non-scaling-stroke; }
-.rack-post { fill: hsl(var(--fg) / .85); }
-.rack-brace { fill: none; stroke: hsl(var(--fg) / .75); stroke-width: 1.6; vector-effect: non-scaling-stroke; }
-.level-label { fill: hsl(var(--muted-fg)); font-size: 14px; font-weight: 600; }
-.rack-tag rect { fill: hsl(var(--surface)); stroke: hsl(var(--border)); stroke-width: 1; vector-effect: non-scaling-stroke; }
-.rack-tag text { fill: hsl(var(--fg)); font-size: 20px; font-weight: 600; }
+.wall, .wall-pillar, .wall-door, .iso-floor, .floor-joint, .shade, .lane-line, .safety-line, .aisle-pin, .aisle-dot, .aisle-label, .wall-front { pointer-events: none; }
+.wall { stroke: hsl(var(--fg) / .14); stroke-width: 1; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+.pillar-face { fill: hsl(var(--muted-fg) / .55); }
+.pillar-side { fill: hsl(var(--muted-fg) / .8); }
+.pillar-top { fill: hsl(var(--surface)); stroke: hsl(var(--fg) / .12); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.wall-door rect { fill: hsl(var(--surface-secondary)); stroke: hsl(var(--fg) / .2); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.wall-door line { stroke: hsl(var(--fg) / .2); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.iso-floor { stroke: hsl(var(--fg) / .12); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.floor-joint { stroke: hsl(var(--fg) / .08); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.lane-line { stroke: hsl(var(--surface)); stroke-width: 2; stroke-dasharray: 9 9; opacity: .85; vector-effect: non-scaling-stroke; }
+.safety-line { fill: none; stroke: #e8b400; stroke-width: 2; opacity: .9; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+.front-face { fill: hsl(var(--muted-fg) / .4); stroke: hsl(var(--fg) / .14); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.front-cap { fill: hsl(var(--surface)); stroke: hsl(var(--fg) / .12); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .aisle-pin { stroke: hsl(var(--fg)); stroke-width: 2; vector-effect: non-scaling-stroke; }
 .aisle-dot { fill: hsl(var(--fg)); }
 .aisle-label { fill: hsl(var(--fg)); font-size: 26px; font-weight: 600; }
-.cell { cursor: pointer; outline: none; transition: opacity .15s; }
-.cell-bg { fill: hsl(var(--surface-secondary)); }
-.cell-edge { fill: none; stroke: hsl(var(--border)); stroke-width: 1; vector-effect: non-scaling-stroke; }
-.cell-fill { fill: #1f7af2; }
-.cell-AVAILABLE .cell-bg { fill: hsl(var(--success) / .08); }
-.cell-AVAILABLE .cell-edge { stroke: hsl(var(--success)); stroke-width: 1.6; }
-.cell-OCCUPIED .cell-bg { fill: #1f7af2; }
-.cell-OCCUPIED .cell-fill { fill: #1f7af2; }
-.cell-OCCUPIED .cell-edge { stroke: #1560c8; }
-.cell-FULL .cell-bg { fill: #e29a2f; }
-.cell-FULL .cell-edge { stroke: #b87a1d; }
-.cell-INACTIVE .cell-bg { fill: hsl(var(--muted-fg) / .3); }
-.cell-INACTIVE .cell-edge { stroke: hsl(var(--muted-fg)); stroke-dasharray: 4 3; }
-.cell-OCCUPIED:has(.cell-fill) .cell-bg { fill: #1f7af2; fill-opacity: .22; }
-.cell:hover .cell-edge { stroke: hsl(var(--fg)); stroke-width: 2; }
-.cell:focus-visible .cell-edge { stroke: hsl(var(--accent)); stroke-width: 3.5; }
-.cell-product .cell-edge { stroke: hsl(var(--accent)); stroke-width: 2.5; }
-.cell-selected .cell-edge { stroke: hsl(var(--fg)); stroke-width: 3.5; }
-.cell-muted { opacity: .25; }
+.ms-top-a { stop-color: hsl(var(--muted-fg) / .55); } .ms-top-b { stop-color: hsl(var(--muted-fg) / .88); }
+.ms-side-a { stop-color: hsl(var(--muted-fg) / .7); } .ms-side-b { stop-color: hsl(var(--muted-fg) / .95); }
+.ms-front-a { stop-color: hsl(var(--muted-fg) / .72); } .ms-front-b { stop-color: hsl(var(--muted-fg) / .95); }
+:global(.dark .warehouse-location-map .ms-top-a) { stop-color: hsl(var(--muted-fg) / .34); } :global(.dark .warehouse-location-map .ms-top-b) { stop-color: hsl(var(--muted-fg) / .58); }
+:global(.dark .warehouse-location-map .ms-side-a) { stop-color: hsl(var(--muted-fg) / .4); } :global(.dark .warehouse-location-map .ms-side-b) { stop-color: hsl(var(--muted-fg) / .64); }
+:global(.dark .warehouse-location-map .ms-front-a) { stop-color: hsl(var(--muted-fg) / .44); } :global(.dark .warehouse-location-map .ms-front-b) { stop-color: hsl(var(--muted-fg) / .68); }
 .seat-gap { width: var(--slot-size); height: var(--slot-size); }
 :global(.dark .warehouse-location-map .state-OCCUPIED) { color: #96bede; background: #233544; border-color: #4b697f; }
 :global(.dark .warehouse-location-map .state-FULL) { color: #e6c58e; background: #393225; border-color: #796342; }
