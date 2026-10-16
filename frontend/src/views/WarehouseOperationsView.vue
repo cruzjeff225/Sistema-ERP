@@ -239,7 +239,7 @@ onBeforeUnmount(() => { loadVersion++; stockVersion++; expenseVersion++; destina
   <AdminLayout title="Bodega">
     <OperationsNav />
     <div class="mx-auto min-w-0 space-y-5" :class="tab === 'home' ? 'max-w-5xl' : 'max-w-[1440px]'">
-      <p v-if="error" role="alert" class="rounded-[12px] border border-danger/30 bg-danger/10 p-4 text-sm text-danger">{{ error }}</p><p v-if="success" role="status" class="flex items-center gap-2 text-sm font-medium text-success"><Check class="h-4 w-4 shrink-0" aria-hidden="true" />{{ success }}</p>
+      <p v-if="error" role="alert" class="rounded-[12px] border border-danger/30 bg-danger/10 p-4 text-sm text-danger">{{ error }}</p><p v-if="success" role="status" class="flex items-center gap-3 text-base text-fg"><span class="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-success text-white" aria-hidden="true"><Check class="h-4 w-4" /></span>{{ success }}</p>
       <header class="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
         <div class="min-w-0">
           <RouterLink v-if="!context && tab!=='home'" to="/inventory/warehouse" class="mb-2 inline-flex items-center gap-2 text-sm text-muted-fg hover:text-fg"><ArrowLeft class="h-4 w-4" aria-hidden="true" />Bodega</RouterLink>
@@ -328,7 +328,7 @@ onBeforeUnmount(() => { loadVersion++; stockVersion++; expenseVersion++; destina
                     <td class="px-3 py-3.5 text-center align-top tabular-nums">{{ Number(i.quantity) }}</td>
                     <td class="px-3 py-3.5 text-center align-top tabular-nums">{{ Number(i.receivedQuantity) }}</td>
                     <td class="px-3 py-3.5 text-center align-top tabular-nums">{{ Math.max(0, Number(i.quantity) - Number(i.receivedQuantity)) }}</td>
-                    <td class="px-4 py-3.5 align-top"><template v-if="index === 0"><span class="inline-flex items-center gap-2"><span class="h-2.5 w-2.5 shrink-0 rounded-full" :class="t.status === 'COMPLETED' ? 'bg-success' : t.status === 'CANCELLED' ? 'bg-danger' : t.status === 'PARTIALLY_RECEIVED' ? 'bg-warning' : 'bg-accent'" aria-hidden="true" />{{ transferStateLabel(t.status) }}</span><RouterLink v-if="['IN_TRANSIT','PARTIALLY_RECEIVED'].includes(t.status) && t.items.some((x: any) => Number(x.quantity) > Number(x.receivedQuantity)) && t.items[0]?.requestDetail?.request?.id && can('purchase_requests.view')" :to="{ path: '/purchases/requests/' + t.items[0].requestDetail.request.id }" class="mt-1 block text-sm font-medium text-accent hover:underline">La sucursal lo recibe en su solicitud</RouterLink></template></td>
+                    <td class="px-4 py-3.5 align-top"><template v-if="index === 0"><span class="inline-flex items-center gap-2"><span class="h-2.5 w-2.5 shrink-0 rounded-full" :class="t.status === 'COMPLETED' ? 'bg-success' : t.status === 'CANCELLED' ? 'bg-danger' : t.status === 'PARTIALLY_RECEIVED' ? 'bg-accent' : 'bg-warning'" aria-hidden="true" />{{ transferStateLabel(t.status) }}</span><RouterLink v-if="['IN_TRANSIT','PARTIALLY_RECEIVED'].includes(t.status) && t.items.some((x: any) => Number(x.quantity) > Number(x.receivedQuantity)) && t.items[0]?.requestDetail?.request?.id && can('purchase_requests.view')" :to="{ path: '/purchases/requests/' + t.items[0].requestDetail.request.id }" class="mt-1 block text-sm text-muted-fg hover:text-fg hover:underline">La sucursal lo recibe en su solicitud</RouterLink></template></td>
                   </tr>
                 </template>
               </tbody>
