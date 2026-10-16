@@ -3,6 +3,7 @@ import { computed, onMounted, onBeforeUnmount, reactive, ref, watch } from "vue"
 import { Calculator, Settings2, LockKeyhole, Pencil, Plus, RefreshCw, Search, ShieldCheck, X, XCircle } from "lucide-vue-next";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 import ExpenseTypesManager from '../components/purchases/ExpenseTypesManager.vue';
+import SearchableSelect from '../components/base/SearchableSelect.vue';
 import PurchaseActionDialog from "../components/base/PurchaseActionDialog.vue";
 import AdminLayout from "../layouts/AdminLayout.vue";
 import PurchasesNav from "../components/purchases/PurchasesNav.vue";
@@ -90,6 +91,11 @@ const selected = computed(() => filteredRecords.value.find((record) => record.id
 const selectedPurchase = computed(() => purchases.value.find((purchase) => purchase.id === form.purchaseId) ?? null);
 const contextPurchaseId = computed(() => Number(route.query.purchaseId) || 0);
 const contextPurchase = computed(() => purchases.value.find(purchase => purchase.id === contextPurchaseId.value) ?? selected.value?.purchase);
+const purchaseOptions = computed(() => {
+  const list = eligiblePurchases.value.map((purchase: any) => ({ id: purchase.id, label: purchase.documentNumber, description: purchase.supplier.name }));
+  if (editingId.value && selectedPurchase.value && !list.some(option => option.id === selectedPurchase.value.id)) list.push({ id: selectedPurchase.value.id, label: selectedPurchase.value.documentNumber, description: selectedPurchase.value.supplier.name });
+  return list;
+});
 const eligiblePurchases = computed(() => purchases.value.filter((purchase) => (!contextPurchaseId.value || purchase.id === contextPurchaseId.value) && !purchase.hasActiveRetaceo && !purchase.retaceos?.some((record: any) => record.status !== "cancelled") && (!purchase.purchaseOrderId || purchase.status === 'VERIFIED')));
 const contextNotice = computed(() => !contextPurchaseId.value || selected.value || eligiblePurchases.value.length ? '' : contextPurchase.value?.retaceoArchived ? 'El retaceo de esta recepción está en la papelera.' : contextPurchase.value?.status === 'RECEIVED' ? 'Verifica la recepción antes de preparar su retaceo.' : 'Esta recepción no está disponible para un nuevo retaceo.');
 const filteredRecords = computed(() => {
@@ -190,10 +196,7 @@ function fillFromPurchase(purchase: any) {
   Object.assign(form, retaceoSourceFields(purchase));
 }
 
-function changePurchase(event: Event) {
-  const input = event.target as HTMLSelectElement;
-  const id = Number(input.value);
-  input.value = String(form.purchaseId);
+function changePurchase(id: number) {
   if (id === form.purchaseId || editingId.value || saving.value) return;
   if (!eligiblePurchases.value.some(purchase => purchase.id === id)) return;
   pendingPurchaseId.value = id;
@@ -482,7 +485,7 @@ onMounted(load);
       <form id="retaceo-form" class="space-y-6" @submit.prevent="submitForm"><fieldset :disabled="saving" class="min-w-0 space-y-6">
         <section v-if="formStep === 1" class="space-y-5">
           <div class="grid gap-4 sm:grid-cols-2">
-            <label class="text-sm font-medium text-fg">Recepción<select :value="form.purchaseId" @change="changePurchase" :disabled="!!editingId" required class="field-control"><option :value="0" disabled>Seleccionar recepción</option><option v-for="purchase in eligiblePurchases" :key="purchase.id" :value="purchase.id">{{ purchase.documentNumber }} · {{ purchase.supplier.name }}</option><option v-if="editingId && selectedPurchase" :value="selectedPurchase.id">{{ selectedPurchase.documentNumber }} · {{ selectedPurchase.supplier.name }}</option></select></label>
+            <SearchableSelect :model-value="form.purchaseId" :options="purchaseOptions" label="Recepción" placeholder="Seleccionar recepción" search-label="Buscar recepción por código o proveedor" :disabled="!!editingId" @select="changePurchase" />
             <AppInput v-model="form.retaceoDate" type="date" label="Fecha de retaceo" required />
           </div>
           <dl v-if="selectedPurchase" class="grid gap-4 border-y border-border py-4 text-sm sm:grid-cols-2">
