@@ -473,7 +473,7 @@ onMounted(load);
             <button type="button" class="icon-button" aria-label="Cerrar" title="Cerrar" @click="closeDrawer()"><X class="h-5 w-5" /></button>
           </div>
         </div>
-        <ol aria-label="Etapas del retaceo" class="mt-4 flex gap-6 overflow-x-auto">
+        <ol aria-label="Etapas del retaceo" class="mt-4 flex flex-wrap gap-x-6">
           <li v-for="(step, index) in steps" :key="step" :aria-current="formStep === index + 1 ? 'step' : undefined" class="-mb-px whitespace-nowrap border-b-2 pb-2.5 text-sm font-medium" :class="formStep === index + 1 ? 'border-accent text-accent' : 'border-transparent text-muted-fg'"><span class="sr-only">Paso {{ index + 1 }}: </span>{{ step }}</li>
         </ol>
       </header>
