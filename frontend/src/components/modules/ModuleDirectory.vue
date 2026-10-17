@@ -66,7 +66,7 @@ const lastStyle = (count: number) => ({ '--span-lg': columnsFor(count) - ((count
       </section>
     </div>
     <details v-if="support.length" :open="!groups.length" class="directory-support mt-9 rounded-[12px] border border-border bg-surface">
-      <summary class="flex min-h-14 cursor-pointer list-none items-center justify-between gap-4 rounded-[12px] px-5 py-4 text-base font-medium text-muted-fg transition-colors hover:bg-surface-secondary">
+      <summary class="flex min-h-14 cursor-pointer list-none items-center justify-between gap-4 rounded-[12px] px-5 py-4 text-base font-medium text-fg transition-colors hover:bg-surface-secondary">
         {{ supportLabel }}<ChevronDown class="directory-chevron h-4 w-4 shrink-0" aria-hidden="true" />
       </summary>
       <div class="directory-grid border-t border-border" :style="gridStyle(support.length)">
