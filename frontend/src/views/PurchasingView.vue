@@ -16,7 +16,7 @@ const support = computed(() => sections.value.filter(section => section.group ==
 
 <template>
   <AdminLayout title="Compras">
-    <div class="mx-auto max-w-5xl pb-6"><MyPendingPanel /></div>
+    <div class="mx-auto max-w-6xl pb-6"><MyPendingPanel /></div>
     <ModuleDirectory title="Compras" description="De la solicitud al producto recibido, con cada paso en su lugar." :groups="groups" :support="support" support-label="Directorio de proveedores" empty-message="Tu cuenta no tiene opciones de compras disponibles." />
   </AdminLayout>
 </template>
