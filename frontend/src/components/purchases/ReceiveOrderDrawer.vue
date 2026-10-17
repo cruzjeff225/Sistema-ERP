@@ -5,7 +5,7 @@
 import { computed, onMounted, reactive, ref } from 'vue';
 import AppButton from '../base/AppButton.vue';
 import AppInput from '../base/AppInput.vue';
-import PurchaseActionDialog from '../base/PurchaseActionDialog.vue';
+import ConfirmDialog from '../base/ConfirmDialog.vue';
 import { http } from '../../services/http.service';
 import { activeCompanyId } from '../../services/company-context';
 import { useFeedbackStore } from '../../stores/feedback.store';
@@ -93,7 +93,7 @@ onMounted(() => void load());
 
 <template>
   <div class="fixed inset-0 z-50 flex justify-end bg-black/35" @click.self="!saving && emit('close')">
-    <aside role="dialog" aria-modal="true" aria-labelledby="receive-title" class="h-full w-full max-w-3xl overflow-y-auto bg-surface shadow-xl" @keydown.esc="!saving && emit('close')">
+    <aside role="dialog" aria-modal="true" aria-labelledby="receive-title" class="h-full w-full max-w-3xl overflow-y-auto bg-surface shadow-[var(--shadow-float)]" @keydown.esc="!saving && emit('close')">
       <header class="sticky top-0 z-10 flex flex-wrap items-start justify-between gap-x-4 gap-y-3 border-b border-border bg-surface px-4 py-3 sm:px-6 sm:py-4">
         <div class="min-w-0 flex-1 basis-72">
           <p class="text-sm text-muted-fg">Proceso de compras</p>
@@ -136,11 +136,11 @@ onMounted(() => void load());
               </table>
             </div>
           </div>
-          <label class="block text-base font-semibold text-fg">Observaciones de recepción<textarea v-model="form.notes" class="mt-2 min-h-24 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm font-normal text-fg" maxlength="2000" /></label>
+          <label class="block text-base font-semibold text-fg">Observaciones de recepción<textarea v-model="form.notes" class="field-control mt-2 h-auto min-h-24 py-2 font-normal" maxlength="2000" /></label>
         </fieldset>
       </form>
       </div>
     </aside>
-    <PurchaseActionDialog v-if="review" title="Confirmar recepción" :description="review.description" :busy="saving" :error="error" @confirm="confirm" @close="review = null" />
+    <ConfirmDialog v-if="review" title="Confirmar recepción" :description="review.description" :busy="saving" :error="error" @confirm="confirm" @close="review = null" />
   </div>
 </template>

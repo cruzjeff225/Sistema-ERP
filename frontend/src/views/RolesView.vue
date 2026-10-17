@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRouter } from "vue-router";
-import { Copy, Edit2, Plus, Power, RefreshCw, Save, Search, ShieldCheck, Trash2, X } from "lucide-vue-next";
+import { Copy, Edit2, Plus, Power, RefreshCw, Save, ShieldCheck, Trash2, X } from "lucide-vue-next";
 import AdminLayout from "../layouts/AdminLayout.vue";
-import AdministrationNav from "../components/admin/AdministrationNav.vue";
+import AppDrawer from "../components/base/AppDrawer.vue";
+import EmptyState from "../components/base/EmptyState.vue";
+import SearchField from "../components/base/SearchField.vue";
 import AppBadge from "../components/base/AppBadge.vue";
 import AppButton from "../components/base/AppButton.vue";
+import ConfirmDialog from "../components/base/ConfirmDialog.vue";
 import AppInput from "../components/base/AppInput.vue";
 import { usePermissions } from "../composables/usePermissions";
 import { http } from "../services/http.service";
@@ -235,9 +238,17 @@ async function toggleStatus(role: Role) {
   }
 }
 
-async function removeRole(role: Role) {
+const roleToRemove = ref<Role | null>(null);
+
+function removeRole(role: Role) {
   if (role.isSystem || !can("roles.delete")) return;
-  if (!window.confirm(`Eliminar el rol ${role.name}? Podrá recuperarse desde Administración / Configuración / Papelera durante 30 días.`)) return;
+  roleToRemove.value = role;
+}
+
+async function confirmRemoveRole() {
+  const role = roleToRemove.value;
+  roleToRemove.value = null;
+  if (!role || role.isSystem || !can("roles.delete")) return;
 
   saving.value = true;
   errorMessage.value = "";
@@ -257,7 +268,6 @@ onMounted(loadAll);
 
 <template>
   <AdminLayout title="Configuración · Roles">
-    <AdministrationNav section="roles" />
     <div class="mb-6 flex flex-wrap items-end justify-between gap-4">
       <div>
         <h1 class="page-title">Roles</h1>
@@ -277,16 +287,13 @@ onMounted(loadAll);
 
     <section class="overflow-hidden rounded-lg border border-border bg-surface shadow-subtle">
       <div class="flex flex-col gap-3 border-b border-border p-3 sm:flex-row sm:items-center sm:justify-between">
-        <div class="relative w-full sm:max-w-sm">
-          <Search class="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-fg" />
-          <input v-model="search" class="h-9 w-full rounded-lg border border-border bg-surface pl-9 pr-3 text-sm outline-none focus:border-accent focus:ring-4 focus:ring-accent/15" placeholder="Buscar por rol o descripción" />
-        </div>
+        <SearchField v-model="search" placeholder="Buscar por rol o descripción" class="w-full sm:max-w-sm" />
         <AppBadge>{{ filteredRoles.length }} roles</AppBadge>
       </div>
 
       <div class="hidden overflow-x-auto md:block">
         <table class="w-full min-w-[760px] text-left text-sm">
-          <thead class="border-b border-border bg-surface-secondary/70 text-xs uppercase text-muted-fg">
+          <thead class="data-thead">
             <tr><th class="px-4 py-3">Rol</th><th class="px-4 py-3">Permisos</th><th class="px-4 py-3">Usuarios</th><th class="px-4 py-3">Estado</th><th class="px-4 py-3 text-right">Acciones</th></tr>
           </thead>
           <tbody class="divide-y divide-border">
@@ -302,7 +309,7 @@ onMounted(loadAll);
                 <button v-if="can('roles.delete')" type="button" class="grid h-8 w-8 place-items-center rounded-lg text-danger hover:bg-danger/10 disabled:cursor-not-allowed disabled:opacity-30" :disabled="saving || role.isSystem" title="Enviar rol a papelera" @click="removeRole(role)"><Trash2 class="h-4 w-4" /></button>
               </div></td>
             </tr>
-            <tr v-if="!loading && !filteredRoles.length"><td colspan="5" class="px-4 py-12 text-center text-muted-fg">No hay roles para esta búsqueda.</td></tr>
+            <tr v-if="!loading && !filteredRoles.length"><td colspan="5"><EmptyState title="No hay roles para esta búsqueda." /></td></tr>
           </tbody>
         </table>
       </div>
@@ -320,8 +327,7 @@ onMounted(loadAll);
       </div>
     </section>
 
-    <div v-if="editorOpen" class="fixed inset-0 z-50 flex justify-end bg-black/35 backdrop-blur-[2px]" @click.self="closeEditor">
-      <aside class="flex h-full w-full max-w-2xl flex-col bg-surface shadow-2xl">
+    <AppDrawer v-if="editorOpen" label="Rol y accesos" @close="closeEditor">
         <header class="flex items-start justify-between border-b border-border px-5 py-4 sm:px-6"><div><p class="text-sm font-medium text-accent">{{ editingId ? "Configuración de acceso" : "Nuevo perfil" }}</p><h2 class="mt-1 text-xl font-semibold text-fg">{{ editingId ? form.name : "Crear rol" }}</h2><p class="mt-1 text-sm text-muted-fg">Los permisos se guardan junto con el rol.</p></div><button type="button" class="grid h-9 w-9 place-items-center rounded-lg text-muted-fg hover:bg-surface-secondary" title="Cerrar" :disabled="saving" @click="closeEditor"><X class="h-5 w-5" /></button></header>
         <form class="flex min-h-0 flex-1 flex-col" @submit.prevent="submitRole">
           <div class="scrollbar-thin flex-1 space-y-6 overflow-y-auto px-5 py-5 sm:px-6">
@@ -332,7 +338,7 @@ onMounted(loadAll);
           </div>
           <footer class="flex justify-end gap-2 border-t border-border px-5 py-4 sm:px-6"><AppButton variant="outline" type="button" :disabled="saving" @click="closeEditor">Cancelar</AppButton><AppButton type="submit" :disabled="saving"><Save class="h-4 w-4" />{{ saving ? "Guardando..." : "Guardar rol" }}</AppButton></footer>
         </form>
-      </aside>
-    </div>
+      </AppDrawer>
+    <ConfirmDialog v-if="roleToRemove" title="Eliminar rol" :description="`Se enviará el rol ${roleToRemove.name} a la papelera. Podrá recuperarse desde Configuración / Papelera durante 30 días.`" confirm-label="Eliminar rol" destructive :busy="saving" @close="roleToRemove = null" @confirm="confirmRemoveRole" />
   </AdminLayout>
 </template>

@@ -8,7 +8,7 @@ import TrashButton from "../components/admin/TrashButton.vue";
 import AppButton from "../components/base/AppButton.vue";
 import TrackingLink from "../components/purchases/TrackingLink.vue";
 import AppInput from "../components/base/AppInput.vue";
-import PurchaseActionDialog from "../components/base/PurchaseActionDialog.vue";
+import ConfirmDialog from "../components/base/ConfirmDialog.vue";
 import ReceiveOrderDrawer from "../components/purchases/ReceiveOrderDrawer.vue";
 import { http } from "../services/http.service";
 import { activeCompanyId } from "../services/company-context";
@@ -93,7 +93,14 @@ async function loadToReceive() {
 const pendingUnits = (order: any) => order.details.reduce((sum: number, line: any) => sum + Math.max(0, Number(line.quantity) - Number(line.receivedQuantity)), 0);
 function openReceive(orderId: number) { if (busy.value || editing.value) return; error.value = ''; receivingOrderId.value = orderId; }
 function closeReceive() { receivingOrderId.value = null; if (route.query.receiveOrder) { const query = { ...route.query }; delete query.receiveOrder; void router.replace({ query }); } }
-function afterReceived() { closeReceive(); void loadToReceive(); void load(1); }
+// The receipt just recorded is the newest one: show it, not the one that was selected before, and drop filters that could hide it.
+function afterReceived() {
+  selected.value = null; ageTab.value = 'recent'; search.value = ''; status.value = ''; historyFrom.value = ''; historyTo.value = ''; pendingOnly.value = false; success.value = '';
+  receivingOrderId.value = null;
+  // One update of the address: neither the order that was received nor an old selection stays in it.
+  if (route.query.id || route.query.receiveOrder) { const query = { ...route.query }; delete query.id; delete query.receiveOrder; void router.replace({ query }); }
+  void loadToReceive(); void load(1);
+}
 watch(activeCompanyId, () => { receivingOrderId.value = null; void loadToReceive(); }, { immediate: true });
 // A link such as the next step of the tracking opens the form of that order right away.
 watch(() => route.query.receiveOrder, value => { const id = Number(value); if (Number.isInteger(id) && id > 0) receivingOrderId.value = id; }, { immediate: true });
@@ -268,9 +275,9 @@ async function mutate(reason?: string) {
       <section aria-label="Detalle de recepción" v-else class="flex min-h-[420px] min-w-0 flex-col items-center justify-center gap-4 rounded-[12px] border border-border bg-surface p-8 text-center text-sm text-muted-fg"><FileText v-if="!loading" class="h-12 w-12 text-muted-fg" :stroke-width="1.25" aria-hidden="true" /><p>{{ loading ? 'Cargando…' : rows.length ? 'Selecciona una recepción.' : 'Las recepciones se registran desde una orden de compra.' }}</p></section>
     </div>
     </div>
-    <PurchaseActionDialog v-if="action && selected" :title="action === 'cancel' ? 'Cancelar recepción' : action === 'verify' ? 'Verificar recepción' : 'Cerrar recepción'" :description="actionDescription" :require-reason="action === 'cancel'" :busy="busy" :error="error" @close="action = null" @confirm="mutate" />
+    <ConfirmDialog v-if="action && selected" :title="action === 'cancel' ? 'Cancelar recepción' : action === 'verify' ? 'Verificar recepción' : 'Cerrar recepción'" :description="actionDescription" :require-reason="action === 'cancel'" :busy="busy" :error="error" @close="action = null" @confirm="mutate" />
     <ReceiveOrderDrawer v-if="receivingOrderId" :order-id="receivingOrderId" @close="closeReceive" @received="afterReceived" />
-    <PurchaseActionDialog v-if="discardInvoice" title="Descartar cambios de factura" description="Los cambios de factura no se han guardado." @confirm="editing = false; discardInvoice = false" @close="discardInvoice = false" />
-    <PurchaseActionDialog v-if="leaving" title="Salir sin guardar" description="Los cambios de factura no se han guardado." @confirm="resolveLeave(true)" @close="resolveLeave(false)" />
+    <ConfirmDialog v-if="discardInvoice" title="Descartar cambios de factura" description="Los cambios de factura no se han guardado." @confirm="editing = false; discardInvoice = false" @close="discardInvoice = false" />
+    <ConfirmDialog v-if="leaving" title="Salir sin guardar" description="Los cambios de factura no se han guardado." @confirm="resolveLeave(true)" @close="resolveLeave(false)" />
   </AdminLayout>
 </template>

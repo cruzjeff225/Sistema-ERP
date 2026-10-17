@@ -56,6 +56,7 @@ test('cada documento se abre en la pantalla donde se gestiona', () => {
 test('los estados se muestran en español y los desconocidos se conservan', () => {
   assert.equal(documentStatusLabel('pending_approval'), 'Pendiente de aprobación');
   assert.equal(documentStatusLabel('IN_TRANSIT'), 'En tránsito');
+  assert.equal(documentStatusLabel('created'), 'Creada', 'la gestión de cotización recién creada no se muestra en inglés');
   assert.equal(documentStatusLabel('algo_nuevo'), 'algo_nuevo');
   assert.equal(documentStatusVariant('CLOSED'), 'success');
   assert.equal(documentStatusVariant('rejected'), 'danger');

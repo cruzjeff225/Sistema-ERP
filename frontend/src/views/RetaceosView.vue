@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, onBeforeUnmount, reactive, ref, watch } from "vue";
-import { Calculator, Check, ChevronDown, FileText, ChevronLeft, ChevronRight, Settings2, LockKeyhole, Pencil, Plus, RefreshCw, Search, ShieldCheck, X, XCircle } from "lucide-vue-next";
+import { Calculator, Check, ChevronDown, FileText, ChevronLeft, ChevronRight, Settings2, LockKeyhole, Pencil, Plus, RefreshCw, ShieldCheck, X, XCircle } from "lucide-vue-next";
 import { statusDotClass } from "../utils/purchase-tracking";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 import ExpenseTypesManager from '../components/purchases/ExpenseTypesManager.vue';
 import SearchableSelect from '../components/base/SearchableSelect.vue';
-import PurchaseActionDialog from "../components/base/PurchaseActionDialog.vue";
+import ConfirmDialog from "../components/base/ConfirmDialog.vue";
 import AdminLayout from "../layouts/AdminLayout.vue";
-import PurchasesNav from "../components/purchases/PurchasesNav.vue";
-import PurchaseSectionHeader from "../components/purchases/PurchaseSectionHeader.vue";
+import SearchField from "../components/base/SearchField.vue";
+import PageHeader from "../components/base/PageHeader.vue";
 import PurchaseTabs from "../components/purchases/PurchaseTabs.vue";
 import AppBadge from "../components/base/AppBadge.vue";
 import TrashButton from "../components/admin/TrashButton.vue";
@@ -372,13 +372,12 @@ onMounted(load);
 <template>
   <AdminLayout title="Retaceo">
     <div class="mx-auto max-w-[1440px] space-y-6">
-    <PurchasesNav />
-    <PurchaseSectionHeader title="Retaceo y costos" description="Distribuye los gastos de cada recepción y confirma el costo de sus productos.">
+    <PageHeader title="Retaceo y costos" description="Distribuye los gastos de cada recepción y confirma el costo de sus productos.">
       <template #actions>
         <AppButton v-if="can('expense_types.view')" variant="outline" :disabled="saving || drawerOpen" @click="expenseSettingsOpen = true"><Settings2 class="h-4 w-4" />Configurar gastos</AppButton>
         <AppButton v-if="can('retaceos.create')" :disabled="loading || saving || !eligiblePurchases.length" @click="newRetaceo"><Plus class="h-4 w-4" />Nuevo retaceo</AppButton>
       </template>
-    </PurchaseSectionHeader>
+    </PageHeader>
 
     <nav v-if="contextPurchaseId" class="mb-5 flex flex-wrap items-center justify-between gap-3 text-sm" aria-label="Recepción de origen">
       <RouterLink v-if="can('purchases.view')" :to="'/purchases/receipts?id=' + contextPurchaseId" class="inline-flex items-center gap-2 font-medium text-accent hover:underline"><ChevronLeft class="h-4 w-4" aria-hidden="true" />Volver a {{ contextPurchase?.documentNumber || 'la recepción' }}</RouterLink>
@@ -394,7 +393,7 @@ onMounted(load);
         <div class="space-y-3 border-b border-border p-4">
           <div class="flex items-center justify-between gap-3"><strong class="text-base font-semibold">Retaceos</strong><div class="flex items-center gap-2"><span class="text-sm text-muted-fg">{{ filteredRecords.length }} registros</span><button type="button" class="icon-button" title="Actualizar" aria-label="Actualizar retaceos" :disabled="loading || saving || drawerOpen" @click="load"><RefreshCw class="h-4 w-4" :class="loading && 'animate-spin'" /></button></div></div>
           <PurchaseTabs :model-value="ageTab" :items="[{ value: 'recent', label: 'Esta semana' }, { value: 'older', label: 'Anteriores' }]" label="Período de retaceos" :disabled="loading || saving || drawerOpen || expenseSettingsOpen" @update:model-value="changeTab" />
-          <label class="relative block"><Search class="pointer-events-none absolute left-3 top-3 h-4 w-4 text-muted-fg" /><input v-model="search" :disabled="saving || drawerOpen" type="search" aria-label="Buscar retaceos" class="mt-0 h-10 w-full rounded-lg border border-border bg-surface pl-9 pr-3 text-sm text-fg" placeholder="Código, proveedor o recepción" /></label>
+          <SearchField v-model="search" :disabled="saving || drawerOpen" aria-label="Buscar retaceos" placeholder="Código, proveedor o recepción" />
           <details><summary class="cursor-pointer text-xs text-muted-fg">Filtros{{ filterCount ? ' (' + filterCount + ')' : '' }}</summary><div class="mt-3 space-y-3"><label class="block text-sm">Estado<select v-model="statusFilter" :disabled="saving || drawerOpen" class="field-control"><option value="">Todos los estados</option><option v-for="status in ['draft','calculated','verified','closed','cancelled']" :key="status" :value="status">{{ statusLabel(status) }}</option></select></label><div v-if="ageTab === 'older'" class="grid grid-cols-2 gap-2"><AppInput v-model="historyFrom" label="Desde" type="date" :disabled="saving || drawerOpen" :max="historyTo || undefined" /><AppInput v-model="historyTo" label="Hasta" type="date" :disabled="saving || drawerOpen" :min="historyFrom || undefined" /></div><button type="button" class="text-xs font-medium text-accent" :disabled="saving || drawerOpen" @click="clearFilters">Limpiar filtros</button></div></details>
         </div>
         <div class="scrollbar-thin max-h-[250px] lg:max-h-[650px] overflow-y-auto p-2">
@@ -535,10 +534,10 @@ onMounted(load);
       </fieldset></form>
       </div>
     </aside></div>
-    <PurchaseActionDialog v-if="confirmation" :title="confirmation.title" :description="confirmation.description" :require-reason="confirmation.reason" :busy="saving" :error="errorMessage" @confirm="confirmWorkflow" @close="confirmation = null" />
-    <PurchaseActionDialog v-if="discardChanges" title="Descartar cambios" description="Los cambios del retaceo no se han guardado." @confirm="closeDrawer(true)" @close="discardChanges = false" />
-    <PurchaseActionDialog v-if="pendingPurchaseId !== null" title="Cambiar recepción" description="Se reemplazarán los productos y la factura. Se borrarán los gastos y datos de importación capturados para la recepción anterior." @confirm="confirmPurchaseChange" @close="pendingPurchaseId = null" />
-    <PurchaseActionDialog v-if="leaving" title="Salir sin guardar" description="Los cambios del retaceo no se han guardado." @confirm="resolveLeave(true)" @close="resolveLeave(false)" />
+    <ConfirmDialog v-if="confirmation" :title="confirmation.title" :description="confirmation.description" :require-reason="confirmation.reason" :busy="saving" :error="errorMessage" @confirm="confirmWorkflow" @close="confirmation = null" />
+    <ConfirmDialog v-if="discardChanges" title="Descartar cambios" description="Los cambios del retaceo no se han guardado." @confirm="closeDrawer(true)" @close="discardChanges = false" />
+    <ConfirmDialog v-if="pendingPurchaseId !== null" title="Cambiar recepción" description="Se reemplazarán los productos y la factura. Se borrarán los gastos y datos de importación capturados para la recepción anterior." @confirm="confirmPurchaseChange" @close="pendingPurchaseId = null" />
+    <ConfirmDialog v-if="leaving" title="Salir sin guardar" description="Los cambios del retaceo no se han guardado." @confirm="resolveLeave(true)" @close="resolveLeave(false)" />
     <div v-if="expenseSettingsOpen" class="fixed inset-0 z-50 flex justify-end bg-black/40" @click.self="expenseSettings?.requestClose()">
       <aside role="dialog" aria-modal="true" aria-label="Configurar tipos de gasto" class="h-full w-full max-w-2xl overflow-y-auto bg-surface p-5 shadow-xl sm:p-7" @keydown.esc.stop="expenseSettings?.requestClose()">
         <ExpenseTypesManager ref="expenseSettings" embedded @close="expenseSettingsOpen = false" />

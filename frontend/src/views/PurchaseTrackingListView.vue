@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { RouterLink } from 'vue-router';
-import { ChevronRight, ClipboardList, FileSearch, FileText, Layers, ListChecks, PackageCheck, RefreshCw, Search, TriangleAlert } from 'lucide-vue-next';
+import { ChevronRight, ClipboardList, FileSearch, FileText, Layers, ListChecks, PackageCheck, RefreshCw, TriangleAlert } from 'lucide-vue-next';
 import type { Component } from 'vue';
 import AdminLayout from '../layouts/AdminLayout.vue';
 import AppButton from '../components/base/AppButton.vue';
+import SearchField from '../components/base/SearchField.vue';
 import { http } from '../services/http.service';
 import { activeCompanyId } from '../services/company-context';
 import { getApiErrorMessage } from '../utils/api-error';
@@ -66,11 +67,7 @@ watch(search, () => { clearTimeout(timer); timer = setTimeout(() => void load(),
           <button v-for="option in PROCESS_SCOPES" :key="option.id" type="button" role="tab" :aria-selected="scope === option.id"
             class="h-8 rounded-md px-3 text-sm font-medium transition-colors" :class="scope === option.id ? 'bg-surface text-fg ring-1 ring-border' : 'text-muted-fg hover:text-fg'" @click="scope = option.id">{{ option.label }}</button>
         </div>
-        <label class="relative block w-full sm:w-80">
-          <span class="sr-only">Buscar por código de solicitud, orden o recepción</span>
-          <Search class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-fg" aria-hidden="true" />
-          <input v-model="search" type="search" maxlength="60" placeholder="Buscar por código (PR-, OC-, RC-…)" class="h-9 w-full rounded-lg border border-border bg-surface pl-9 pr-3 text-sm text-fg placeholder:text-muted-fg" />
-        </label>
+        <SearchField v-model="search" maxlength="60" placeholder="Buscar por código (PR-, OC-, RC-…)" aria-label="Buscar por código de solicitud, orden o recepción" class="w-full sm:w-80" />
       </div>
 
       <p v-if="error" role="alert" class="rounded-lg border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">{{ error }}</p>

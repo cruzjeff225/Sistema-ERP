@@ -2,14 +2,15 @@
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { ChevronLeft, ChevronRight, Mail, MapPin, Pencil, Phone, Plus, Power, RefreshCw, Search, UserRound, X } from 'lucide-vue-next';
 import AdminLayout from '../layouts/AdminLayout.vue';
-import SalesNav from '../components/sales/SalesNav.vue';
 import AppBadge from '../components/base/AppBadge.vue';
 import AppButton from '../components/base/AppButton.vue';
 import AppInput from '../components/base/AppInput.vue';
-import PurchaseActionDialog from '../components/base/PurchaseActionDialog.vue';
+import ConfirmDialog from '../components/base/ConfirmDialog.vue';
 import TrashButton from '../components/admin/TrashButton.vue';
 import NationalLocationFields from '../components/forms/NationalLocationFields.vue';
+import { useRoute, useRouter } from 'vue-router';
 import { usePermissions } from '../composables/usePermissions';
+import { consumeCreateIntent } from '../composables/useCreateIntent';
 import { useUnsavedChanges } from '../composables/useUnsavedChanges';
 import { activeCompanyId } from '../services/company-context';
 import { http } from '../services/http.service';
@@ -25,11 +26,15 @@ type Customer = {
 };
 type CompanyContext = { companyId: number; epoch: number };
 const { can } = usePermissions();
+const route = useRoute(), router = useRouter();
 let mounted = true, epoch = 0, loadVersion = 0, mutationVersion = 0;
 const customers = ref<Customer[]>([]), countries = ref<Country[]>([]), geography = ref<Geography>({ departments: [] });
 const selected = ref<Customer | null>(null);
 const meta = ref({ total: 0, page: 1, totalPages: 0 });
 const loading = ref(false), saving = ref(false), editorOpen = ref(false), editingId = ref<number | null>(null);
+// Quick access ("Nuevo cliente") lands here with ?new=1: open the form as soon as the directory has loaded.
+let openWhenLoaded = consumeCreateIntent(route.query, router);
+watch(loading, isLoading => { if (!isLoading && openWhenLoaded) { openWhenLoaded = false; void openEditor(); } });
 const search = ref(''), appliedSearch = ref(''), status = ref<'active' | 'all' | 'inactive'>('active');
 const statusFilters = [{ value: 'active', label: 'Activos' }, { value: 'all', label: 'Todos' }, { value: 'inactive', label: 'Inactivos' }] as const;
 const errorMessage = ref(''), formError = ref(''), successMessage = ref('');
@@ -150,9 +155,8 @@ onBeforeUnmount(() => { mounted = false; ++epoch; ++loadVersion; ++mutationVersi
 <template>
   <AdminLayout title="Clientes">
     <div class="mx-auto max-w-[1440px] space-y-6">
-      <SalesNav />
       <header class="flex flex-wrap items-end justify-between gap-4">
-        <div><h1 class="text-3xl font-semibold tracking-tight">Clientes</h1><p class="mt-2 text-sm leading-6 text-muted-fg">Encuentra a tu cliente y mantén sus datos al día.</p></div>
+        <div><h1 class="page-title">Clientes</h1><p class="page-subtitle">Encuentra a tu cliente y mantén sus datos al día.</p></div>
         <div class="flex flex-wrap gap-2"><AppButton variant="outline" :disabled="loading || saving || editorOpen" @click="load()"><RefreshCw class="h-4 w-4" :class="loading && 'animate-spin'" />Actualizar</AppButton><AppButton v-if="can('customers.create')" :disabled="loading || saving || editorOpen" @click="openEditor()"><Plus class="h-4 w-4" />Nuevo cliente</AppButton></div>
       </header>
       <p v-if="errorMessage" role="alert" class="rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">{{ errorMessage }}</p>
@@ -161,8 +165,8 @@ onBeforeUnmount(() => { mounted = false; ++epoch; ++loadVersion; ++mutationVersi
         <aside aria-label="Directorio de clientes" class="min-w-0 overflow-hidden rounded-2xl border border-border/70 bg-surface">
           <form class="space-y-4 border-b border-border/70 p-4" @submit.prevent="findCustomers">
             <div class="flex items-center justify-between gap-3"><h2 class="text-sm font-semibold">Directorio</h2><span class="text-xs tabular-nums text-muted-fg">{{ meta.total }} clientes</span></div>
-            <nav aria-label="Estado de clientes" class="flex w-fit flex-wrap gap-1 rounded-xl bg-surface-secondary p-1"><button v-for="filter in statusFilters" :key="filter.value" type="button" :aria-pressed="status === filter.value" :disabled="loading || saving || editorOpen" class="min-h-9 rounded-lg px-3 py-2 text-sm font-medium transition-colors disabled:opacity-50" :class="status === filter.value ? 'bg-surface text-fg shadow-sm ring-1 ring-border/60' : 'text-muted-fg hover:text-fg'" @click="changeStatus(filter.value)">{{ filter.label }}</button></nav>
-            <div class="flex items-center gap-2"><input v-model="search" type="search" aria-label="Buscar clientes por nombre, documento o contacto" placeholder="Nombre, documento o contacto" maxlength="100" :disabled="saving || editorOpen" class="h-10 min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 text-sm" /><AppButton type="submit" variant="outline" :disabled="loading || saving || editorOpen" aria-label="Buscar clientes"><Search class="h-4 w-4" /></AppButton></div>
+            <nav aria-label="Estado de clientes" class="flex w-fit flex-wrap gap-1 rounded-xl bg-surface-secondary p-1"><button v-for="filter in statusFilters" :key="filter.value" type="button" :aria-pressed="status === filter.value" :disabled="loading || saving || editorOpen" class="min-h-9 rounded-lg px-3 py-2 text-sm font-medium transition-colors disabled:opacity-50" :class="status === filter.value ? 'bg-surface text-fg ring-1 ring-border/60' : 'text-muted-fg hover:text-fg'" @click="changeStatus(filter.value)">{{ filter.label }}</button></nav>
+            <div class="flex items-center gap-2"><input v-model="search" type="search" aria-label="Buscar clientes por nombre, documento o contacto" placeholder="Nombre, documento o contacto" maxlength="100" :disabled="saving || editorOpen" class="control min-w-0 flex-1" /><AppButton type="submit" variant="outline" :disabled="loading || saving || editorOpen" aria-label="Buscar clientes"><Search class="h-4 w-4" /></AppButton></div>
             <button v-if="search || appliedSearch" type="button" class="text-sm font-medium text-accent" :disabled="loading || saving || editorOpen" @click="clearSearch">Limpiar búsqueda</button>
           </form>
           <p v-if="loading" role="status" class="px-5 py-10 text-sm text-muted-fg">Buscando clientes…</p>
@@ -188,7 +192,7 @@ onBeforeUnmount(() => { mounted = false; ++epoch; ++loadVersion; ++mutationVersi
         <section v-else aria-label="Ficha del cliente" class="flex min-h-[360px] min-w-0 flex-col items-center justify-center gap-4 rounded-2xl border border-border/70 bg-surface p-8 text-center"><UserRound class="h-9 w-9 text-muted-fg" /><p class="text-sm text-muted-fg">{{ loading ? 'Cargando directorio…' : appliedSearch ? 'Prueba otro nombre, documento o contacto.' : status === 'inactive' ? 'Consulta el directorio completo para encontrar otros clientes.' : 'Registra un cliente para comenzar.' }}</p><AppButton v-if="!loading && !appliedSearch && status === 'inactive'" variant="outline" :disabled="saving" @click="changeStatus('all')">Ver todos los clientes</AppButton><AppButton v-else-if="!loading && !appliedSearch && can('customers.create')" :disabled="saving" @click="openEditor()"><Plus class="h-4 w-4" />Nuevo cliente</AppButton></section>
       </div>
     </div>
-    <dialog v-if="editorOpen" ref="editorDialog" aria-labelledby="customer-editor-title" class="fixed inset-y-0 left-auto right-0 m-0 h-dvh max-h-none w-full max-w-2xl border-0 bg-surface p-0 text-fg shadow-2xl backdrop:bg-black/45" @cancel.prevent="closeEditor()">
+    <dialog v-if="editorOpen" ref="editorDialog" aria-labelledby="customer-editor-title" class="fixed inset-y-0 left-auto right-0 m-0 h-dvh max-h-none w-full max-w-2xl border-0 bg-surface p-0 text-fg shadow-[var(--shadow-float)] backdrop:bg-black/45" @cancel.prevent="closeEditor()">
       <form class="flex h-full min-h-0 flex-col" @submit.prevent="saveCustomer">
         <header class="flex items-start justify-between gap-4 border-b border-border/70 p-5 sm:p-6"><div><h2 id="customer-editor-title" class="text-xl font-semibold">{{ isEditing ? 'Editar cliente' : 'Nuevo cliente' }}</h2><p class="mt-2 text-sm text-muted-fg">Datos de identificación, contacto y ubicación.</p></div><button type="button" class="icon-button" aria-label="Cerrar formulario" :disabled="saving" @click="closeEditor()"><X class="h-5 w-5" /></button></header>
         <div class="min-h-0 flex-1 space-y-6 overflow-y-auto p-5 sm:p-6">
@@ -201,8 +205,8 @@ onBeforeUnmount(() => { mounted = false; ++epoch; ++loadVersion; ++mutationVersi
         <footer class="flex justify-end gap-2 border-t border-border/70 p-4 sm:px-6"><AppButton variant="outline" type="button" :disabled="saving" @click="closeEditor()">Cancelar</AppButton><AppButton type="submit" :disabled="saving">{{ saving ? 'Guardando…' : 'Guardar cliente' }}</AppButton></footer>
       </form>
     </dialog>
-    <PurchaseActionDialog v-if="discardChanges" title="Descartar cambios" description="El cliente tiene cambios sin guardar." :busy="saving" @close="discardChanges = false" @confirm="closeEditor(true)" />
-    <PurchaseActionDialog v-if="leaving" title="Salir sin guardar" description="Los cambios de este cliente no se han guardado." :busy="saving" @close="resolveLeave(false)" @confirm="resolveLeave(true)" />
-    <PurchaseActionDialog v-if="statusAction" :title="statusAction.isActive ? 'Activar cliente' : 'Desactivar cliente'" :description="statusAction.isActive ? statusAction.name + ' volverá a aparecer entre los clientes activos.' : statusAction.name + ' quedará inactivo. Sus datos y documentos se conservan.'" :busy="saving" :error="errorMessage" @close="statusAction = null" @confirm="toggleStatus" />
+    <ConfirmDialog v-if="discardChanges" title="Descartar cambios" description="El cliente tiene cambios sin guardar." :busy="saving" @close="discardChanges = false" @confirm="closeEditor(true)" />
+    <ConfirmDialog v-if="leaving" title="Salir sin guardar" description="Los cambios de este cliente no se han guardado." :busy="saving" @close="resolveLeave(false)" @confirm="resolveLeave(true)" />
+    <ConfirmDialog v-if="statusAction" :title="statusAction.isActive ? 'Activar cliente' : 'Desactivar cliente'" :description="statusAction.isActive ? statusAction.name + ' volverá a aparecer entre los clientes activos.' : statusAction.name + ' quedará inactivo. Sus datos y documentos se conservan.'" :busy="saving" :error="errorMessage" @close="statusAction = null" @confirm="toggleStatus" />
   </AdminLayout>
 </template>

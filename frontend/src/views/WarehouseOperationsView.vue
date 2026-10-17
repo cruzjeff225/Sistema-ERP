@@ -4,9 +4,8 @@ import { RouterLink, useRoute } from 'vue-router';
 import JsBarcode from 'jsbarcode';
 import { ArrowLeft, ArrowRight, Check, ChevronDown, Copy, Package, Plus, Printer, ScanLine, Trash2, TriangleAlert, Truck, ReceiptText, RefreshCw } from 'lucide-vue-next';
 import AdminLayout from '../layouts/AdminLayout.vue';
-import OperationsNav from '../components/operations/OperationsNav.vue';
 import AppButton from '../components/base/AppButton.vue';
-import PurchaseActionDialog from '../components/base/PurchaseActionDialog.vue';
+import ConfirmDialog from '../components/base/ConfirmDialog.vue';
 import { http } from '../services/http.service';
 import { activeCompanyId } from '../services/company-context';
 import { usePermissions } from '../composables/usePermissions';
@@ -147,6 +146,13 @@ const usableSlots = (p: any): any[] => (p.locationOptions ?? []).filter((l: any)
 const blockedSlots = (p: any): any[] => (p.locationOptions ?? []).filter((l: any) => !l.compatible);
 const slotNote: Record<string, string> = { free: 'libre', same_product: 'ya tiene este producto', other_product: 'tiene otros productos' };
 const slotLabel = (l: any, p?: any) => `${l.code} · ${l.aisle} / ${l.rack} / ${l.level} / ${l.position}${l.compatible ? ` · ${slotNote[l.availability]} · quedan ${l.free}` : ` · ${l.reason}`}${p && l.id === p.recommendedLocationId ? ' (recomendado)' : ''}`;
+// Managing spaces opens with this warehouse already chosen, so the user does not pick branch and warehouse again.
+const spacesLocation = (p: any) => {
+  const branch = Number(p.purchase?.branchId), warehouse = Number(p.purchase?.warehouseId);
+  return Number.isInteger(branch) && branch > 0 && Number.isInteger(warehouse) && warehouse > 0
+    ? { path: '/organization/locations', query: { branch: String(branch), warehouse: String(warehouse) } }
+    : { path: '/organization/locations' };
+};
 function place(p: any) { void run(async current => { await http.post(`/supply/placements/${p.id}/confirm`, placement[p.id], headers()); if (!current()) return; delete placement[p.id]; await load(); if (current()) success.value = 'Ubicación física confirmada. El mapa y las existencias ya muestran este producto.'; }); }
 function printLabel(p: any) {
   error.value = '';
@@ -246,7 +252,6 @@ onBeforeUnmount(() => { loadVersion++; stockVersion++; expenseVersion++; destina
 
 <template>
   <AdminLayout title="Bodega">
-    <OperationsNav />
     <div class="mx-auto min-w-0 space-y-5" :class="tab === 'home' ? 'max-w-5xl' : 'max-w-[1440px]'">
       <p v-if="error" role="alert" class="rounded-[12px] border border-danger/30 bg-danger/10 p-4 text-sm text-danger">{{ error }}</p><p v-if="success" role="status" class="flex items-center gap-3 text-base text-fg"><span class="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-success text-white" aria-hidden="true"><Check class="h-4 w-4" /></span>{{ success }}</p>
       <header class="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
@@ -296,8 +301,8 @@ onBeforeUnmount(() => { loadVersion++; stockVersion++; expenseVersion++; destina
               <span class="mt-1 inline-flex items-center gap-1.5 text-sm text-muted-fg max-sm:col-start-2 sm:mt-0"><span class="h-2 w-2 rounded-full bg-muted-fg/60" aria-hidden="true" />Por confirmar</span>
             </div>
             <div v-show="isPlacementOpen(p.id)" :id="'placement-' + p.id" class="border-t border-border bg-surface-secondary/50 px-5 py-4 sm:pl-[3.75rem]">
-              <div v-if="(p.locationOptions ?? []).length && !usableSlots(p).length" role="alert" class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-[12px] border border-warning/40 bg-warning/10 p-4 text-sm text-fg"><p class="flex min-w-0 flex-1 basis-80 items-start gap-3"><TriangleAlert class="mt-0.5 h-5 w-5 shrink-0 text-warning" aria-hidden="true" /><span>Ningún espacio de este almacén puede recibir este producto ahora: {{ blockedSlots(p).length === 1 ? 'el único espacio está ocupado con otra unidad o sin capacidad' : 'los ' + blockedSlots(p).length + ' espacios están ocupados con otra unidad o sin capacidad' }}. Registre un espacio nuevo o libere uno.</span></p><RouterLink to="/organization/locations" class="inline-flex h-9 shrink-0 items-center rounded-lg border border-border bg-surface px-4 font-medium transition-colors hover:bg-surface-secondary">Administrar espacios</RouterLink></div>
-              <div v-if="!(p.locationOptions ?? []).length" role="alert" class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-[12px] border border-warning/40 bg-warning/10 p-4 text-sm text-fg"><p class="flex min-w-0 flex-1 basis-80 items-start gap-3"><TriangleAlert class="mt-0.5 h-5 w-5 shrink-0 text-warning" aria-hidden="true" /><span>Este almacén aún no tiene espacios definidos.</span></p><RouterLink to="/organization/locations" class="inline-flex h-9 shrink-0 items-center rounded-lg border border-border bg-surface px-4 font-medium transition-colors hover:bg-surface-secondary">Registrar los espacios físicos</RouterLink></div>
+              <div v-if="(p.locationOptions ?? []).length && !usableSlots(p).length" role="alert" class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-[12px] border border-warning/40 bg-warning/10 p-4 text-sm text-fg"><p class="flex min-w-0 flex-1 basis-80 items-start gap-3"><TriangleAlert class="mt-0.5 h-5 w-5 shrink-0 text-warning" aria-hidden="true" /><span>Ningún espacio de este almacén puede recibir este producto ahora: {{ blockedSlots(p).length === 1 ? 'el único espacio está ocupado con otra unidad o sin capacidad' : 'los ' + blockedSlots(p).length + ' espacios están ocupados con otra unidad o sin capacidad' }}. Registre un espacio nuevo o libere uno.</span></p><RouterLink :to="spacesLocation(p)" class="inline-flex h-9 shrink-0 items-center rounded-lg border border-border bg-surface px-4 font-medium transition-colors hover:bg-surface-secondary">Administrar espacios</RouterLink></div>
+              <div v-if="!(p.locationOptions ?? []).length" role="alert" class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-[12px] border border-warning/40 bg-warning/10 p-4 text-sm text-fg"><p class="flex min-w-0 flex-1 basis-80 items-start gap-3"><TriangleAlert class="mt-0.5 h-5 w-5 shrink-0 text-warning" aria-hidden="true" /><span>Este almacén aún no tiene espacios definidos.</span></p><RouterLink :to="spacesLocation(p)" class="inline-flex h-9 shrink-0 items-center rounded-lg border border-border bg-surface px-4 font-medium transition-colors hover:bg-surface-secondary">Registrar los espacios físicos</RouterLink></div>
               <div class="flex flex-wrap items-start justify-between gap-3"><p class="text-sm text-muted-fg">{{ p.purchase.documentNumber }} · {{ p.purchase.warehouse?.name }}</p><AppButton variant="outline" @click="printLabel(p)"><Printer class="h-4 w-4" aria-hidden="true" />Imprimir viñeta de código de barras</AppButton></div>
               <form v-if="can('inventory.adjust')" class="mt-3 grid gap-x-4 gap-y-3 sm:grid-cols-2" @submit.prevent="place(p)"><label class="text-sm font-medium">Leer código de barras colocado<input v-model="placement[p.id]!.barcode" required autocomplete="off" class="field-control !h-9 font-normal" /></label><label class="text-sm font-medium">Ubicación física<select v-model.number="placement[p.id]!.locationId" required class="field-control !h-9 font-normal"><option :value="0" disabled>Seleccione espacio</option><optgroup v-if="usableSlots(p).length" label="Espacios disponibles"><option v-for="l in usableSlots(p)" :key="l.id" :value="l.id">{{ slotLabel(l, p) }}</option></optgroup><optgroup v-if="blockedSlots(p).length" label="No disponibles para este producto"><option v-for="l in blockedSlots(p)" :key="l.id" :value="l.id" disabled>{{ slotLabel(l) }}</option></optgroup></select></label><label class="flex items-center gap-2 text-sm sm:col-span-1"><input v-model="placement[p.id]!.confirmed" type="checkbox" required class="h-4 w-4 accent-accent" /> Confirmo que coloqué la viñeta y dejé los productos en este espacio.</label><div class="flex justify-end"><AppButton type="submit" :disabled="busy || !placement[p.id]!.locationId">Confirmar colocación</AppButton></div></form>
               <p v-if="p.recommendedLocationId" class="mt-3 text-xs text-muted-fg">El espacio recomendado no se considera ocupado por estos productos hasta que confirme su colocación.</p>
@@ -362,7 +367,7 @@ onBeforeUnmount(() => { loadVersion++; stockVersion++; expenseVersion++; destina
 
       </template>
     </div>
-    <PurchaseActionDialog v-if="confirmDispatch" title="Confirmar despacho" description="Los productos saldrán del centro general y quedarán en tránsito, vinculados a la solicitud original." :busy="busy" :error="error" @close="confirmDispatch = false" @confirm="dispatch" />
-    <PurchaseActionDialog v-if="leaving" title="Descartar cambios" description="Hay datos sin guardar en bodega." :busy="false" @close="resolveLeave(false)" @confirm="resolveLeave(true)" />
+    <ConfirmDialog v-if="confirmDispatch" title="Confirmar despacho" description="Los productos saldrán del centro general y quedarán en tránsito, vinculados a la solicitud original." :busy="busy" :error="error" @close="confirmDispatch = false" @confirm="dispatch" />
+    <ConfirmDialog v-if="leaving" title="Descartar cambios" description="Hay datos sin guardar en bodega." :busy="false" @close="resolveLeave(false)" @confirm="resolveLeave(true)" />
   </AdminLayout>
 </template>

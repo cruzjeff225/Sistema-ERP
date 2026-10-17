@@ -4,7 +4,7 @@ import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { ArrowLeft, ArrowRight, ChevronDown, ChevronRight, CircleCheck, CircleX, EllipsisVertical, FileText, ListChecks, Pencil, PlusCircle, RefreshCw, Send } from 'lucide-vue-next';
 import AdminLayout from '../layouts/AdminLayout.vue';
 import AppButton from '../components/base/AppButton.vue';
-import PurchaseActionDialog from '../components/base/PurchaseActionDialog.vue';
+import ConfirmDialog from '../components/base/ConfirmDialog.vue';
 import TrashButton from '../components/admin/TrashButton.vue';
 import PurchaseTabs from '../components/purchases/PurchaseTabs.vue';
 import TrackingLink from '../components/purchases/TrackingLink.vue';
@@ -139,7 +139,9 @@ const stepDate = (key: string) => key === 'draft' && request.value?.createdAt ? 
 // A request that already left the branch says so, and Purchasing gets the way in to its quotation.
 const awaitingPurchasing = computed(() => !!request.value && isAwaitingPurchasing(request.value.status));
 const bannerAction = computed(() => awaitingPurchasing.value ? mainAction.value : null);
-const headerAction = computed(() => bannerAction.value ? null : mainAction.value);
+// Receiving at the branch happens in the Deliveries tab; once the user is there, a header button that only leads there is redundant.
+const onOwnDeliveryStep = computed(() => tab.value === 'deliveries' && ownStep.value?.stage === 'delivery');
+const headerAction = computed(() => bannerAction.value || onOwnDeliveryStep.value ? null : mainAction.value);
 const stageText = computed(() => request.value ? purchaseStage('requests', request.value.status) : '');
 
 const goEdit = (options: { addLine?: boolean } = {}) => void router.push(requestEditLocation(request.value.id, options));
@@ -153,7 +155,7 @@ watch([() => route.params.id, activeCompanyId], () => { tab.value = route.query.
 <template>
   <AdminLayout :title="request ? 'Solicitud ' + request.code : 'Solicitud de compra'">
     <div class="mx-auto max-w-[1200px] space-y-5">
-      <nav aria-label="Ruta de navegación">
+      <nav aria-label="Volver al listado">
         <RouterLink :to="requestListLocation(id)" class="inline-flex items-center gap-1.5 rounded-lg py-1 pr-2 text-sm font-medium text-muted-fg transition-colors hover:text-fg"><ArrowLeft class="h-4 w-4" aria-hidden="true" />Volver a solicitudes</RouterLink>
       </nav>
 
@@ -288,6 +290,6 @@ watch([() => route.params.id, activeCompanyId], () => { tab.value = route.query.
       </template>
     </div>
 
-    <PurchaseActionDialog v-if="cancelling && request" title="Cancelar solicitud" :description="`Solicitud ${request.code}. El motivo quedará registrado en su historial.`" require-reason destructive confirm-label="Cancelar solicitud" :busy="busy" :error="error" @confirm="(reason: string) => post(`/purchase-requests/${request.id}/cancel`, { reason }, 'Solicitud cancelada')" @close="cancelling = false" />
+    <ConfirmDialog v-if="cancelling && request" title="Cancelar solicitud" :description="`Solicitud ${request.code}. El motivo quedará registrado en su historial.`" require-reason destructive confirm-label="Cancelar solicitud" :busy="busy" :error="error" @confirm="(reason: string) => post(`/purchase-requests/${request.id}/cancel`, { reason }, 'Solicitud cancelada')" @close="cancelling = false" />
   </AdminLayout>
 </template>
