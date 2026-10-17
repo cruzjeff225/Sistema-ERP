@@ -3,7 +3,7 @@ import type { Response } from 'express';
 import { RequireAnyPermission, RequirePermissions } from '../../../common/decorators/permissions.decorator';
 import { CompanyScopeService } from '../../../common/services/company-scope.service';
 import { AuthenticatedUser, CurrentUser } from '../../auth/presentation/decorators/current-user.decorator';
-import { ActualExpenseDto, AwardDto, ComparePurchaseDto, ConsolidationDto, ConsolidationLineDto, GeneralWarehouseDto, PlacementDto, RfqDto, TransferDto, TransferReceiptDto } from '../application/dto/supply-workflow.dto';
+import { ActualExpenseDto, AwardDto, ComparePurchaseDto, ConsolidationDto, ConsolidationLineDto, GeneralWarehouseDto, PlacementDto, RfqDto, TransferDto, TransferIncidentDto, TransferReceiptDto } from '../application/dto/supply-workflow.dto';
 import { SupplyWorkflowService } from '../application/services/supply-workflow.service';
 import { rfqPdf } from '../application/services/rfq-pdf';
 
@@ -54,6 +54,8 @@ export class SupplyWorkflowController {
   async dispatch(@Body() dto: TransferDto, @CurrentUser() u: AuthenticatedUser, @Headers('x-company-id') h?: string) { return { data: await this.service.dispatch(dto,await this.company(u,h),u.sub) }; }
   @Post('transfers/:id/receive') @RequirePermissions('inventory.adjust')
   async receive(@Param('id', ParseIntPipe) id: number, @Body() dto: TransferReceiptDto, @CurrentUser() u: AuthenticatedUser, @Headers('x-company-id') h?: string) { return { data: await this.service.receiveTransfer(id,dto,await this.company(u,h),u.sub) }; }
+  @Post('transfers/:id/incident') @RequirePermissions('inventory.adjust')
+  async incident(@Param('id', ParseIntPipe) id: number, @Body() dto: TransferIncidentDto, @CurrentUser() u: AuthenticatedUser, @Headers('x-company-id') h?: string) { return { data: await this.service.reportIncident(id,dto,await this.company(u,h),u.sub) }; }
   @Get('receipts/:id/expenses') @RequirePermissions('purchases.view')
   async expenses(@Param('id', ParseIntPipe) id: number, @CurrentUser() u: AuthenticatedUser, @Headers('x-company-id') h?: string) { return { data: await this.service.actualExpenses(id,await this.company(u,h)) }; }
   @Post('receipts/:id/expenses') @RequirePermissions('purchase_expenses.create')

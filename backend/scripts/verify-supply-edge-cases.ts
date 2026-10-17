@@ -24,7 +24,7 @@ async function main() {
       } }) as unknown as PrismaService;
       const audit = new AuditService(scoped), inventory = new InventoryService(scoped, audit);
       const purchases = new PurchasesService(scoped, audit, inventory), supply = new SupplyWorkflowService(scoped, audit, inventory, purchases);
-      const receipts = new PurchaseReceiptsService(scoped, audit, inventory), retaceos = new RetaceosService(scoped, audit);
+      const receipts = new PurchaseReceiptsService(scoped, audit, inventory), retaceos = new RetaceosService(scoped, audit, inventory);
       const config = await tx.erpConfiguration.findUniqueOrThrow({ where: { id: 1 }, include: { company: true, generalWarehouse: true } });
       const companyId = config.companyId, general = config.generalWarehouse!;
       const actor = await tx.user.findFirstOrThrow({ where: { isActive: true, deletedAt: null, userRoles: { some: { role: { name: 'superadmin' } } } } });
@@ -67,7 +67,7 @@ async function main() {
       assert((await purchases.order(order.id, companyId)).details.every(detail => detail.receivedQuantity.eq(0)));
       await reject(purchases.receiveOrder(order.id, cancelledPayload, actor.id, companyId));
       await reject(receipts.transition(cancelled.id, 'cancel', 'QA no repetir reversión', actor.id, companyId));
-      assert.equal(await tx.inventoryMovement.count({ where: { purchaseItemId: cancelled.items[0]!.id, type: 'REVERSAL' } }), 1);
+      assert.equal(await tx.inventoryMovement.count({ where: { referenceType: 'purchase_detail', referenceId: cancelled.items[0]!.id, movementType: 'REVERSAL' } }), 1);
       console.log('PASS cancellation: exact stock reversal, restored order balance and blocked duplicate/cancelled retry');
 
       const payload = { requestId: randomUUID(), supplierInvoiceNumber: key + ' FACTURA', items: order.details.map(detail => ({ orderDetailId: detail.id, quantity: Number(detail.quantity), locationId: slot.id })) };
@@ -98,7 +98,7 @@ async function main() {
       await reject(retaceos.cancel(cost.id, 'QA inmutable', actor.id, companyId));
       await reject(receipts.transition(receipt.id, 'cancel', 'QA cierre inmutable', actor.id, companyId));
       assert.equal(Number((await tx.inventoryStock.aggregate({ where: { locationId: slot.id }, _sum: { quantity: true } }))._sum.quantity), 5);
-      assert.equal(await tx.inventoryMovement.count({ where: { purchaseItem: { purchaseId: receipt.id } } }), 2);
+      assert.equal(await tx.inventoryMovement.count({ where: { lot: { purchaseItem: { purchaseId: receipt.id } } } }), 2);
       console.log('PASS multi-product cost: $34 net FOB + $0.09 actual costs = $34.09; exact cents, DAI and VAT exclusion');
       console.log('PASS costing lifecycle: cancellation releases allocations, recalculation is idempotent and closed documents are immutable');
       verified = true;

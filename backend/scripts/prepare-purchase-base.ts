@@ -7,7 +7,7 @@ const db=new PrismaService(),companyId=3;
 const directory=resolve('tmp/base-data',new Date().toISOString().replace(/[:.]/g,'-'));
 async function main(){
  const before={suppliers:await db.supplier.findMany({where:{companyId},include:{contacts:true}}),expenses:await db.expenseType.findMany({where:{companyId}}),products:await db.product.findMany({where:{companyId},include:{suppliers:true}}),branches:await db.branch.findMany({where:{companyId},include:{warehouses:{include:{locations:true}}}}),categories:await db.productCategory.findMany({include:{subcategories:true}}),units:await db.productUnit.findMany(),warehouseCategories:await db.warehouseCategory.findMany()};
- const operations=['purchaseRequest','purchaseConsolidation','purchaseRfq','purchaseQuotation','purchaseOrder','purchase','retaceo','transfer','inventoryStock','inventoryMovement'] as const;
+ const operations=['purchaseRequest','purchaseConsolidation','purchaseRfq','purchaseQuotation','purchaseOrder','purchase','retaceo','transfer','inventoryStock','inventoryMovement','inventoryLot','inventoryLocationDetail','inventoryCostAverage','inventoryLabelPrint'] as const;
  const operationBefore:Record<string,any[]>={};for(const model of operations)operationBefore[model]=await (db as any)[model].findMany({orderBy:{id:'asc'}});
  const operationCountsBefore=Object.fromEntries(operations.map(model=>[model,operationBefore[model].length]));
  if(!process.argv.includes('--apply')){console.log(JSON.stringify({mode:'inspect',companyId,products:before.products.filter(p=>!p.deletedAt&&p.isActive).length,oldSuppliers:before.suppliers.filter(s=>!s.deletedAt&&/demo/i.test(s.name)).length,operations:operationCountsBefore}));return;}

@@ -20,7 +20,7 @@ async function main() {
     await db.$transaction(async tx => {
       const scoped = new Proxy(tx, { get(t, p) { if (p === '$transaction') return (work: any) => typeof work === 'function' ? work(tx) : Promise.all(work); const v = Reflect.get(t,p); return typeof v === 'function' ? v.bind(t) : v; } }) as unknown as PrismaService;
       const audit = new AuditService(scoped), inventory = new InventoryService(scoped,audit), purchases = new PurchasesService(scoped,audit,inventory);
-      const supply = new SupplyWorkflowService(scoped,audit,inventory,purchases), receipts = new PurchaseReceiptsService(scoped,audit,inventory), retaceos = new RetaceosService(scoped,audit);
+      const supply = new SupplyWorkflowService(scoped,audit,inventory,purchases), receipts = new PurchaseReceiptsService(scoped,audit,inventory), retaceos = new RetaceosService(scoped,audit,inventory);
       const config = await tx.erpConfiguration.findFirstOrThrow({ where: { generalWarehouseId: { not: null } }, include: { generalWarehouse: true } });
       const companyId=config.companyId,general=config.generalWarehouse!;
       const branches=await tx.branch.findMany({where:{companyId,isActive:true,deletedAt:null,id:{not:general.branchId}},include:{warehouses:{where:{isActive:true,deletedAt:null}}},take:2});

@@ -30,10 +30,10 @@ async function main() {
       const last = await api('/inventory/stocks?branchId=' + branch.id + '&limit=1&page=' + stockCount);
       assert.equal(last.items.length, 1); assert.equal(last.items[0].location.warehouse.branch.id, branch.id);
     }
-    const movementCount = await db.inventoryMovement.count({ where: { stock: where } });
+    const movementCount = await db.inventoryMovement.count({ where });
     const movements = await api('/inventory/movements?branchId=' + branch.id + '&limit=1');
     assert.equal(movements.total, movementCount);
-    assert(movements.items.every((movement: any) => movement.stock.location.warehouse.branch.id === branch.id));
+    assert(movements.items.every((movement: any) => movement.location.warehouse.branch.id === branch.id));
   }
   await api('/inventory/stocks?branchId=0', 400);
   await api('/inventory/movements?branchId=no-valido', 400);

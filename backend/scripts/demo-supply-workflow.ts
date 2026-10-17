@@ -114,7 +114,7 @@ async function main() {
    const product = products.find(p => p.id === line.productId)!;
    const payload = { locationId: centralLocation.id, barcode: product.internalCode, confirmed: true };
    await api(`/supply/placements/${line.id}/confirm`, 'POST', payload); await api(`/supply/placements/${line.id}/confirm`, 'POST', payload);
-   assert.equal(await db.inventoryMovement.count({ where: { purchaseItemId: line.id } }), 1);
+   assert.equal(await db.inventoryMovement.count({ where: { referenceType: 'purchase_detail', referenceId: line.id } }), 1);
   }
   const afterStock = await db.inventoryStock.findUniqueOrThrow({ where: { productId_locationId: { productId: order.details[0].productId, locationId: centralLocation.id } } });
   assert.equal(Number(afterStock.quantity), Number(beforeStock?.quantity ?? 0) + quantity);

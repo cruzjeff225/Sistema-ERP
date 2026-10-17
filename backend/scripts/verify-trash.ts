@@ -11,7 +11,7 @@ const service = new TrashService(db, new AuditService(db));
 const key = 'QA-TRASH-' + randomUUID().slice(0,8);
 const base = process.env.ERP_TEST_API_URL ?? 'http://localhost:3000/api';
 const owned: { entity: TrashEntity; id: number }[] = [];
-let companyId = 0, actorId = 0, token = '', productId = 0, categoryId = 0, subcategoryId = 0, stockId = 0, locationId = 0, employeeId = 0, userId = 0, roleId = 0, permissionId = 0, moduleId = 0;
+let companyId = 0, actorId = 0, token = '', productId = 0, categoryId = 0, subcategoryId = 0, stockId = 0, lotId = 0, locationId = 0, employeeId = 0, userId = 0, roleId = 0, permissionId = 0, moduleId = 0;
 async function api(path: string, method = 'GET', body?: unknown, expected = method === 'POST' ? 201 : 200, access = token) {
  const response = await fetch(base + path, { method, headers: { 'Content-Type':'application/json', ...(access ? {Authorization:'Bearer '+access}:{}), ...(companyId ? {'X-Company-Id':String(companyId)}:{}) }, ...(body ? {body:JSON.stringify(body)}:{}) });
  const text = await response.text(); assert.equal(response.status,expected,path+': '+text.slice(0,800));
@@ -28,7 +28,8 @@ async function main() {
  const product = await db.product.create({data:{companyId,categoryId,subcategoryId,purchaseUnitId:template.purchaseUnitId,saleUnitId:template.saleUnitId,sku:key,internalCode:key,name:key}}); productId=product.id; owned.push({entity:'products',id:product.id});
  const location = await db.location.create({data:{warehouseId:config.generalWarehouse!.id,code:key,aisle:'QA',rack:'QA',level:'1',position:'1',capacity:100}}); locationId=location.id;
  const stock = await db.inventoryStock.create({data:{productId,locationId,quantity:17}}); stockId=stock.id;
- await db.inventoryMovement.create({data:{stockId,key,type:'RECEIPT',quantity:17,balance:17,reason:'QA papelera'}});
+ const lot = await db.inventoryLot.create({data:{lotCode:key,productId,receivedAt:new Date(),quantityReceived:17,unitCost:1,totalCost:17}}); lotId=lot.id; await db.inventoryLocationDetail.create({data:{lotId,locationId,quantity:17}});
+ await db.inventoryMovement.create({data:{productId,lotId,locationId,warehouseId:config.generalWarehouse!.id,key,movementType:'RECEIPT',quantityIn:17,balance:17,unitCost:1,totalCost:17,referenceType:'adjustment',reason:'QA papelera'}});
  const [a,b] = await Promise.all([api('/trash/products/'+productId,'DELETE'),api('/trash/products/'+productId,'DELETE')]);
  assert.equal(a.id,b.id,'El doble clic no duplica la eliminación');
  const entry = await db.trashEntry.findUniqueOrThrow({where:{id:a.id}});
@@ -37,7 +38,7 @@ async function main() {
  assert((await api('/trash?search='+key)).items.some((r:any)=>r.id===entry.id));
  assert(!(await api('/trash/records/products?search='+key)).items.some((r:any)=>r.id===productId));
  assert.equal(Number((await db.inventoryStock.findUniqueOrThrow({where:{id:stockId}})).quantity),17);
- assert.equal(await db.inventoryMovement.count({where:{stockId}}),1);
+ assert.equal(await db.inventoryMovement.count({where:{productId}}),1);
  await reject(service.restore(entry.id,companyId+100000,actorId),404);
  await reject(service.trash('products',productId,actorId,companyId+100000),404);
  await api('/trash/'+entry.id+'/restore','POST',{});
@@ -93,13 +94,13 @@ async function main() {
  assert((await db.product.findUniqueOrThrow({where:{id:productId}})).deletedAt);
  assert.equal((await db.trashEntry.findUniqueOrThrow({where:{id:retainedTrash.id}})).retainedForHistory,true);
  assert.equal(Number((await db.inventoryStock.findUniqueOrThrow({where:{id:stockId}})).quantity),17);
- assert.equal(await db.inventoryMovement.count({where:{stockId}}),1);
+ assert.equal(await db.inventoryMovement.count({where:{productId}}),1);
  assert(!(await service.list(companyId,key)).items.some(i=>i.id===retainedTrash.id));
  console.log('PASS vencimiento, depuración sin referencias y conservación de historial e inventario referenciados');
 }
 async function clean() {
  for(const item of owned) {await db.trashEntry.deleteMany({where:{entity:item.entity,recordId:item.id}});await db.log.deleteMany({where:{controller:item.entity,recordId:item.id}});}
- if(stockId){await db.inventoryMovement.deleteMany({where:{stockId}});await db.inventoryStock.deleteMany({where:{id:stockId}});}
+ if(stockId){await db.inventoryMovement.deleteMany({where:{productId}});await db.inventoryLocationDetail.deleteMany({where:{lot:{productId}}});await db.inventoryLot.deleteMany({where:{productId}});await db.inventoryStock.deleteMany({where:{id:stockId}});}
  if(locationId)await db.location.deleteMany({where:{id:locationId}});
  if(productId)await db.product.deleteMany({where:{id:productId}});
  if(subcategoryId)await db.productSubcategory.deleteMany({where:{id:subcategoryId}});

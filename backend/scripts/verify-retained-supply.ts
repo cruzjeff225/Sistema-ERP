@@ -83,9 +83,10 @@ async function main() {
   for(const expense of capital){assert.equal(expense.allocations.length,1);assert.equal(Number(expense.allocations[0]!.amount),Number(expense.amount));}
   for(const expense of noncapital)assert.equal(expense.allocations.length,0);
   pass('Gastos previstos $110 separados de reales; FOB $1,230 + gastos capitalizables $212 = $1,442; IVA excluido y sin duplicación');
-  const stocks=await db.inventoryStock.findMany({where:{productId:{in:products}},include:{location:true,movements:{orderBy:{id:'asc'}}},orderBy:{id:'asc'}});
-  assert.equal(stocks.length,4);assert.equal(stocks.reduce((n,s)=>n+s.movements.length,0),8);
-  for(const stock of stocks){let balance=0;for(const movement of stock.movements){balance+=Number(movement.quantity);assert.equal(Number(movement.balance),balance);assert(balance>=0);}assert.equal(Number(stock.quantity),balance);}
+  const stocks=await db.inventoryStock.findMany({where:{productId:{in:products}},include:{location:true},orderBy:{id:'asc'}});
+  const ledger=await db.inventoryMovement.findMany({where:{productId:{in:products}},orderBy:{id:'asc'}});
+  assert.equal(stocks.length,4);assert.equal(ledger.length,8);
+  for(const stock of stocks){let balance=0;for(const movement of ledger.filter(m=>m.productId===stock.productId&&m.locationId===stock.locationId)){balance+=Number(movement.quantityIn)-Number(movement.quantityOut);assert.equal(Number(movement.balance),balance);assert(balance>=0);}assert.equal(Number(stock.quantity),balance);}
   assert.equal(total(stocks.filter(s=>s.productId===teja&&s.location.warehouseId===report.generalWarehouse.id),'quantity'),100);
   assert.equal(total(stocks.filter(s=>s.productId===lamina&&s.location.warehouseId===report.generalWarehouse.id),'quantity'),10);
   assert.deepEqual(stocks.filter(s=>s.location.warehouseId!==report.generalWarehouse.id).map(s=>Number(s.quantity)).sort((a,b)=>a-b),[100,400]);
@@ -119,7 +120,7 @@ async function main() {
   pass('API final y mapa coinciden con la BD; PDFs descargados del sistema corregido');
   if(globalThis.process.argv.includes('--replay')){
     const stockScope={product:{companyId}};
-    const snapshot=async()=>({stocks:await db.inventoryStock.findMany({where:stockScope,orderBy:{id:'asc'}}),moves:await db.inventoryMovement.findMany({where:{stock:stockScope},orderBy:{id:'asc'}}),receipts:await db.purchase.findMany({where:{companyId},orderBy:{id:'asc'}}),transfers:await db.transfer.findMany({where:{companyId},include:{items:true},orderBy:{id:'asc'}})});
+    const snapshot=async()=>({stocks:await db.inventoryStock.findMany({where:stockScope,orderBy:{id:'asc'}}),moves:await db.inventoryMovement.findMany({where:stockScope,orderBy:{id:'asc'}}),receipts:await db.purchase.findMany({where:{companyId},orderBy:{id:'asc'}}),transfers:await db.transfer.findMany({where:{companyId},include:{items:true},orderBy:{id:'asc'}})});
     const beforeRetry=hash(await snapshot());const seen=new Set<string>();let replayed=0;
     for(const operation of report.operations){
       if(operation.method!=='POST'||!/^\/(purchase-orders|supply\/transfers)\/\d+\/receive$/.test(operation.path))continue;

@@ -55,6 +55,17 @@ const REMOVED_MODULES = [
   "drivers",
 ];
 
+/** Permisos nuevos: quienes ya tenían el permiso de origen lo reciben al crearse, para no perder acceso. */
+const INHERITED_FROM: Record<string, string> = {
+  "inventory.lots.view": "inventory.view",
+  "inventory.kardex.view": "inventory.view",
+  "inventory.cost.view": "inventory.view",
+  "inventory.receive": "inventory.adjust",
+  "inventory.label.print": "inventory.adjust",
+  "inventory.location.assign": "inventory.adjust",
+  "inventory.transfer": "inventory.adjust",
+};
+
 const REMOVED_PERMISSION_ACTIONS = [
   "inventory.update",
   "quotations.view",
@@ -84,6 +95,13 @@ const PERMISSIONS: Array<{
   ["trash.purge", "Eliminar definitivamente de papelera", "Eliminar sin recuperación y conservar referencias históricas", "trash"],
   ["inventory.view", "Consultar inventario", "Existencias y kardex por empresa", "inventory"],
   ["inventory.adjust", "Ajustar inventario", "Entradas y salidas justificadas", "inventory"],
+  ["inventory.lots.view", "Consultar lotes", "Lotes recibidos, su distribución y trazabilidad", "inventory"],
+  ["inventory.receive", "Confirmar ingreso de mercancía", "Confirmar la recepción física que origina lotes", "inventory"],
+  ["inventory.label.print", "Imprimir etiquetas", "Imprimir y reimprimir etiquetas de lote", "inventory"],
+  ["inventory.location.assign", "Asignar mercancía a ubicaciones", "Colocar lotes en ubicaciones del almacén", "inventory"],
+  ["inventory.transfer", "Gestionar traslados", "Despachar y recibir traslados entre almacenes", "inventory"],
+  ["inventory.kardex.view", "Consultar Kardex", "Historial de movimientos por producto y lote", "inventory"],
+  ["inventory.cost.view", "Consultar costo promedio y valoración", "Costo promedio ponderado y valor del inventario", "inventory"],
   ["customers.view", "Consultar clientes", "Directorio comercial de la empresa", "customers"],
   ["customers.create", "Registrar clientes", "Crear clientes para operaciones de venta", "customers"],
   ["customers.update", "Actualizar clientes", "Editar contacto y ubicación de clientes", "customers"],
@@ -253,6 +271,7 @@ async function seedModulesAndPermissions() {
     const moduleId = moduleMap.get(permission.module);
     if (!moduleId) throw new Error(`No se encontro el modulo ${permission.module}`);
 
+    const isNew = !(await prisma.permission.findUnique({ where: { action: permission.action }, select: { id: true } }));
     const createdPermission = await prisma.permission.upsert({
       where: { action: permission.action },
       update: {
@@ -272,6 +291,18 @@ async function seedModulesAndPermissions() {
       },
     });
     createdPermissions.push(createdPermission);
+
+    const source = INHERITED_FROM[permission.action];
+    if (isNew && source) {
+      const holders = await prisma.rolePermission.findMany({ where: { permission: { action: source } }, select: { roleId: true } });
+      for (const { roleId } of holders) {
+        await prisma.rolePermission.upsert({
+          where: { roleId_permissionId: { roleId, permissionId: createdPermission.id } },
+          update: {},
+          create: { roleId, permissionId: createdPermission.id },
+        });
+      }
+    }
   }
 
   return createdPermissions;

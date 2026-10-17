@@ -10,7 +10,7 @@ import { PurchasesService } from './purchases.service';
 import { purchaseTransaction } from './purchase-transaction';
 import { generalWarehouse } from './general-warehouse';
 import { comparePurchase,purchaseComparisonHash } from './purchase-comparison';
-import { ActualExpenseDto, AwardDto, ConsolidationDto, ConsolidationLineDto, PlacementDto, RfqDto, TransferDto, TransferReceiptDto } from '../dto/supply-workflow.dto';
+import { ActualExpenseDto, AwardDto, ConsolidationDto, ConsolidationLineDto, PlacementDto, RfqDto, TransferDto, TransferIncidentDto, TransferReceiptDto } from '../dto/supply-workflow.dto';
 
 const include = {
   lines: {
@@ -225,7 +225,7 @@ export class SupplyWorkflowService {
       if (!slot) throw new BadRequestException('Seleccione un espacio activo del almacen receptor');
       if (slot.stocks.some(s => s.product.purchaseUnitId !== item.unitId)) throw new ConflictException('La capacidad del espacio no se puede sumar con unidades diferentes');
       if (sum(slot.stocks.map(s => s.quantity)).add(item.quantity).gt(slot.capacity)) throw new ConflictException('El espacio no tiene capacidad suficiente');
-      await this.inventory.post(tx, companyId, userId, { productId: item.productId, locationId: slot.id, quantity: item.quantity, key: `receipt:${item.id}`, type: 'RECEIPT', purchaseItemId: item.id, reason: `Recepcion ${item.purchase.documentNumber}` });
+      await this.inventory.receive(tx, companyId, userId, { purchaseItemId: item.id, locationId: slot.id, reason: `Recepcion ${item.purchase.documentNumber}` });
       const placed = await tx.purchaseItem.update({ where: { id }, data: { locationId: slot.id, placedAt: new Date(), placedBy: userId, barcodeConfirmed: true } });
       await this.audit.record(tx, { controller: 'purchases', action: 'CONFIRM_PLACEMENT', recordId: item.purchaseId, originalData: item, modifiedData: placed, userId });
       return placed;
@@ -239,7 +239,8 @@ export class SupplyWorkflowService {
       const requestId = dto.requestId.toLowerCase();
       const previous = await tx.transfer.findFirst({ where: { uuid: { equals: requestId, mode: 'insensitive' } }, include: { items: true } });
       if (previous) {
-        if (previous.companyId !== companyId || previous.items.length !== dto.items.length || !dto.items.every(i => previous.items.some(p => p.requestDetailId === i.requestDetailId && p.fromLocationId === i.fromLocationId && p.toLocationId === i.toLocationId && p.quantity.eq(i.quantity)))) throw new ConflictException('Referencia de despacho reutilizada con otros datos');
+        const dispatched = (i: { requestDetailId: number | null; fromLocationId: number; toLocationId: number }) => `${i.requestDetailId}:${i.fromLocationId}:${i.toLocationId}`;
+        if (previous.companyId !== companyId || !dto.items.every(i => sum(previous.items.filter(p => dispatched(p) === dispatched(i)).map(p => p.quantity)).eq(i.quantity)) || previous.items.some(p => !dto.items.some(i => dispatched(i) === dispatched(p)))) throw new ConflictException('Referencia de despacho reutilizada con otros datos');
         return previous;
       }
       const items: { requestDetailId: number; productId: number; quantity: number; fromLocationId: number; toLocationId: number }[] = [];
@@ -258,8 +259,18 @@ export class SupplyWorkflowService {
         fromWarehouseId = from.warehouseId; toWarehouseId = to.warehouseId;
         items.push({ ...line, productId: request.productId });
       }
-      const record = await tx.transfer.create({ data: { uuid: requestId, companyId, userId, documentNumber: `TR-${randomUUID().slice(0, 8).toUpperCase()}`, fromWarehouseId, toWarehouseId, status: 'IN_TRANSIT', dispatchedAt: new Date(), items: { create: items } }, include: { items: true } });
-      for (const i of record.items) await this.inventory.post(tx, companyId, userId, { productId: i.productId, locationId: i.fromLocationId, quantity: i.quantity.negated(), type: 'TRANSFER_OUT', key: `transfer-out:${i.id}`, reason: `Despacho ${record.documentNumber}` });
+      if (dto.vehicleLocationId && !await tx.location.count({ where: { id: dto.vehicleLocationId, locationType: 'VEHICLE', isActive: true, deletedAt: null, warehouse: { branch: { companyId } } } })) throw new BadRequestException('La ubicación de tránsito debe ser un vehículo activo de la empresa');
+      const created = await tx.transfer.create({ data: { uuid: requestId, companyId, userId, documentNumber: `TR-${randomUUID().slice(0, 8).toUpperCase()}`, fromWarehouseId, toWarehouseId, vehicleLocationId: dto.vehicleLocationId ?? null, notes: dto.notes?.trim() || null, status: 'IN_TRANSIT', dispatchedAt: new Date() } });
+      // El despacho sale del lote mas antiguo de la ubicacion de origen; una linea puede repartirse en varios lotes.
+      for (const line of items) {
+        const slices = await this.inventory.allocate(tx, line.productId, line.fromLocationId, line.quantity);
+        for (const slice of slices) {
+          const lot = await tx.inventoryLot.findUniqueOrThrow({ where: { id: slice.lotId } });
+          const detail = await tx.transferItem.create({ data: { transferId: created.id, requestDetailId: line.requestDetailId, productId: line.productId, lotId: lot.id, fromLocationId: line.fromLocationId, toLocationId: line.toLocationId, quantity: slice.quantity, unitCost: lot.unitCost } });
+          await this.inventory.dispatchOut(tx, companyId, userId, { lotId: lot.id, productId: line.productId, locationId: line.fromLocationId, quantity: slice.quantity, key: `transfer-out:${detail.id}`, reason: `Despacho ${created.documentNumber}`, transferId: created.id });
+        }
+      }
+      const record = await tx.transfer.findUniqueOrThrow({ where: { id: created.id }, include: { items: true } });
       await this.audit.record(tx, { controller: 'inventory', action: 'DISPATCH', recordId: record.id, modifiedData: record, userId });
       return record;
     });
@@ -269,19 +280,20 @@ export class SupplyWorkflowService {
       const record = await tx.transfer.findFirst({ where: { id, companyId, deletedAt: null }, include: { items: true } });
       if (!record) throw new NotFoundException('Traslado no encontrado');
       const prefix = `transfer-in:${companyId}:${dto.requestId.toLowerCase()}:`;
-      const prior = await tx.inventoryMovement.findMany({ where: { key: { startsWith: prefix, mode: 'insensitive' } }, include: { stock: true } });
+      const prior = await tx.inventoryMovement.findMany({ where: { key: { startsWith: prefix, mode: 'insensitive' } } });
       if (prior.length) {
-        if (prior.length !== dto.items.length || !dto.items.every(i => prior.some(p => p.key.toLowerCase() === `${prefix}${i.itemId}` && p.quantity.eq(i.quantity) && p.stock.locationId === i.locationId && p.reason === `Recepcion ${record.documentNumber}`))) throw new ConflictException('Referencia de recepcion reutilizada con otros datos');
+        if (prior.length !== dto.items.length || !dto.items.every(i => prior.some(p => p.key.toLowerCase() === `${prefix}${i.itemId}` && p.quantityIn.eq(i.quantity) && p.locationId === i.locationId && p.reason === `Recepcion ${record.documentNumber}`))) throw new ConflictException('Referencia de recepcion reutilizada con otros datos');
         return record;
       }
-      if (!['IN_TRANSIT','PARTIALLY_RECEIVED'].includes(record.status)) throw new ConflictException('El traslado no esta pendiente de recibir');
+      if (!['IN_TRANSIT','PARTIALLY_RECEIVED','INCIDENT'].includes(record.status)) throw new ConflictException('El traslado no esta pendiente de recibir');
       for (const line of dto.items) {
         const item = record.items.find(i => i.id === line.itemId);
         if (!item || item.receivedQuantity.add(line.quantity).gt(item.quantity)) throw new BadRequestException('La cantidad recibida supera el despacho pendiente');
         const slot = await tx.location.findFirst({ where: { id: line.locationId, warehouseId: record.toWarehouseId, isActive: true, deletedAt: null }, include: { stocks: { where: { quantity: { gt: 0 } }, include: { product: true } } } });
         const product = await tx.product.findUniqueOrThrow({ where: { id: item.productId } });
         if (!slot || slot.stocks.some(s => s.product.purchaseUnitId !== product.purchaseUnitId) || sum(slot.stocks.map(s => s.quantity)).add(line.quantity).gt(slot.capacity)) throw new ConflictException('Espacio de destino no disponible o sin capacidad');
-        await this.inventory.post(tx, companyId, userId, { productId: item.productId, locationId: slot.id, quantity: line.quantity, type: 'TRANSFER_IN', key: `${prefix}${item.id}`, reason: `Recepcion ${record.documentNumber}` });
+        if (!item.lotId) throw new ConflictException('El traslado no conserva el lote de origen y no puede recibirse');
+        await this.inventory.receiveIn(tx, companyId, userId, { lotId: item.lotId, productId: item.productId, locationId: slot.id, quantity: new Prisma.Decimal(line.quantity), key: `${prefix}${item.id}`, reason: `Recepcion ${record.documentNumber}`, transferId: record.id });
         await tx.transferItem.update({ where: { id: item.id }, data: { receivedQuantity: { increment: line.quantity }, toLocationId: slot.id } });
       }
       const items = await tx.transferItem.findMany({ where: { transferId: id } });
@@ -296,6 +308,18 @@ export class SupplyWorkflowService {
         await this.audit.record(tx, { controller: 'purchase_requests', action: 'DISTRIBUTION_PROGRESS', recordId: requestId, originalData: { status: original.status }, modifiedData: { status }, userId });
       }
       await this.audit.record(tx, { controller: 'inventory', action: 'RECEIVE_TRANSFER', recordId: id, originalData: record, modifiedData: result, userId });
+      return result;
+    });
+  }
+  /** Una diferencia al recibir (faltante, dano) deja el traslado en INCIDENCIA hasta que se complete la recepcion. */
+  reportIncident(id: number, dto: TransferIncidentDto, companyId: number, userId: number) {
+    return purchaseTransaction(this.prisma, companyId, async tx => {
+      const record = await tx.transfer.findFirst({ where: { id, companyId, deletedAt: null }, include: { items: true } });
+      if (!record) throw new NotFoundException('Traslado no encontrado');
+      if (!['IN_TRANSIT', 'PARTIALLY_RECEIVED'].includes(record.status)) throw new ConflictException('Solo un traslado en transito puede registrar una incidencia');
+      if (!dto.reason.trim()) throw new BadRequestException('Indique el motivo de la incidencia');
+      const result = await tx.transfer.update({ where: { id }, data: { status: 'INCIDENT', notes: [record.notes, `Incidencia: ${dto.reason.trim()}`].filter(Boolean).join('\n') }, include: { items: true } });
+      await this.audit.record(tx, { controller: 'inventory', action: 'TRANSFER_INCIDENT', recordId: id, originalData: record, modifiedData: result, userId });
       return result;
     });
   }

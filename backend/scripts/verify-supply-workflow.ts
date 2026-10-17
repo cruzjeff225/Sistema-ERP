@@ -146,7 +146,7 @@ async function main() {
     await db.location.update({where:{id:slot.id},data:{capacity:10000}});
     await api(`/supply/placements/${p.id}/confirm`,'POST',{locationId:slot.id,barcode:barcode.internalCode,confirmed:true});
     await api(`/supply/placements/${p.id}/confirm`,'POST',{locationId:slot.id,barcode:barcode.internalCode,confirmed:true});
-    assert.equal(await db.inventoryMovement.count({where:{purchaseItemId:p.id}}),1); assert.equal(Number((await db.inventoryStock.findUniqueOrThrow({where:{productId_locationId:{productId:p.productId,locationId:slot.id}}})).quantity),amount);
+    assert.equal(await db.inventoryMovement.count({where:{referenceType:'purchase_detail',referenceId:p.id}}),1); assert.equal(Number((await db.inventoryStock.findUniqueOrThrow({where:{productId_locationId:{productId:p.productId,locationId:slot.id}}})).quantity),amount);
     await api(`/purchases/${purchases[0].id}/verify`,'POST');
     await api(`/purchases/${purchases[0].id}/close`,'POST',undefined,409);
     const lifecycle=await api(`/purchases/${purchases[0].id}`); assert.equal(lifecycle.hasActiveRetaceo,false);assert.equal(lifecycle.retaceoStatus,null);assert.equal(lifecycle.retaceoArchived,false);
@@ -229,7 +229,7 @@ async function main() {
   await api('/trash/'+attachmentTrash.id+'/restore','POST',{});
   const restoredFile=await fetch(base+'/purchase-order-expenses/documents/'+attached.id+'/content',{headers:{Authorization:'Bearer '+token,'X-Company-Id':String(companyId)}});assert.equal(restoredFile.status,200);assert((await restoredFile.text()).startsWith('%PDF-1.4'));
   const beforeStock = await db.inventoryStock.findMany({ where: { productId: { in: productIds } }, orderBy: { id: 'asc' } });
-  const beforeMovements = await db.inventoryMovement.count({ where: { stock: { productId: { in: productIds } } } });
+  const beforeMovements = await db.inventoryMovement.count({ where: { productId: { in: productIds } } });
   const movementBefore = await api('/inventory/movements?productId=' + productIds[0] + '&page=1&limit=100');
   const valuedBefore = movementBefore.items.find((i:any)=>i.costReference?.source==='retaceo'); assert(valuedBefore);
   for (const [entity,id,path] of [
@@ -239,7 +239,7 @@ async function main() {
    const row = await api(path+id);const entry = await api('/trash/'+entity+'/'+id,'DELETE');trashIds.push(entry.id);
    await api(path+id,'GET',undefined,404);
    if(entity==='purchases') await api(`/supply/placements/${row.items[0].id}/confirm`,'POST',{locationId:slot.id,barcode:(await db.product.findUniqueOrThrow({where:{id:row.items[0].productId}})).internalCode,confirmed:true},404);
-   assert.equal(await db.inventoryMovement.count({where:{stock:{productId:{in:productIds}}}}),beforeMovements);
+   assert.equal(await db.inventoryMovement.count({where:{productId:{in:productIds}}}),beforeMovements);
    assert.deepEqual(await db.inventoryStock.findMany({where:{productId:{in:productIds}},orderBy:{id:'asc'}}),beforeStock);
    if(entity==='retaceos') {
     const archivedLifecycle=await api('/purchases/'+row.purchaseId);assert.equal(archivedLifecycle.hasActiveRetaceo,true);assert.equal(archivedLifecycle.retaceoStatus,'closed');assert.equal(archivedLifecycle.retaceoArchived,true);assert(!archivedLifecycle.retaceos.some((r:any)=>r.id===id));
@@ -268,7 +268,7 @@ async function main() {
 async function cleanup() {
   await db.$transaction(async tx=>{
     await tx.trashEntry.deleteMany({where:{id:{in:trashIds}}});
-    const movementIds=(await tx.inventoryMovement.findMany({where:{stock:{productId:{in:productIds}}},select:{id:true}})).map(m=>m.id);
+    const movementIds=(await tx.inventoryMovement.findMany({where:{productId:{in:productIds}},select:{id:true}})).map(m=>m.id);
     const actualExpenseIds=(await tx.purchaseActualExpense.findMany({where:{purchaseId:{in:purchaseIds}},select:{id:true}})).map(e=>e.id);
     await tx.log.deleteMany({where:{OR:[
       {controller:'purchase_requests',recordId:{in:requestIds}},{controller:'purchase_quotations',recordId:{in:quoteIds}},
@@ -279,7 +279,8 @@ async function cleanup() {
       {controller:'purchase_consolidations',recordId:{in:[...(consolidationId?[consolidationId]:[]),...extraConsolidationIds]}},
       {controller:'purchase_expense_documents',recordId:{in:expenseDocumentId?[expenseDocumentId]:[]}}
     ]}});
-    await tx.inventoryMovement.deleteMany({where:{stock:{productId:{in:productIds}}}});
+    await tx.inventoryMovement.deleteMany({where:{productId:{in:productIds}}});
+    await tx.inventoryLabelPrint.deleteMany({ where: { lot: { productId: { in: productIds } } } }); await tx.inventoryLocationDetail.deleteMany({ where: { lot: { productId: { in: productIds } } } }); await tx.inventoryLot.deleteMany({ where: { productId: { in: productIds } } }); await tx.inventoryCostAverage.deleteMany({ where: { productId: { in: productIds } } });
     await tx.inventoryStock.deleteMany({where:{productId:{in:productIds}}});
     await tx.transferItem.deleteMany({where:{transferId:{in:transferIds}}}); await tx.transfer.deleteMany({where:{id:{in:transferIds}}});
     await tx.purchaseExpenseAllocation.deleteMany({where:{retaceoId:{in:retaceoIds}}});

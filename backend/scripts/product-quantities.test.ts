@@ -30,5 +30,5 @@ test('money, taxes and presentation prices retain their decimal precision',()=>{
 
 test('inventory refuses a fractional new movement before querying or writing the database',async()=>{
  const service=new InventoryService({} as any,{} as any);
- await assert.rejects(service.post({} as any,3,1,{productId:1,locationId:1,quantity:1.2,key:randomUUID(),type:'ADJUSTMENT',reason:'Ajuste físico'}),(error:any)=>error.getStatus()===400&&/entero/.test(error.message));
+ await assert.rejects((service as any).adjustIn({} as any,3,1,{productId:1,locationId:1,quantity:1.2,requestId:randomUUID(),reason:'Ajuste físico'}),(error:any)=>error.getStatus()===400&&/entero/.test(error.message));
 });

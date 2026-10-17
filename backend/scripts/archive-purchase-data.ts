@@ -40,7 +40,7 @@ async function main() {
     for (const entity of entities) data[entity] = await (tx as any)[TRASH_ENTITIES[entity].model].findMany({ where: scope(entity), ...(details[entity] ? { include: details[entity] } : {}), orderBy: { id: 'asc' } });
     const stockWhere = { product: { companyId } };
     const stocks = await tx.inventoryStock.findMany({ where: stockWhere, orderBy: { id: 'asc' } });
-    const movements = await tx.inventoryMovement.findMany({ where: { stock: stockWhere }, orderBy: { id: 'asc' } });
+    const movements = await tx.inventoryMovement.findMany({ where: stockWhere, orderBy: { id: 'asc' } });
     const beforeStockHash = hash(stocks), beforeMovementHash = hash(movements);
     const snapshot = { schema: 1, companyId, createdAt: new Date().toISOString(), generalWarehouseId: config.generalWarehouseId, data, stocks, movements };
     writeFileSync(snapshotPath, JSON.stringify(snapshot, null, 2));
@@ -56,7 +56,7 @@ async function main() {
       archived.push({ entity, recordId: record.id, trashId: entry.id, expiresAt: entry.expiresAt });
     }
     assert.equal(hash(await tx.inventoryStock.findMany({ where: stockWhere, orderBy: { id: 'asc' } })), beforeStockHash, 'Archival must preserve every stock balance');
-    assert.equal(hash(await tx.inventoryMovement.findMany({ where: { stock: stockWhere }, orderBy: { id: 'asc' } })), beforeMovementHash, 'Archival must preserve every inventory movement');
+    assert.equal(hash(await tx.inventoryMovement.findMany({ where: stockWhere, orderBy: { id: 'asc' } })), beforeMovementHash, 'Archival must preserve every inventory movement');
     for (const entity of entities) assert.equal(await (tx as any)[TRASH_ENTITIES[entity].model].count({ where: { ...scope(entity), deletedAt: null } }), 0, entity + ' must be empty in management');
     return { companyId, archived, snapshotPath, snapshotHash: hash(snapshot), stockHash: beforeStockHash, movementHash: beforeMovementHash, stocksPreserved: stocks.length, movementsPreserved: movements.length };
   }, { timeout: 120000, maxWait: 20000 });
