@@ -140,6 +140,7 @@ model User {
   purchases          Purchase[]          @relation("PurchaseUser")
   retaceos           Retaceo[]           @relation("RetaceoUser")
   inventoryMovements InventoryMovement[]
+  labelPrints        InventoryLabelPrint[]
 
   @@map("users")
 }
@@ -390,6 +391,7 @@ model Company {
   expenseTypes       ExpenseType[]
   purchases          Purchase[]
   retaceos           Retaceo[]
+  costAverages       InventoryCostAverage[]
 
   @@index([departmentId])
   @@index([municipalityId])
@@ -489,14 +491,23 @@ model Location {
   position    String
   capacity    Int
   notes       String?
+  /// STORAGE (estante físico) o VEHICLE (ubicación de tránsito ligada a un vehículo).
+  locationType String   @default("STORAGE") @map("location_type")
+  vehicleId   Int?      @map("id_vehicle")
   isActive    Boolean   @default(true) @map("is_active")
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
   deletedAt   DateTime? @map("deleted_at")
 
   warehouse     Warehouse        @relation(fields: [warehouseId], references: [id])
+  vehicle       Vehicle?         @relation(fields: [vehicleId], references: [id])
   stocks        InventoryStock[]
   purchaseItems PurchaseItem[]
+  lotDetails    InventoryLocationDetail[]
+  movements     InventoryMovement[]
+  transitTransfers Transfer[]
+
+  @@index([vehicleId])
 
   @@unique([warehouseId, code])
   @@unique([warehouseId, aisle, rack, level, position])
@@ -647,6 +658,9 @@ model Product {
   images                   ProductImage[]
   suppliers                ProductSupplier[]
   stocks                   InventoryStock[]
+  lots                     InventoryLot[]
+  movements                InventoryMovement[]
+  costAverages             InventoryCostAverage[]
   purchaseItems            PurchaseItem[]
   quotationItems           QuotationItem[]
   saleItems                SaleItem[]
@@ -768,31 +782,123 @@ model InventoryStock {
 
   product  Product  @relation(fields: [productId], references: [id])
   location Location @relation(fields: [locationId], references: [id])
-  movements InventoryMovement[]
 
   @@unique([productId, locationId])
   @@index([locationId])
   @@map("inventory_stocks")
 }
 
-model InventoryMovement {
-  id Int @id @default(autoincrement())
-  stockId Int @map("stock_id")
-  userId Int? @map("user_id")
-  purchaseItemId Int? @map("purchase_item_id")
-  key String @unique
-  type String
-  quantity Decimal @db.Decimal(12, 2)
-  balance Decimal @db.Decimal(12, 2)
-  reason String
-  createdAt DateTime @default(now()) @map("created_at")
-  stock InventoryStock @relation(fields: [stockId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  user User? @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  purchaseItem PurchaseItem? @relation(fields: [purchaseItemId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  @@index([stockId, id])
+/// Lote de mercancía recibido: conserva el origen de compra, no el almacén actual.
+model InventoryLot {
+  id               Int      @id @default(autoincrement()) @map("id_inventory_lot")
+  lotCode          String   @unique @map("lot_code")
+  productId        Int      @map("id_product")
+  purchaseItemId   Int?     @map("id_purchase_detail")
+  receivedAt       DateTime @map("received_at")
+  quantityReceived Decimal  @map("quantity_received") @db.Decimal(12, 2)
+  unitCost         Decimal  @map("unit_cost") @db.Decimal(14, 4)
+  totalCost        Decimal  @map("total_cost") @db.Decimal(14, 2)
+  /// ACTIVE | DEPLETED | CANCELLED
+  status           String   @default("ACTIVE")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  product      Product       @relation(fields: [productId], references: [id])
+  purchaseItem PurchaseItem? @relation(fields: [purchaseItemId], references: [id])
+  locations    InventoryLocationDetail[]
+  movements    InventoryMovement[]
+  labelPrints  InventoryLabelPrint[]
+  transferItems TransferItem[]
+
+  @@index([productId, receivedAt])
   @@index([purchaseItemId])
+  @@map("inventory_lots")
+}
+
+/// Saldo actual de un lote en una ubicación física.
+model InventoryLocationDetail {
+  id         Int      @id @default(autoincrement()) @map("id_inventory_location_detail")
+  lotId      Int      @map("id_inventory_lot")
+  locationId Int      @map("id_location")
+  quantity   Decimal  @default(0) @db.Decimal(12, 2)
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  lot      InventoryLot @relation(fields: [lotId], references: [id])
+  location Location     @relation(fields: [locationId], references: [id])
+
+  @@unique([lotId, locationId])
+  @@index([locationId])
+  @@map("inventory_location_details")
+}
+
+/// Historial inmutable (Kardex). Las correcciones se registran como reversión o ajuste.
+model InventoryMovement {
+  id            Int      @id @default(autoincrement()) @map("id_inventory_movement")
+  productId     Int      @map("id_product")
+  lotId         Int?     @map("id_inventory_lot")
+  warehouseId   Int      @map("id_warehouse")
+  locationId    Int?     @map("id_location")
+  /// OPENING | RECEIPT | REVERSAL | ADJUSTMENT | TRANSFER_OUT | TRANSFER_IN | SALE | RETURN
+  movementType  String   @map("movement_type")
+  movementDate  DateTime @default(now()) @map("movement_date")
+  quantityIn    Decimal  @default(0) @map("quantity_in") @db.Decimal(12, 2)
+  quantityOut   Decimal  @default(0) @map("quantity_out") @db.Decimal(12, 2)
+  unitCost      Decimal  @default(0) @map("unit_cost") @db.Decimal(14, 4)
+  totalCost     Decimal  @default(0) @map("total_cost") @db.Decimal(14, 2)
+  referenceType String   @map("reference_type")
+  referenceId   Int?     @map("reference_id")
+  userId        Int?     @map("id_user")
+  createdAt     DateTime @default(now()) @map("created_at")
+  /// Clave de idempotencia y datos de apoyo para la consulta (no forman parte del diagrama base).
+  key           String   @unique
+  reason        String
+  balance       Decimal  @db.Decimal(12, 2)
+
+  product   Product       @relation(fields: [productId], references: [id])
+  lot       InventoryLot? @relation(fields: [lotId], references: [id], onDelete: Restrict)
+  location  Location?     @relation(fields: [locationId], references: [id])
+  user      User?         @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([productId, movementDate])
+  @@index([lotId])
+  @@index([warehouseId])
+  @@index([locationId])
   @@index([userId])
+  @@index([referenceType, referenceId])
   @@map("inventory_movements")
+}
+
+/// Saldo valorizado por empresa y producto (costo promedio ponderado global).
+model InventoryCostAverage {
+  id              Int      @id @default(autoincrement()) @map("id_inventory_cost_average")
+  companyId       Int      @map("id_company")
+  productId       Int      @map("id_product")
+  quantityOnHand  Decimal  @default(0) @map("quantity_on_hand") @db.Decimal(12, 2)
+  inventoryValue  Decimal  @default(0) @map("inventory_value") @db.Decimal(14, 2)
+  averageUnitCost Decimal  @default(0) @map("average_unit_cost") @db.Decimal(14, 4)
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  company Company @relation(fields: [companyId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
+
+  @@unique([companyId, productId])
+  @@index([productId])
+  @@map("inventory_cost_averages")
+}
+
+model InventoryLabelPrint {
+  id              Int      @id @default(autoincrement()) @map("id_inventory_label_print")
+  lotId           Int      @map("id_inventory_lot")
+  quantityPrinted Int      @map("quantity_printed")
+  printDate       DateTime @default(now()) @map("print_date")
+  userId          Int      @map("id_user")
+  reprintReason   String?  @map("reprint_reason")
+
+  lot  InventoryLot @relation(fields: [lotId], references: [id])
+  user User         @relation(fields: [userId], references: [id])
+
+  @@index([lotId])
+  @@index([userId])
+  @@map("inventory_label_prints")
 }
 
 model Purchase {
@@ -866,7 +972,7 @@ model PurchaseItem {
   purchaseOrderDetail PurchaseOrderDetail @relation(fields: [purchaseOrderDetailId], references: [id], onDelete: Restrict)
   unit                ProductUnit @relation(fields: [unitId], references: [id], onDelete: Restrict)
   retaceoDetails      RetaceoDetail[]
-  inventoryMovements InventoryMovement[]
+  lots               InventoryLot[]
 
   @@index([purchaseId])
   @@index([productId])
@@ -949,43 +1055,54 @@ model SaleItem {
 model Transfer {
   deletedAt DateTime? @map("deleted_at")
   uuid String @unique @default(uuid())
-  companyId Int? @map("company_id")
+  companyId Int? @map("id_company")
+  transferDate DateTime @default(now()) @map("transfer_date")
   dispatchedAt DateTime? @map("dispatched_at")
   receivedAt DateTime? @map("received_at")
-  userId Int? @map("user_id")
-  id              Int      @id @default(autoincrement()) @map("id_transfer")
-  documentNumber  String   @unique @map("document_number")
-  fromWarehouseId Int      @map("id_from_warehouse")
-  toWarehouseId   Int      @map("id_to_warehouse")
+  userId Int? @map("id_user")
+  id              Int      @id @default(autoincrement()) @map("id_inventory_transfer")
+  documentNumber  String   @unique @map("transfer_code")
+  fromWarehouseId Int      @map("id_source_warehouse")
+  toWarehouseId   Int      @map("id_destination_warehouse")
+  vehicleLocationId Int?   @map("id_vehicle_location")
+  /// PREPARING | IN_TRANSIT | PARTIALLY_RECEIVED | COMPLETED | INCIDENT
   status          String   @default("COMPLETED")
+  notes           String?
   createdAt       DateTime @default(now()) @map("created_at")
 
+  vehicleLocation Location? @relation(fields: [vehicleLocationId], references: [id])
   items TransferItem[]
 
   @@index([fromWarehouseId])
   @@index([toWarehouseId])
-  @@map("transfers")
+  @@index([vehicleLocationId])
+  @@map("inventory_transfers")
 }
 
 model TransferItem {
   requestDetailId Int? @map("request_detail_id")
   requestDetail PurchaseRequestDetail? @relation(fields: [requestDetailId], references: [id], onDelete: Restrict)
-  receivedQuantity Decimal @default(0) @map("received_quantity") @db.Decimal(12, 2)
-  id             Int @id @default(autoincrement()) @map("id_transfer_item")
-  transferId     Int @map("id_transfer")
+  receivedQuantity Decimal @default(0) @map("quantity_received") @db.Decimal(12, 2)
+  id             Int @id @default(autoincrement()) @map("id_inventory_transfer_detail")
+  transferId     Int @map("id_inventory_transfer")
+  lotId          Int? @map("id_inventory_lot")
   productId      Int @map("id_product")
-  fromLocationId Int @map("id_from_location")
-  toLocationId   Int @map("id_to_location")
-  quantity       Decimal @db.Decimal(12, 2)
+  fromLocationId Int @map("id_source_location")
+  toLocationId   Int @map("id_destination_location")
+  quantity       Decimal @map("quantity_dispatched") @db.Decimal(12, 2)
+  unitCost       Decimal @default(0) @map("unit_cost") @db.Decimal(14, 4)
+  notes          String?
 
   transfer Transfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  lot      InventoryLot? @relation(fields: [lotId], references: [id])
   product  Product  @relation(fields: [productId], references: [id])
 
   @@index([transferId])
   @@index([productId])
+  @@index([lotId])
   @@index([fromLocationId])
   @@index([toLocationId])
-  @@map("transfer_items")
+  @@map("inventory_transfer_details")
 }
 
 model Vehicle {
@@ -998,6 +1115,8 @@ model Vehicle {
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
+
+  locations Location[]
 
   @@map("vehicles")
 }

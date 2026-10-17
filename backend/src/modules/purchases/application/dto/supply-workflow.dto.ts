@@ -52,6 +52,12 @@ export class TransferDto {
   @IsUUID() requestId: string;
   @IsArray() @ArrayMinSize(1) @ArrayUnique((line: TransferLineDto) => `${line?.requestDetailId}:${line?.fromLocationId}:${line?.toLocationId}`)
   @ValidateNested({ each: true }) @Type(() => TransferLineDto) items: TransferLineDto[];
+  /** Ubicacion de tipo vehiculo que lleva la mercancia en transito. */
+  @IsOptional() @IsInt() @Min(1) vehicleLocationId?: number;
+  @IsOptional() @IsString() @MaxLength(500) notes?: string;
+}
+export class TransferIncidentDto {
+  @IsString() @MaxLength(500) reason: string;
 }
 export class TransferReceiptLineDto {
   @IsInt() @Min(1) itemId: number;

@@ -1,3 +1,4 @@
+import { InventoryService } from "../../../inventory/inventory.service";
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../../../infrastructure/database/prisma/prisma.service";
@@ -54,6 +55,7 @@ export class RetaceosService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly inventory: InventoryService,
   ) {}
 
   async purchases(companyId: number) {
@@ -220,12 +222,13 @@ export class RetaceosService {
       const current = await this.findOneRecord(id, companyId, tx);
       if (current.status !== "verified") throw new ConflictException("El retaceo debe estar verificado antes de cerrarse");
       if (current.purchase.purchaseOrderId && (current.purchase.status !== 'VERIFIED' || current.purchase.items.some((item) => item.locationId === null))) throw new ConflictException('Ubique y verifique la recepción antes de cerrar el retaceo');
-      // Inventory reads this closed cost through the receipt; no stock is posted again.
+      // El costo final reemplaza al provisional de cada lote; no se vuelve a registrar existencias.
       // A receipt that comes from an order is finished once its costs are final: closing the retaceo closes the receipt too.
       const closesReceipt = !!current.purchase.purchaseOrderId;
       const purchase = await tx.purchase.update({ where: { id: current.purchaseId }, data: { status: closesReceipt ? "CLOSED" : "COSTED" } });
       await this.audit.record(tx, { controller: "purchases", action: closesReceipt ? "CLOSE" : "COST", recordId: purchase.id, originalData: current.purchase, modifiedData: purchase, userId });
       const record = await tx.retaceo.update({ where: { id }, data: { status: "closed" }, include: retaceoInclude });
+      for (const detail of record.details) await this.inventory.revalueReceipt(tx, companyId, userId, { purchaseItemId: detail.purchaseItemId, unitCost: detail.unitCost, retaceoId: id });
       await this.audit.record(tx, { controller: "retaceos", action: "CLOSE", recordId: id, originalData: current, modifiedData: record, userId });
       return this.withRates(record);
     });

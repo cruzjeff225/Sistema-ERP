@@ -173,7 +173,7 @@ async function main() {
 async function cleanup() {
   const c = created;
   await db.$transaction(async tx => {
-    const movementIds = (await tx.inventoryMovement.findMany({ where: { stock: { productId: { in: c.products } } }, select: { id: true } })).map(m => m.id);
+    const movementIds = (await tx.inventoryMovement.findMany({ where: { productId: { in: c.products } }, select: { id: true } })).map(m => m.id);
     const expenseIds = (await tx.purchaseActualExpense.findMany({ where: { purchaseId: { in: c.receipts } }, select: { id: true } })).map(e => e.id);
     await tx.log.deleteMany({ where: { OR: [
       { controller: 'purchase_requests', recordId: { in: c.requests } }, { controller: 'purchase_quotations', recordId: { in: c.quotes } }, { controller: 'purchase_orders', recordId: { in: c.orders } },
@@ -181,7 +181,8 @@ async function cleanup() {
       { controller: 'purchase_expenses', recordId: { in: expenseIds } }, { controller: 'transfers', recordId: { in: c.transfers } },
       { controller: 'inventory', recordId: { in: [...movementIds, ...c.transfers] } },
     ] } });
-    await tx.inventoryMovement.deleteMany({ where: { stock: { productId: { in: c.products } } } });
+    await tx.inventoryMovement.deleteMany({ where: { productId: { in: c.products } } });
+    await tx.inventoryLabelPrint.deleteMany({ where: { lot: { productId: { in: c.products } } } }); await tx.inventoryLocationDetail.deleteMany({ where: { lot: { productId: { in: c.products } } } }); await tx.inventoryLot.deleteMany({ where: { productId: { in: c.products } } }); await tx.inventoryCostAverage.deleteMany({ where: { productId: { in: c.products } } });
     await tx.inventoryStock.deleteMany({ where: { productId: { in: c.products } } });
     await tx.transferItem.deleteMany({ where: { transferId: { in: c.transfers } } }); await tx.transfer.deleteMany({ where: { id: { in: c.transfers } } });
     await tx.purchaseExpenseAllocation.deleteMany({ where: { retaceoId: { in: c.retaceos } } });

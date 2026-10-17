@@ -94,7 +94,7 @@ async function main() {
   await db.purchaseRequest.update({ where: { id: request.id }, data: { purpose: null } });
   await api(`/purchase-requests/${request.id}/submit`, 'POST', {}, 400);
   await api(`/purchase-requests/${request.id}`, 'PATCH', { purpose: 'operations' });
-  assert.equal(await db.inventoryMovement.count({ where: { stock: { productId: { in: fixtureProducts } } } }), 0);
+  assert.equal(await db.inventoryMovement.count({ where: { productId: { in: fixtureProducts } } }), 0);
   ok('Finalidad obligatoria, historicos sin inferencias y solicitudes sin movimientos de inventario');
   await api(`/purchase-requests/${request.id}`, "PATCH", { details: null }, 400);
   await api(`/purchase-requests/${request.id}/submit`, "POST", {});
@@ -367,7 +367,7 @@ async function cleanup() {
   const docs = await db.purchaseOrderExpenseDocument.findMany({ where: { expense: { order: orderWhere } } });
   for (const doc of docs) await unlink(join(process.cwd(), "uploads", "purchase-expenses", basename(doc.filePath))).catch(() => undefined);
   const models = [
-    ["inventory", await db.inventoryMovement.findMany({ where: { stock: stockWhere }, select: { id: true } })],
+    ["inventory", await db.inventoryMovement.findMany({ where: stockWhere, select: { id: true } })],
     ["expense_types", [{ id: fixtureExpenseTypeId }]],
     ["purchases", await db.purchase.findMany({ where: orderWhere, select: { id: true } })],
     ["purchase_requests", await db.purchaseRequest.findMany({ where: orderWhere, select: { id: true } })],
@@ -378,12 +378,13 @@ async function cleanup() {
   ] as const;
   await db.$transaction(async (tx) => {
     for (const [controller, records] of models) await tx.log.deleteMany({ where: { controller, recordId: { in: records.map(record => record.id) } } });
-    await tx.inventoryMovement.deleteMany({ where: { stock: stockWhere } });
+    await tx.inventoryMovement.deleteMany({ where: stockWhere });
     await tx.retaceo.deleteMany({ where: { purchase: orderWhere } });
     await tx.purchase.deleteMany({ where: orderWhere });
     await tx.purchaseOrder.deleteMany({ where: orderWhere });
     await tx.purchaseQuotation.deleteMany({ where: quotationWhere });
     await tx.purchaseRequest.deleteMany({ where: orderWhere });
+    await tx.inventoryLabelPrint.deleteMany({ where: { lot: stockWhere } }); await tx.inventoryLocationDetail.deleteMany({ where: { lot: stockWhere } }); await tx.inventoryLot.deleteMany({ where: stockWhere }); await tx.inventoryCostAverage.deleteMany({ where: stockWhere });
     await tx.inventoryStock.deleteMany({ where: stockWhere });
     await tx.product.deleteMany({ where: { id: { in: fixtureProducts } } });
     await tx.supplier.deleteMany({ where: { id: { in: fixtureSuppliers } } });

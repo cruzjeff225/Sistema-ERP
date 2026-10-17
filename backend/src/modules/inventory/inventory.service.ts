@@ -3,17 +3,32 @@ import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../infrastructure/database/prisma/prisma.service";
 import { AuditService } from "../audit/application/services/audit.service";
 import { purchaseTransaction } from "../purchases/application/services/purchase-transaction";
-import { InventoryAdjustmentDto, InventoryQueryDto } from "./inventory.dto";
+import { InventoryAdjustmentDto, InventoryQueryDto, KardexQueryDto, LabelPrintDto, LotQueryDto } from "./inventory.dto";
+import { applyEntry, applyExit, applyRevaluation, allocateFifo, lotCodeForAdjustment, lotCodeForReceipt, type CostBalance, type LotSlice } from './inventory-costing';
 import { locationMapState } from './location-map';
+
+type Tx = Prisma.TransactionClient;
+type Reference = { type: string; id?: number | null };
+type PlaceRef = { id: number; warehouseId: number };
+const ZERO = new Prisma.Decimal(0);
+const OPEN_TRANSFER = ['PREPARING', 'IN_TRANSIT', 'PARTIALLY_RECEIVED', 'INCIDENT'];
 
 const stockInclude = {
   product: { select: { id: true, name: true, sku: true, purchaseUnit: { select: { id: true, name: true } } } },
   location: { include: { warehouse: { include: { branch: { select: { id: true, name: true } } } } } },
 } satisfies Prisma.InventoryStockInclude;
 
+const locationSelect = { id: true, code: true, aisle: true, rack: true, level: true, position: true, warehouse: { select: { id: true, name: true, branch: { select: { id: true, name: true } } } } } satisfies Prisma.LocationSelect;
+const dayStart = (day: string) => new Date(`${day}T00:00:00-06:00`);
+const dayAfter = (day: string) => new Date(dayStart(day).getTime() + 86400000);
+const dateRange = (from?: string, to?: string) => from || to ? { ...(from ? { gte: dayStart(from) } : {}), ...(to ? { lt: dayAfter(to) } : {}) } : undefined;
+const sum = (values: Prisma.Decimal[]) => values.reduce((total, value) => total.add(value), ZERO);
+
 @Injectable()
 export class InventoryService {
   constructor(private readonly prisma: PrismaService, private readonly audit: AuditService) {}
+
+  // ---------------------------------------------------------------- consultas
 
   async map(companyId: number, warehouseId: number) {
     const warehouse = await this.prisma.warehouse.findFirst({
@@ -46,66 +61,391 @@ export class InventoryService {
     return { items, total, page: q.page, totalPages: Math.ceil(total / q.limit) };
   }
 
-  async movements(companyId: number, q: InventoryQueryDto) {
+  /** Almacenes de la empresa dentro del contexto elegido; los movimientos guardan el almacén, no la sucursal. */
+  private async warehouseScope(companyId: number, branchId?: number, warehouseId?: number) {
+    if (!branchId && !warehouseId) return undefined;
+    const rows = await this.prisma.warehouse.findMany({ where: { branch: { companyId, ...(branchId ? { id: branchId } : {}) }, ...(warehouseId ? { id: warehouseId } : {}) }, select: { id: true } });
+    return rows.map(row => row.id);
+  }
+
+  private async movementWhere(companyId: number, q: { search?: string; branchId?: number; warehouseId?: number; productId?: number; locationId?: number; lotId?: number; type?: string; dateFrom?: string; dateTo?: string }): Promise<Prisma.InventoryMovementWhereInput> {
     if (q.dateFrom && q.dateTo && q.dateFrom > q.dateTo) throw new BadRequestException('La fecha inicial no puede ser posterior a la final');
-    const where: Prisma.InventoryMovementWhereInput = { stock: this.where(companyId, q), ...(q.type ? { type: q.type } : {}),
-      ...(q.dateFrom || q.dateTo ? { createdAt: {
-        ...(q.dateFrom ? { gte: new Date(`${q.dateFrom}T00:00:00-06:00`) } : {}),
-        ...(q.dateTo ? { lt: new Date(new Date(`${q.dateTo}T00:00:00-06:00`).getTime() + 86400000) } : {}),
-      } } : {}),
+    const warehouses = await this.warehouseScope(companyId, q.branchId, q.warehouseId);
+    const search = q.search?.trim();
+    return {
+      product: { companyId, ...(search ? { OR: [{ name: { contains: search, mode: 'insensitive' } }, { sku: { contains: search, mode: 'insensitive' } }] } : {}) },
+      ...(warehouses ? { warehouseId: { in: warehouses } } : {}),
+      ...(q.productId ? { productId: q.productId } : {}), ...(q.locationId ? { locationId: q.locationId } : {}), ...(q.lotId ? { lotId: q.lotId } : {}),
+      ...(q.type ? { movementType: q.type } : {}),
+      ...(dateRange(q.dateFrom, q.dateTo) ? { movementDate: dateRange(q.dateFrom, q.dateTo) } : {}),
     };
-    const [items, total] = await this.prisma.$transaction([
-      this.prisma.inventoryMovement.findMany({ where, include: { stock: { include: stockInclude }, user: { select: { username: true } }, purchaseItem: { select: {
-        unitCost: true, lineTotal: true, quantity: true, unit: { select: { id: true, name: true } },
-        purchase: { select: { id: true, documentNumber: true, purchaseDate: true, currency: true } },
-        retaceoDetails: { where: { retaceo: { status: 'closed' } }, select: { unitCost: true, totalCost: true, retaceo: { select: { id: true, code: true } } } },
-      } } }, orderBy: { id: 'desc' }, skip: (q.page - 1) * q.limit, take: q.limit }),
+  }
+
+  private movementInclude = {
+    product: { select: { id: true, name: true, sku: true, internalCode: true } },
+    lot: { select: { id: true, lotCode: true, unitCost: true, purchaseItem: { select: { unitCost: true, lineTotal: true, quantity: true, unit: { select: { id: true, name: true } },
+      purchase: { select: { id: true, documentNumber: true, purchaseDate: true, currency: true } },
+      retaceoDetails: { where: { retaceo: { status: 'closed', deletedAt: null } }, select: { unitCost: true, totalCost: true, retaceo: { select: { id: true, code: true } } }, take: 1, orderBy: { id: 'desc' as const } } } } } },
+    location: { select: locationSelect },
+    user: { select: { username: true } },
+  } satisfies Prisma.InventoryMovementInclude;
+
+  async movements(companyId: number, q: InventoryQueryDto) {
+    const where = await this.movementWhere(companyId, q);
+    const [rows, total] = await this.prisma.$transaction([
+      this.prisma.inventoryMovement.findMany({ where, include: this.movementInclude, orderBy: { id: 'desc' }, skip: (q.page - 1) * q.limit, take: q.limit }),
       this.prisma.inventoryMovement.count({ where }),
     ]);
-    return { items: items.map(item => {
-      const receipt = item.purchaseItem;
-      const cost = receipt?.retaceoDetails[0];
-      return { ...item, costReference: receipt ? {
-        unitCost: receipt.unitCost, realUnitCost: cost?.unitCost ?? null,
-        valuationUnitCost: cost?.unitCost ?? receipt.unitCost,
-        valuationTotal: cost?.totalCost ?? receipt.lineTotal,
-        source: cost ? 'retaceo' : 'purchase', retaceo: cost?.retaceo ?? null,
-        currency: receipt.purchase.currency, receiptDate: receipt.purchase.purchaseDate,
-      } : null };
-    }), total, page: q.page, totalPages: Math.ceil(total / q.limit) };
+    return { items: rows.map(row => ({ ...row, quantity: row.quantityIn.sub(row.quantityOut), costReference: this.costReference(row.lot) })), total, page: q.page, totalPages: Math.ceil(total / q.limit) };
+  }
+
+  /** Costo de compra frente al costo final del retaceo; el lote conserva el costo con el que quedó valorizado. */
+  private costReference(lot: { unitCost: Prisma.Decimal; purchaseItem: { unitCost: Prisma.Decimal; lineTotal: Prisma.Decimal; purchase: { purchaseDate: Date; currency: string }; retaceoDetails: { unitCost: Prisma.Decimal; totalCost: Prisma.Decimal; retaceo: { id: number; code: string } }[] } | null } | null) {
+    const receipt = lot?.purchaseItem;
+    if (!lot || !receipt) return null;
+    const cost = receipt.retaceoDetails[0];
+    return { unitCost: receipt.unitCost, realUnitCost: cost?.unitCost ?? null, valuationUnitCost: cost?.unitCost ?? receipt.unitCost,
+      valuationTotal: cost?.totalCost ?? receipt.lineTotal, source: cost ? 'retaceo' : 'purchase', retaceo: cost?.retaceo ?? null,
+      currency: receipt.purchase.currency, receiptDate: receipt.purchase.purchaseDate };
+  }
+
+  /** Kardex: se construye siempre desde los movimientos; el saldo corrido parte del saldo anterior al rango. */
+  async kardex(companyId: number, q: KardexQueryDto) {
+    const product = await this.prisma.product.findFirst({ where: { id: q.productId, companyId }, select: { id: true, name: true, sku: true, internalCode: true, purchaseUnit: { select: { name: true } } } });
+    if (!product) throw new NotFoundException('Producto no disponible');
+    const where = await this.movementWhere(companyId, q);
+    const rangeLow = q.dateFrom ? dayStart(q.dateFrom) : undefined;
+    const before = rangeLow ? await this.prisma.inventoryMovement.aggregate({ where: { ...where, movementDate: { lt: rangeLow } }, _sum: { quantityIn: true, quantityOut: true, totalCost: true } }) : null;
+    const opening = before ? (before._sum.quantityIn ?? ZERO).sub(before._sum.quantityOut ?? ZERO) : ZERO;
+    const rows = await this.prisma.inventoryMovement.findMany({ where, include: this.movementInclude, orderBy: [{ movementDate: 'asc' }, { id: 'asc' }] });
+    let running = opening;
+    const all = rows.map(row => { running = running.add(row.quantityIn).sub(row.quantityOut); return { ...row, runningQuantity: running }; });
+    const items = all.slice((q.page - 1) * q.limit, q.page * q.limit);
+    return { product, opening, closing: running, totals: { quantityIn: sum(rows.map(r => r.quantityIn)), quantityOut: sum(rows.map(r => r.quantityOut)) },
+      items, total: all.length, page: q.page, totalPages: Math.max(1, Math.ceil(all.length / q.limit)) };
+  }
+
+  private async openTransit(db: Tx | PrismaService, lotIds: number[]) {
+    if (!lotIds.length) return new Map<number, Prisma.Decimal>();
+    const rows = await db.transferItem.findMany({ where: { lotId: { in: lotIds }, transfer: { status: { in: OPEN_TRANSFER }, deletedAt: null } }, select: { lotId: true, quantity: true, receivedQuantity: true } });
+    const map = new Map<number, Prisma.Decimal>();
+    for (const row of rows) map.set(row.lotId!, (map.get(row.lotId!) ?? ZERO).add(row.quantity.sub(row.receivedQuantity)));
+    return map;
+  }
+
+  async lots(companyId: number, q: LotQueryDto) {
+    const search = q.search?.trim();
+    const where: Prisma.InventoryLotWhereInput = {
+      product: { companyId }, ...(q.productId ? { productId: q.productId } : {}), ...(q.status ? { status: q.status } : {}),
+      ...(search ? { OR: [{ lotCode: { contains: search, mode: 'insensitive' } }, { product: { name: { contains: search, mode: 'insensitive' } } }, { product: { sku: { contains: search, mode: 'insensitive' } } }] } : {}),
+      ...(q.warehouseId ? { locations: { some: { quantity: { gt: 0 }, location: { warehouseId: q.warehouseId } } } } : {}),
+      ...(q.onlyAvailable ? { locations: { some: { quantity: { gt: 0 } } } } : {}),
+    };
+    const [rows, total] = await this.prisma.$transaction([
+      this.prisma.inventoryLot.findMany({ where, orderBy: [{ receivedAt: 'desc' }, { id: 'desc' }], skip: (q.page - 1) * q.limit, take: q.limit, include: {
+        product: { select: { id: true, name: true, sku: true, internalCode: true } },
+        purchaseItem: { select: { unit: { select: { name: true } }, purchase: { select: { id: true, documentNumber: true, supplier: { select: { name: true } } } } } },
+        locations: { where: { quantity: { gt: 0 } }, select: { quantity: true, location: { select: locationSelect } }, orderBy: { locationId: 'asc' } },
+        _count: { select: { labelPrints: true } },
+      } }),
+      this.prisma.inventoryLot.count({ where }),
+    ]);
+    const transit = await this.openTransit(this.prisma, rows.map(r => r.id));
+    return { items: rows.map(lot => ({ ...lot, onHand: sum(lot.locations.map(l => l.quantity)), inTransit: transit.get(lot.id) ?? ZERO })), total, page: q.page, totalPages: Math.ceil(total / q.limit) };
+  }
+
+  /** Trazabilidad completa: compra → retaceo → ubicaciones → traslados → movimientos → etiquetas. */
+  async lot(companyId: number, id: number) {
+    const lot = await this.prisma.inventoryLot.findFirst({ where: { id, product: { companyId } }, include: {
+      product: { select: { id: true, name: true, sku: true, internalCode: true } },
+      purchaseItem: { select: { id: true, quantity: true, unitCost: true, unit: { select: { name: true } },
+        purchase: { select: { id: true, documentNumber: true, purchaseDate: true, currency: true, supplier: { select: { name: true } }, purchaseOrder: { select: { id: true, code: true } } } },
+        retaceoDetails: { where: { retaceo: { status: 'closed', deletedAt: null } }, select: { unitCost: true, totalCost: true, retaceo: { select: { id: true, code: true } } } } } },
+      locations: { where: { quantity: { gt: 0 } }, select: { quantity: true, updatedAt: true, location: { select: locationSelect } } },
+      transferItems: { select: { id: true, quantity: true, receivedQuantity: true, transfer: { select: { id: true, documentNumber: true, status: true, dispatchedAt: true, receivedAt: true, fromWarehouseId: true, toWarehouseId: true } } }, orderBy: { id: 'asc' } },
+      movements: { include: { location: { select: locationSelect }, user: { select: { username: true } } }, orderBy: [{ movementDate: 'asc' }, { id: 'asc' }] },
+      labelPrints: { include: { user: { select: { username: true } } }, orderBy: { id: 'desc' } },
+    } });
+    if (!lot) throw new NotFoundException('Lote no encontrado');
+    const warehouses = await this.prisma.warehouse.findMany({ where: { id: { in: [...new Set(lot.transferItems.flatMap(t => [t.transfer.fromWarehouseId, t.transfer.toWarehouseId]))] } }, select: { id: true, name: true } });
+    const name = new Map(warehouses.map(w => [w.id, w.name]));
+    const transit = await this.openTransit(this.prisma, [lot.id]);
+    return { ...lot, onHand: sum(lot.locations.map(l => l.quantity)), inTransit: transit.get(lot.id) ?? ZERO,
+      transferItems: lot.transferItems.map(t => ({ ...t, transfer: { ...t.transfer, fromWarehouse: name.get(t.transfer.fromWarehouseId) ?? null, toWarehouse: name.get(t.transfer.toWarehouseId) ?? null } })) };
+  }
+
+  async costs(companyId: number, q: InventoryQueryDto) {
+    const search = q.search?.trim();
+    const where: Prisma.InventoryCostAverageWhereInput = { companyId, ...(q.productId ? { productId: q.productId } : {}),
+      ...(search ? { product: { OR: [{ name: { contains: search, mode: 'insensitive' } }, { sku: { contains: search, mode: 'insensitive' } }] } } : {}) };
+    const [items, total, totals] = await this.prisma.$transaction([
+      this.prisma.inventoryCostAverage.findMany({ where, include: { product: { select: { id: true, name: true, sku: true, internalCode: true, purchaseUnit: { select: { name: true } } } } }, orderBy: [{ product: { name: 'asc' } }], skip: (q.page - 1) * q.limit, take: q.limit }),
+      this.prisma.inventoryCostAverage.count({ where }),
+      this.prisma.inventoryCostAverage.aggregate({ where, _sum: { quantityOnHand: true, inventoryValue: true } }),
+    ]);
+    return { items, total, page: q.page, totalPages: Math.ceil(total / q.limit), totals: { quantityOnHand: totals._sum.quantityOnHand ?? ZERO, inventoryValue: totals._sum.inventoryValue ?? ZERO } };
+  }
+
+  /** RN-INV-018: saldos por ubicación, por lote, valoración y tránsito deben coincidir. */
+  async reconcile(companyId: number) {
+    const [stocks, details, averages, transit] = await Promise.all([
+      this.prisma.inventoryStock.groupBy({ by: ['productId'], where: { product: { companyId } }, _sum: { quantity: true } }),
+      this.prisma.inventoryLocationDetail.findMany({ where: { lot: { product: { companyId } } }, select: { quantity: true, lot: { select: { productId: true } }, lotId: true, locationId: true } }),
+      this.prisma.inventoryCostAverage.findMany({ where: { companyId } }),
+      this.prisma.transferItem.findMany({ where: { transfer: { companyId, status: { in: OPEN_TRANSFER }, deletedAt: null } }, select: { productId: true, quantity: true, receivedQuantity: true } }),
+    ]);
+    const byProduct = <T,>(rows: T[], key: (row: T) => number, value: (row: T) => Prisma.Decimal) => { const m = new Map<number, Prisma.Decimal>(); for (const row of rows) m.set(key(row), (m.get(key(row)) ?? ZERO).add(value(row))); return m; };
+    const stock = new Map(stocks.map(s => [s.productId, s._sum.quantity ?? ZERO]));
+    const lotted = byProduct(details, d => d.lot.productId, d => d.quantity);
+    const moving = byProduct(transit, t => t.productId, t => t.quantity.sub(t.receivedQuantity));
+    const valued = new Map(averages.map(a => [a.productId, a]));
+    const ids = new Set([...stock.keys(), ...lotted.keys(), ...valued.keys(), ...moving.keys()]);
+    const issues: { productId: number; stock: Prisma.Decimal; lots: Prisma.Decimal; inTransit: Prisma.Decimal; valued: Prisma.Decimal; problem: string }[] = [];
+    for (const productId of ids) {
+      const row = { productId, stock: stock.get(productId) ?? ZERO, lots: lotted.get(productId) ?? ZERO, inTransit: moving.get(productId) ?? ZERO, valued: valued.get(productId)?.quantityOnHand ?? ZERO };
+      if (!row.stock.eq(row.lots)) issues.push({ ...row, problem: 'Saldo por ubicación distinto de la suma por lote' });
+      else if (!row.lots.add(row.inTransit).eq(row.valued)) issues.push({ ...row, problem: 'Existencias (más tránsito) distintas de la cantidad valorizada' });
+    }
+    for (const a of averages) if (a.quantityOnHand.gt(0) && !a.inventoryValue.sub(a.quantityOnHand.mul(a.averageUnitCost)).abs().lte(Math.max(0.05, a.quantityOnHand.toNumber() * 0.00005)))
+      issues.push({ productId: a.productId, stock: stock.get(a.productId) ?? ZERO, lots: lotted.get(a.productId) ?? ZERO, inTransit: moving.get(a.productId) ?? ZERO, valued: a.quantityOnHand, problem: 'Valor distinto de cantidad × costo promedio' });
+    return { checkedProducts: ids.size, consistent: issues.length === 0, issues };
   }
 
   async catalogs(companyId: number) {
     const products = await this.prisma.product.findMany({ where: { companyId, isActive: true, deletedAt: null }, select: { id: true, name: true, sku: true, purchaseUnit: { select: { name: true } } }, orderBy: { name: 'asc' } });
-    const warehouses = await this.prisma.warehouse.findMany({ where: { isActive: true, deletedAt: null, branch: { companyId, isActive: true, deletedAt: null } }, include: { branch: { select: { id: true, name: true } }, locations: { where: { isActive: true, deletedAt: null }, select: { id: true, code: true } } }, orderBy: { name: 'asc' } });
+    const warehouses = await this.prisma.warehouse.findMany({ where: { isActive: true, deletedAt: null, branch: { companyId, isActive: true, deletedAt: null } }, include: { branch: { select: { id: true, name: true } }, locations: { where: { isActive: true, deletedAt: null }, select: { id: true, code: true, locationType: true } } }, orderBy: { name: 'asc' } });
     const config = await this.prisma.erpConfiguration.findFirst({ where: { companyId }, include: { generalWarehouse: { include: { branch: true } } } });
     return { products, warehouses, generalWarehouse: config?.generalWarehouse ?? null };
   }
 
-  adjust(companyId: number, userId: number, dto: InventoryAdjustmentDto) {
-    return purchaseTransaction(this.prisma, companyId, tx => this.post(tx, companyId, userId, { ...dto, key: `adjust:${companyId}:${dto.requestId.toLowerCase()}`, type: 'ADJUSTMENT' }));
+  // ---------------------------------------------------------------- etiquetas
+
+  /** RN-INV-016/017: etiqueta con el código interno del producto; cada impresión queda registrada. */
+  printLabels(companyId: number, userId: number, lotId: number, dto: LabelPrintDto) {
+    return purchaseTransaction(this.prisma, companyId, async tx => {
+      const lot = await tx.inventoryLot.findFirst({ where: { id: lotId, product: { companyId } }, include: { product: { select: { name: true, sku: true, internalCode: true } } } });
+      if (!lot) throw new NotFoundException('Lote no encontrado');
+      if (lot.status === 'CANCELLED') throw new ConflictException('El lote fue cancelado y ya no admite etiquetas');
+      const previous = await tx.inventoryLabelPrint.count({ where: { lotId } });
+      const reason = dto.reprintReason?.trim();
+      if (previous > 0 && !reason) throw new BadRequestException('Indique el motivo de la reimpresión');
+      const print = await tx.inventoryLabelPrint.create({ data: { lotId, userId, quantityPrinted: dto.quantity, reprintReason: previous > 0 ? reason : null } });
+      await this.audit.record(tx, { controller: 'inventory', action: previous > 0 ? 'REPRINT_LABELS' : 'PRINT_LABELS', recordId: print.id, modifiedData: { companyId, ...print }, userId });
+      return { print, isReprint: previous > 0, label: { barcode: lot.product.internalCode, productName: lot.product.name, sku: lot.product.sku, lotCode: lot.lotCode, receivedAt: lot.receivedAt }, copies: dto.quantity };
+    });
   }
 
-  // Called inside the same company-locked transaction as receipt/cancellation.
-  async post(tx: Prisma.TransactionClient, companyId: number, userId: number, data: { productId: number; locationId: number; quantity: Prisma.Decimal | number; key: string; type: string; reason: string; purchaseItemId?: number }) {
-    const delta = new Prisma.Decimal(data.quantity);
-    if (data.type !== 'REVERSAL' && !delta.isInteger()) throw new BadRequestException('La cantidad de productos debe ser un número entero');
-    const existing = await tx.inventoryMovement.findFirst({ where: { key: { equals: data.key, mode: 'insensitive' } }, include: { stock: true } });
-    if (existing) {
-      if (existing.stock.productId !== data.productId || existing.stock.locationId !== data.locationId || !existing.quantity.eq(delta) || existing.reason !== data.reason) throw new ConflictException('La referencia ya fue usada para otro movimiento');
-      return existing;
+  // ---------------------------------------------------------------- escritura
+
+  adjust(companyId: number, userId: number, dto: InventoryAdjustmentDto) {
+    return purchaseTransaction(this.prisma, companyId, tx => this.adjustIn(tx, companyId, userId, dto));
+  }
+
+  private async place(tx: Tx, companyId: number, locationId: number, requireActive: boolean): Promise<PlaceRef> {
+    const location = await tx.location.findFirst({ where: { id: locationId, warehouse: { branch: { companyId } } }, include: { warehouse: { include: { branch: true } } } });
+    if (!location) throw new BadRequestException('Producto y ubicacion deben pertenecer a la empresa activa');
+    if (requireActive && (!location.isActive || location.deletedAt || !location.warehouse.isActive || location.warehouse.deletedAt || !location.warehouse.branch.isActive || location.warehouse.branch.deletedAt)) throw new BadRequestException('La ubicacion, el almacen y la sucursal deben estar activos');
+    return { id: location.id, warehouseId: location.warehouseId };
+  }
+
+  private async costOf(tx: Tx, companyId: number, productId: number): Promise<CostBalance> {
+    const row = await tx.inventoryCostAverage.findUnique({ where: { companyId_productId: { companyId, productId } } });
+    return { quantity: row?.quantityOnHand ?? ZERO, value: row?.inventoryValue ?? ZERO, average: row?.averageUnitCost ?? ZERO };
+  }
+
+  private saveCost(tx: Tx, companyId: number, productId: number, next: CostBalance) {
+    const data = { quantityOnHand: next.quantity, inventoryValue: next.value, averageUnitCost: next.average };
+    return tx.inventoryCostAverage.upsert({ where: { companyId_productId: { companyId, productId } }, create: { companyId, productId, ...data }, update: data });
+  }
+
+  /** Mantiene el saldo por producto y ubicación (consulta rápida) en el mismo paso que el saldo por lote. */
+  private async moveStock(tx: Tx, productId: number, lotId: number, locationId: number, delta: Prisma.Decimal) {
+    const detail = await tx.inventoryLocationDetail.findUnique({ where: { lotId_locationId: { lotId, locationId } } });
+    const lotBalance = (detail?.quantity ?? ZERO).add(delta);
+    if (lotBalance.lt(0)) throw new ConflictException('Existencias insuficientes para registrar la salida o revertir la recepcion');
+    if (lotBalance.gt('9999999999.99')) throw new BadRequestException('El saldo supera el limite permitido');
+    await tx.inventoryLocationDetail.upsert({ where: { lotId_locationId: { lotId, locationId } }, create: { lotId, locationId, quantity: lotBalance }, update: { quantity: lotBalance } });
+    const current = await tx.inventoryStock.findUnique({ where: { productId_locationId: { productId, locationId } } });
+    const balance = (current?.quantity ?? ZERO).add(delta);
+    if (balance.lt(0)) throw new ConflictException('Existencias insuficientes para registrar la salida o revertir la recepcion');
+    await tx.inventoryStock.upsert({ where: { productId_locationId: { productId, locationId } }, create: { productId, locationId, quantity: balance }, update: { quantity: balance } });
+    return balance;
+  }
+
+  private async record(tx: Tx, userId: number, m: { productId: number; lotId: number | null; place: PlaceRef | null; warehouseId: number; type: string; quantityIn?: Prisma.Decimal; quantityOut?: Prisma.Decimal; unitCost: Prisma.Decimal; totalCost?: Prisma.Decimal; key: string; reason: string; reference: Reference; balance: Prisma.Decimal; at?: Date }) {
+    const quantity = (m.quantityIn ?? ZERO).add(m.quantityOut ?? ZERO);
+    return tx.inventoryMovement.create({ data: {
+      productId: m.productId, lotId: m.lotId, warehouseId: m.warehouseId, locationId: m.place?.id ?? null, movementType: m.type, movementDate: m.at ?? new Date(),
+      quantityIn: m.quantityIn ?? ZERO, quantityOut: m.quantityOut ?? ZERO, unitCost: m.unitCost, totalCost: m.totalCost ?? quantity.mul(m.unitCost).toDecimalPlaces(2),
+      referenceType: m.reference.type, referenceId: m.reference.id ?? null, userId, key: m.key, reason: m.reason, balance: m.balance,
+    } });
+  }
+
+  private async existing(tx: Tx, key: string) {
+    return tx.inventoryMovement.findMany({ where: { OR: [{ key: { equals: key, mode: 'insensitive' } }, { key: { startsWith: `${key}#`, mode: 'insensitive' } }] }, orderBy: { id: 'asc' } });
+  }
+
+  private integer(quantity: Prisma.Decimal, allowFraction: boolean) {
+    if (!allowFraction && !quantity.isInteger()) throw new BadRequestException('La cantidad de productos debe ser un número entero');
+  }
+
+  /**
+   * Entrada de compra: la colocación confirmada crea el lote de la recepción y lo coloca en la ubicación.
+   * Actualiza saldo por lote/ubicación, movimiento y costo promedio en la transacción de quien llama.
+   */
+  async receive(tx: Tx, companyId: number, userId: number, data: { purchaseItemId: number; locationId: number; reason: string }) {
+    const key = `receipt:${data.purchaseItemId}`;
+    const item = await tx.purchaseItem.findUniqueOrThrow({ where: { id: data.purchaseItemId }, include: { purchase: true } });
+    const prior = await tx.inventoryLot.findFirst({ where: { purchaseItemId: item.id, status: { not: 'CANCELLED' } } });
+    if (prior) {
+      const moved = await tx.inventoryMovement.findUnique({ where: { key } });
+      if (moved?.locationId === data.locationId) return { lot: prior, movement: moved };
+      throw new ConflictException('La referencia ya fue usada para otro movimiento');
+    }
+    const quantity = item.quantity;
+    this.integer(quantity, false);
+    const product = await tx.product.findFirst({ where: { id: item.productId, companyId, isActive: true, deletedAt: null } });
+    if (!product) throw new BadRequestException('Producto y ubicacion deben pertenecer a la empresa activa');
+    const place = await this.place(tx, companyId, data.locationId, true);
+    const retaceo = await tx.retaceoDetail.findFirst({ where: { purchaseItemId: item.id, retaceo: { status: 'closed', deletedAt: null } }, orderBy: { id: 'desc' } });
+    const unitCost = retaceo?.unitCost ?? item.unitCost;
+    const lot = await tx.inventoryLot.create({ data: { lotCode: lotCodeForReceipt(item.id), productId: item.productId, purchaseItemId: item.id, receivedAt: item.purchase.purchaseDate, quantityReceived: quantity, unitCost, totalCost: quantity.mul(unitCost).toDecimalPlaces(2) } });
+    const balance = await this.moveStock(tx, item.productId, lot.id, place.id, quantity);
+    const cost = applyEntry(await this.costOf(tx, companyId, item.productId), quantity, unitCost);
+    await this.saveCost(tx, companyId, item.productId, cost);
+    const movement = await this.record(tx, userId, { productId: item.productId, lotId: lot.id, place, warehouseId: place.warehouseId, type: 'RECEIPT', quantityIn: quantity, unitCost, key, reason: data.reason, reference: { type: 'purchase_detail', id: item.id }, balance });
+    await this.audit.record(tx, { controller: 'inventory', action: 'RECEIPT', recordId: movement.id, originalData: { companyId, quantity: balance.sub(quantity) }, modifiedData: { companyId, lot: lot.lotCode, ...movement }, userId });
+    return { lot, movement };
+  }
+
+  /** Distribución FIFO de una cantidad entre los lotes que hay en una ubicación (sin modificar nada). */
+  async allocate(tx: Tx, productId: number, locationId: number, quantity: Prisma.Decimal.Value, lotId?: number): Promise<LotSlice[]> {
+    const rows = await tx.inventoryLocationDetail.findMany({ where: { locationId, quantity: { gt: 0 }, lot: { productId, status: { not: 'CANCELLED' } } }, select: { lotId: true, locationId: true, quantity: true, lot: { select: { receivedAt: true } } } });
+    return allocateFifo(rows.map(row => ({ lotId: row.lotId, locationId: row.locationId, available: row.quantity, receivedAt: row.lot.receivedAt })), quantity, lotId);
+  }
+
+  /**
+   * Salida de una ubicación, lote por lote. Las ventas, los ajustes y las reversiones reducen existencias y valor
+   * (al costo promedio); un traslado mueve existencias sin tocar la valoración global.
+   */
+  async take(tx: Tx, companyId: number, userId: number, data: { productId: number; locationId: number; quantity: Prisma.Decimal.Value; key: string; type: 'SALE' | 'ADJUSTMENT' | 'REVERSAL'; reason: string; reference: Reference; lotId?: number }) {
+    const quantity = new Prisma.Decimal(data.quantity);
+    if (quantity.lte(0)) throw new BadRequestException('La cantidad debe ser mayor que cero');
+    this.integer(quantity, data.type === 'REVERSAL');
+    const prior = await this.existing(tx, data.key);
+    if (prior.length) {
+      if (prior.some(m => m.locationId !== data.locationId || m.productId !== data.productId || m.reason !== data.reason) || !sum(prior.map(m => m.quantityOut)).eq(quantity)) throw new ConflictException('La referencia ya fue usada para otro movimiento');
+      return prior;
     }
     const product = await tx.product.findFirst({ where: { id: data.productId, companyId, ...(data.type !== 'REVERSAL' ? { isActive: true, deletedAt: null } : {}) } });
-    const location = await tx.location.findFirst({ where: { id: data.locationId, warehouse: { branch: { companyId } } }, include: { warehouse: { include: { branch: true } } } });
-    if (!product || !location) throw new BadRequestException('Producto y ubicacion deben pertenecer a la empresa activa');
-    if (data.type !== 'REVERSAL' && (!location.isActive || location.deletedAt || !location.warehouse.isActive || location.warehouse.deletedAt || !location.warehouse.branch.isActive || location.warehouse.branch.deletedAt)) throw new BadRequestException('La ubicacion, el almacen y la sucursal deben estar activos');
-    const current = await tx.inventoryStock.findUnique({ where: { productId_locationId: { productId: data.productId, locationId: data.locationId } } });
-    const balance = (current?.quantity ?? new Prisma.Decimal(0)).add(delta);
-    if (balance.lt(0)) throw new ConflictException('Existencias insuficientes para registrar la salida o revertir la recepcion');
-    if (balance.gt('9999999999.99')) throw new BadRequestException('El saldo supera el limite permitido');
-    const stock = await tx.inventoryStock.upsert({ where: { productId_locationId: { productId: data.productId, locationId: data.locationId } }, create: { productId: data.productId, locationId: data.locationId, quantity: balance }, update: { quantity: balance } });
-    const result = await tx.inventoryMovement.create({ data: { stockId: stock.id, userId, purchaseItemId: data.purchaseItemId, key: data.key, type: data.type, quantity: delta, balance, reason: data.reason } });
-    await this.audit.record(tx, { controller: 'inventory', action: data.type, recordId: result.id, originalData: { companyId, quantity: current?.quantity ?? 0 }, modifiedData: { companyId, ...result }, userId });
-    return result;
+    if (!product) throw new BadRequestException('Producto y ubicacion deben pertenecer a la empresa activa');
+    const place = await this.place(tx, companyId, data.locationId, data.type !== 'REVERSAL');
+    const slices = await this.allocate(tx, data.productId, data.locationId, quantity, data.lotId);
+    let cost = await this.costOf(tx, companyId, data.productId);
+    const unitCost = cost.average;
+    const movements = [];
+    for (const slice of slices) {
+      const balance = await this.moveStock(tx, data.productId, slice.lotId, place.id, slice.quantity.negated());
+      movements.push(await this.record(tx, userId, { productId: data.productId, lotId: slice.lotId, place, warehouseId: place.warehouseId, type: data.type, quantityOut: slice.quantity, unitCost, key: slices.length > 1 ? `${data.key}#${slice.lotId}` : data.key, reason: data.reason, reference: data.reference, balance }));
+    }
+    cost = applyExit(cost, quantity);
+    await this.saveCost(tx, companyId, data.productId, cost);
+    for (const movement of movements) await this.audit.record(tx, { controller: 'inventory', action: data.type, recordId: movement.id, originalData: { companyId }, modifiedData: { companyId, ...movement }, userId });
+    return movements;
+  }
+
+  /** Traslado, despacho: el lote sale de la ubicación de origen; permanece valorizado mientras viaja. */
+  async dispatchOut(tx: Tx, companyId: number, userId: number, data: { lotId: number; productId: number; locationId: number; quantity: Prisma.Decimal; key: string; reason: string; transferId: number }) {
+    const prior = await tx.inventoryMovement.findUnique({ where: { key: data.key } });
+    if (prior) return prior;
+    const place = await this.place(tx, companyId, data.locationId, true);
+    const balance = await this.moveStock(tx, data.productId, data.lotId, place.id, data.quantity.negated());
+    const cost = await this.costOf(tx, companyId, data.productId);
+    const movement = await this.record(tx, userId, { productId: data.productId, lotId: data.lotId, place, warehouseId: place.warehouseId, type: 'TRANSFER_OUT', quantityOut: data.quantity, unitCost: cost.average, key: data.key, reason: data.reason, reference: { type: 'transfer', id: data.transferId }, balance });
+    await this.audit.record(tx, { controller: 'inventory', action: 'TRANSFER_OUT', recordId: movement.id, originalData: { companyId }, modifiedData: { companyId, ...movement }, userId });
+    return movement;
+  }
+
+  /** Traslado, recepción: la cantidad llega al destino conservando lote y costo; no cambia la valoración global. */
+  async receiveIn(tx: Tx, companyId: number, userId: number, data: { lotId: number; productId: number; locationId: number; quantity: Prisma.Decimal; key: string; reason: string; transferId: number }) {
+    const prior = await tx.inventoryMovement.findUnique({ where: { key: data.key } });
+    if (prior) return prior;
+    this.integer(data.quantity, false);
+    const place = await this.place(tx, companyId, data.locationId, true);
+    const lot = await tx.inventoryLot.findFirst({ where: { id: data.lotId, productId: data.productId, status: { not: 'CANCELLED' } } });
+    if (!lot) throw new ConflictException('El lote del traslado ya no está disponible');
+    const balance = await this.moveStock(tx, data.productId, data.lotId, place.id, data.quantity);
+    const cost = await this.costOf(tx, companyId, data.productId);
+    const movement = await this.record(tx, userId, { productId: data.productId, lotId: data.lotId, place, warehouseId: place.warehouseId, type: 'TRANSFER_IN', quantityIn: data.quantity, unitCost: cost.average, key: data.key, reason: data.reason, reference: { type: 'transfer', id: data.transferId }, balance });
+    await this.audit.record(tx, { controller: 'inventory', action: 'TRANSFER_IN', recordId: movement.id, originalData: { companyId }, modifiedData: { companyId, ...movement }, userId });
+    return movement;
+  }
+
+  /** Reversión de una recepción cancelada: la salida usa el mismo lote y lo deja cancelado. */
+  async reverseReceipt(tx: Tx, companyId: number, userId: number, data: { purchaseItemId: number; locationId: number; reason: string }) {
+    const item = await tx.purchaseItem.findUniqueOrThrow({ where: { id: data.purchaseItemId } });
+    const lot = await tx.inventoryLot.findFirst({ where: { purchaseItemId: item.id, status: { not: 'CANCELLED' } } });
+    if (!lot) return null;
+    const movements = await this.take(tx, companyId, userId, { productId: item.productId, locationId: data.locationId, quantity: item.quantity, lotId: lot.id, type: 'REVERSAL', key: `reversal:${item.id}`, reason: data.reason, reference: { type: 'purchase_detail', id: item.id } })
+      .catch(error => { if (error instanceof ConflictException) throw new ConflictException('Existencias insuficientes para registrar la salida o revertir la recepcion'); throw error; });
+    await tx.inventoryLot.update({ where: { id: lot.id }, data: { status: 'CANCELLED' } });
+    return movements;
+  }
+
+  /** Al cerrarse el retaceo, el costo final reemplaza al provisional solo en las unidades que siguen en existencia. */
+  async revalueReceipt(tx: Tx, companyId: number, userId: number, data: { purchaseItemId: number; unitCost: Prisma.Decimal; retaceoId: number }) {
+    const lot = await tx.inventoryLot.findFirst({ where: { purchaseItemId: data.purchaseItemId, status: { not: 'CANCELLED' } }, include: { purchaseItem: { include: { purchase: { select: { warehouseId: true } } } } } });
+    if (!lot || lot.unitCost.eq(data.unitCost)) return null;
+    const key = `revalue:${lot.id}:${data.retaceoId}`;
+    if (await tx.inventoryMovement.findUnique({ where: { key } })) return null;
+    const placed = await tx.inventoryLocationDetail.findMany({ where: { lotId: lot.id, quantity: { gt: 0 } }, include: { location: { select: { warehouseId: true } } } });
+    const moving = (await this.openTransit(tx, [lot.id])).get(lot.id) ?? ZERO;
+    const onHand = sum(placed.map(row => row.quantity)).add(moving);
+    const delta = onHand.mul(data.unitCost.sub(lot.unitCost)).toDecimalPlaces(2);
+    await tx.inventoryLot.update({ where: { id: lot.id }, data: { unitCost: data.unitCost, totalCost: lot.quantityReceived.mul(data.unitCost).toDecimalPlaces(2) } });
+    if (onHand.lte(0) || delta.isZero()) return null;
+    const next = applyRevaluation(await this.costOf(tx, companyId, lot.productId), delta);
+    await this.saveCost(tx, companyId, lot.productId, next);
+    const warehouseId = placed[0]?.location.warehouseId ?? lot.purchaseItem?.purchase.warehouseId;
+    if (!warehouseId) return null;
+    const movement = await this.record(tx, userId, { productId: lot.productId, lotId: lot.id, place: placed[0] ? { id: placed[0].locationId, warehouseId } : null, warehouseId, type: 'ADJUSTMENT', unitCost: data.unitCost, totalCost: delta, key, reason: `Costo final del retaceo (${lot.unitCost.toFixed(4)} → ${data.unitCost.toFixed(4)})`, reference: { type: 'retaceo', id: data.retaceoId }, balance: next.quantity });
+    await this.audit.record(tx, { controller: 'inventory', action: 'REVALUE', recordId: movement.id, originalData: { companyId, unitCost: lot.unitCost }, modifiedData: { companyId, ...movement }, userId });
+    return movement;
+  }
+
+  private async adjustIn(tx: Tx, companyId: number, userId: number, dto: InventoryAdjustmentDto) {
+    const key = `adjust:${companyId}:${dto.requestId.toLowerCase()}`;
+    const delta = new Prisma.Decimal(dto.quantity);
+    this.integer(delta, false);
+    if (delta.lt(0)) {
+      const rows = await this.take(tx, companyId, userId, { productId: dto.productId, locationId: dto.locationId, quantity: delta.negated(), lotId: dto.lotId, type: 'ADJUSTMENT', key, reason: dto.reason, reference: { type: 'adjustment' } });
+      return rows[0]!;
+    }
+    const prior = await this.existing(tx, key);
+    if (prior.length) {
+      if (prior[0]!.productId !== dto.productId || prior[0]!.locationId !== dto.locationId || !prior[0]!.quantityIn.eq(delta) || prior[0]!.reason !== dto.reason) throw new ConflictException('La referencia ya fue usada para otro movimiento');
+      return prior[0]!;
+    }
+    const product = await tx.product.findFirst({ where: { id: dto.productId, companyId, isActive: true, deletedAt: null } });
+    if (!product) throw new BadRequestException('Producto y ubicacion deben pertenecer a la empresa activa');
+    const place = await this.place(tx, companyId, dto.locationId, true);
+    const cost = await this.costOf(tx, companyId, dto.productId);
+    // Una entrada por ajuste se valora al promedio vigente; sin existencias previas, al costo del catálogo.
+    const unitCost = cost.average.gt(0) ? cost.average : product.unitCost;
+    let lotId = dto.lotId;
+    if (lotId) {
+      const lot = await tx.inventoryLot.findFirst({ where: { id: lotId, productId: dto.productId, status: { not: 'CANCELLED' } } });
+      if (!lot) throw new BadRequestException('El lote no pertenece al producto o fue cancelado');
+      const located = sum((await tx.inventoryLocationDetail.findMany({ where: { lotId } })).map(row => row.quantity)).add((await this.openTransit(tx, [lotId])).get(lotId) ?? ZERO);
+      if (located.add(delta).gt(lot.quantityReceived)) throw new ConflictException('El ajuste supera la cantidad recibida del lote; deje el lote en blanco para crear un lote de ajuste');
+    } else {
+      const created = await tx.inventoryLot.create({ data: { lotCode: `TMP-${key}`.slice(0, 60), productId: dto.productId, receivedAt: new Date(), quantityReceived: delta, unitCost, totalCost: delta.mul(unitCost).toDecimalPlaces(2) } });
+      lotId = (await tx.inventoryLot.update({ where: { id: created.id }, data: { lotCode: lotCodeForAdjustment(created.id) } })).id;
+    }
+    const balance = await this.moveStock(tx, dto.productId, lotId, place.id, delta);
+    await this.saveCost(tx, companyId, dto.productId, applyEntry(cost, delta, unitCost));
+    const movement = await this.record(tx, userId, { productId: dto.productId, lotId, place, warehouseId: place.warehouseId, type: 'ADJUSTMENT', quantityIn: delta, unitCost, key, reason: dto.reason, reference: { type: 'adjustment' }, balance });
+    await this.audit.record(tx, { controller: 'inventory', action: 'ADJUSTMENT', recordId: movement.id, originalData: { companyId, quantity: balance.sub(delta) }, modifiedData: { companyId, ...movement }, userId });
+    return movement;
   }
 }
