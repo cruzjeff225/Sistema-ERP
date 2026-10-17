@@ -81,7 +81,7 @@ const tabs = computed(() => {
 });
 const activeTask = computed(() => tabs.value.find(task => task.id === tab.value));
 const taskLink = (id: string) => ({ path: '/inventory/warehouse', query: { ...route.query, tab: id } });
-const pendingTransfers = computed(() => visibleTransfers.value.filter(t => ['IN_TRANSIT','PARTIALLY_RECEIVED'].includes(t.status)).length);
+const pendingTransfers = computed(() => visibleTransfers.value.filter(t => ['IN_TRANSIT','PARTIALLY_RECEIVED','INCIDENT'].includes(t.status)).length);
 const backToDocument = computed(() => context.value?.kind === 'purchase' && can('purchases.view') ? `/purchases/receipts?id=${context.value.id}` : context.value?.kind === 'request' && can('purchase_requests.view') ? `/purchases/requests?id=${context.value.id}` : null);
 const destinationWarehouses = computed(() => catalogs.value.warehouses.filter((w: any) => w.branchId === request.value?.branchId && w.id !== general.value?.id));
 const destinationLocations = computed(() => destinationSpaces.value.filter(l => l.isActive && !l.deletedAt));
@@ -337,12 +337,12 @@ onBeforeUnmount(() => { loadVersion++; stockVersion++; expenseVersion++; destina
                 <template v-for="t in visibleTransfers" :key="t.id">
                   <tr v-for="(i, index) in t.items" :key="i.id">
                     <th scope="row" class="whitespace-nowrap px-4 py-3.5 text-left align-top font-semibold text-fg">{{ index === 0 ? t.documentNumber : '' }}</th>
-                    <td class="px-3 py-3.5 align-top"><p class="text-fg">{{ i.product.name }}</p><p v-if="i.requestDetail?.request.code" class="mt-0.5 text-muted-fg">{{ i.requestDetail.request.code }}</p></td>
+                    <td class="px-3 py-3.5 align-top"><p class="text-fg">{{ i.product.name }}</p><p v-if="i.lot" class="mt-0.5 font-mono text-xs text-muted-fg">Lote {{ i.lot.lotCode }}</p><p v-if="i.requestDetail?.request.code" class="mt-0.5 text-muted-fg">{{ i.requestDetail.request.code }}</p></td>
                     <td v-if="!context" class="px-3 py-3.5 align-top text-fg">{{ i.requestDetail?.request.branch.name }}</td>
                     <td class="px-3 py-3.5 text-center align-top tabular-nums">{{ Number(i.quantity) }}</td>
                     <td class="px-3 py-3.5 text-center align-top tabular-nums">{{ Number(i.receivedQuantity) }}</td>
                     <td class="px-3 py-3.5 text-center align-top tabular-nums">{{ Math.max(0, Number(i.quantity) - Number(i.receivedQuantity)) }}</td>
-                    <td class="px-4 py-3.5 align-top"><template v-if="index === 0"><span class="inline-flex items-center gap-2"><span class="h-2.5 w-2.5 shrink-0 rounded-full" :class="t.status === 'COMPLETED' ? 'bg-success' : t.status === 'CANCELLED' ? 'bg-danger' : t.status === 'PARTIALLY_RECEIVED' ? 'bg-accent' : 'bg-warning'" aria-hidden="true" />{{ transferStateLabel(t.status) }}</span><RouterLink v-if="['IN_TRANSIT','PARTIALLY_RECEIVED'].includes(t.status) && t.items.some((x: any) => Number(x.quantity) > Number(x.receivedQuantity)) && t.items[0]?.requestDetail?.request?.id && can('purchase_requests.view')" :to="{ path: '/purchases/requests/' + t.items[0].requestDetail.request.id }" class="mt-1 block text-sm text-muted-fg hover:text-fg hover:underline">La sucursal lo recibe en su solicitud</RouterLink></template></td>
+                    <td class="px-4 py-3.5 align-top"><template v-if="index === 0"><span class="inline-flex items-center gap-2"><span class="h-2.5 w-2.5 shrink-0 rounded-full" :class="t.status === 'COMPLETED' ? 'bg-success' : t.status === 'CANCELLED' || t.status === 'INCIDENT' ? 'bg-danger' : t.status === 'PARTIALLY_RECEIVED' ? 'bg-accent' : 'bg-warning'" aria-hidden="true" />{{ transferStateLabel(t.status) }}</span><RouterLink v-if="['IN_TRANSIT','PARTIALLY_RECEIVED','INCIDENT'].includes(t.status) && t.items.some((x: any) => Number(x.quantity) > Number(x.receivedQuantity)) && t.items[0]?.requestDetail?.request?.id && can('purchase_requests.view')" :to="{ path: '/purchases/requests/' + t.items[0].requestDetail.request.id }" class="mt-1 block text-sm text-muted-fg hover:text-fg hover:underline">La sucursal lo recibe en su solicitud</RouterLink></template></td>
                   </tr>
                 </template>
               </tbody>
