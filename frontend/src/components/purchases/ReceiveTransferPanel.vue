@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // The branch confirms what arrived from the warehouse inside its own request: quantities received and where they were placed.
 import { computed, onMounted, ref, watch } from 'vue';
-import { Check } from 'lucide-vue-next';
+import { Check, TriangleAlert } from 'lucide-vue-next';
 import AppButton from '../base/AppButton.vue';
 import ConfirmDialog from '../base/ConfirmDialog.vue';
 import { http } from '../../services/http.service';
@@ -30,7 +30,7 @@ const headers = () => ({ headers: { 'X-Company-Id': String(activeCompanyId.value
 const belongsHere = (transfer: any) => transfer.items.some((item: any) => item.requestDetail?.request?.id === props.requestId);
 const mine = computed(() => transfers.value.filter(belongsHere));
 const pendingOf = (item: any) => Math.max(0, Number(item.quantity) - Number(item.receivedQuantity));
-const canReceive = (transfer: any) => ['IN_TRANSIT', 'PARTIALLY_RECEIVED'].includes(transfer.status) && transfer.items.some((item: any) => pendingOf(item) > 0);
+const canReceive = (transfer: any) => ['IN_TRANSIT', 'PARTIALLY_RECEIVED', 'INCIDENT'].includes(transfer.status) && transfer.items.some((item: any) => pendingOf(item) > 0);
 const locations = computed(() => warehouses.value.find((warehouse: any) => warehouse.id === receiving.value?.toWarehouseId)?.locations ?? []);
 const itemsOf = (transfer: any) => transfer.items.filter((item: any) => item.requestDetail?.request?.id === props.requestId);
 
@@ -48,7 +48,19 @@ async function load() {
 
 function start(transfer: any) {
   receiving.value = transfer; requestUuid.value = crypto.randomUUID(); error.value = '';
-  lines.value = itemsOf(transfer).filter((item: any) => pendingOf(item) > 0).map((item: any) => ({ itemId: item.id, productName: item.product.name, unit: item.product.purchaseUnit?.name ?? '', quantity: 0, pending: pendingOf(item), locationId: item.toLocationId ?? 0 }));
+  lines.value = itemsOf(transfer).filter((item: any) => pendingOf(item) > 0).map((item: any) => ({ itemId: item.id, productName: item.product.name + (item.lot ? ' · lote ' + item.lot.lotCode : ''), unit: item.product.purchaseUnit?.name ?? '', quantity: 0, pending: pendingOf(item), locationId: item.toLocationId ?? 0 }));
+}
+const incidentOpen = ref(false), incidentReason = ref('');
+async function reportIncident() {
+  if (saving.value || !receiving.value) return;
+  saving.value = true; error.value = '';
+  try {
+    await http.post(`/supply/transfers/${receiving.value.id}/incident`, { reason: incidentReason.value.trim() }, headers());
+    feedback.success('Incidencia registrada en el traslado.');
+    incidentOpen.value = false; incidentReason.value = ''; receiving.value = null; lines.value = [];
+    await load(); emit('received');
+  } catch (caught) { error.value = getApiErrorMessage(caught, 'No se pudo registrar la incidencia'); }
+  finally { saving.value = false; }
 }
 const fillPending = () => { for (const line of lines.value) line.quantity = line.pending; };
 function review() {
@@ -86,7 +98,7 @@ watch([() => props.requestId, activeCompanyId], () => { receiving.value = null; 
           <template v-for="transfer in mine" :key="transfer.id">
             <tr>
               <th scope="row" class="whitespace-nowrap px-4 py-3.5 text-left align-top font-semibold text-fg">{{ transfer.documentNumber }}</th>
-              <td class="px-4 py-3.5 align-top"><div v-for="item in itemsOf(transfer)" :key="item.id" class="mb-1 last:mb-0"><p class="font-medium text-fg">{{ item.product.name }}</p><p class="mt-0.5 text-muted-fg">Despachado {{ Number(item.quantity) }} · Recibido {{ Number(item.receivedQuantity) }}<span v-if="pendingOf(item) > 0"> · En tránsito {{ pendingOf(item) }}</span></p></div></td>
+              <td class="px-4 py-3.5 align-top"><div v-for="item in itemsOf(transfer)" :key="item.id" class="mb-1 last:mb-0"><p class="font-medium text-fg">{{ item.product.name }}<span v-if="item.lot" class="ml-2 font-mono text-xs font-normal text-muted-fg">Lote {{ item.lot.lotCode }}</span></p><p class="mt-0.5 text-muted-fg">Despachado {{ Number(item.quantity) }} · Recibido {{ Number(item.receivedQuantity) }}<span v-if="pendingOf(item) > 0"> · En tránsito {{ pendingOf(item) }}</span></p></div></td>
               <td class="px-4 py-3.5 align-top"><span class="inline-flex items-center gap-2"><span class="h-2.5 w-2.5 shrink-0 rounded-full" :class="statusDotClass(documentStatusVariant(transfer.status))" aria-hidden="true" />{{ documentStatusLabel(transfer.status) }}</span></td>
               <td class="px-4 py-3 text-right align-top"><AppButton v-if="canReceive(transfer) && receiving?.id !== transfer.id" variant="outline" :disabled="loading || saving" @click="start(transfer)">Recibir en sucursal</AppButton></td>
             </tr>
@@ -95,9 +107,10 @@ watch([() => props.requestId, activeCompanyId], () => { receiving.value = null; 
                 <form class="space-y-4" aria-labelledby="receive-form-title" @submit.prevent="review">
                   <div class="flex flex-wrap items-center justify-between gap-3">
                     <h3 id="receive-form-title" class="text-lg font-semibold tracking-tight text-fg">Recepción en sucursal</h3>
-                    <div class="flex items-center gap-2"><AppButton type="button" variant="ghost" :disabled="saving" @click="receiving = null">Cancelar</AppButton><AppButton type="submit" :disabled="saving || !lines.some(line => line.quantity > 0)">Revisar recepción</AppButton></div>
+                    <div class="flex items-center gap-2"><AppButton type="button" variant="ghost" :disabled="saving" @click="receiving = null; incidentOpen = false">Cancelar</AppButton><AppButton v-if="receiving.status !== 'INCIDENT'" type="button" variant="outline" :disabled="saving" @click="incidentOpen = !incidentOpen"><TriangleAlert class="h-4 w-4" aria-hidden="true" />Reportar incidencia</AppButton><AppButton type="submit" :disabled="saving || !lines.some(line => line.quantity > 0)">Revisar recepción</AppButton></div>
                   </div>
                   <p class="text-sm text-muted-fg">Registre solamente lo que recibió y confirme dónde quedó en la sucursal.</p>
+                  <div v-if="incidentOpen" class="rounded-lg border border-border bg-surface-secondary p-3"><label class="block text-sm font-medium text-fg">Motivo de la incidencia<input v-model="incidentReason" maxlength="500" class="field-control" placeholder="Faltante, producto dañado u otra diferencia" /></label><p class="mt-2 text-xs text-muted-fg">El traslado queda en incidencia hasta que se complete la recepción; lo que no llegó no se muestra disponible en la sucursal.</p><AppButton type="button" class="mt-3" :disabled="saving || incidentReason.trim().length < 5" @click="reportIncident">Registrar incidencia</AppButton></div>
                   <p v-if="error" role="alert" class="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">{{ error }}</p>
                   <div class="space-y-3">
                     <div class="hidden gap-4 text-sm text-muted-fg sm:grid sm:grid-cols-[minmax(0,1.4fr)_6rem_minmax(0,1fr)_minmax(0,1.2fr)]" aria-hidden="true"><span>Producto</span><span>Pendiente</span><span>Cantidad recibida</span><span>Ubicación confirmada</span></div>

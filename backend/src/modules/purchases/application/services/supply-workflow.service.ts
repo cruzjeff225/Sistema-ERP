@@ -232,7 +232,7 @@ export class SupplyWorkflowService {
     });
   }
   transfers(companyId: number) {
-    return this.prisma.transfer.findMany({ where: { companyId, deletedAt: null }, include: { items: { include: { product: true, requestDetail: { include: { request: { include: { branch: true } } } } } } }, orderBy: { id: 'desc' } });
+    return this.prisma.transfer.findMany({ where: { companyId, deletedAt: null }, include: { items: { include: { product: true, lot: { select: { id: true, lotCode: true } }, requestDetail: { include: { request: { include: { branch: true } } } } } } }, orderBy: { id: 'desc' } });
   }
   dispatch(dto: TransferDto, companyId: number, userId: number) {
     return purchaseTransaction(this.prisma, companyId, async tx => {

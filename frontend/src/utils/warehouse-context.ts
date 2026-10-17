@@ -24,5 +24,5 @@ export function receiptStateLabel(status: string) {
 }
 
 export function transferStateLabel(status: string) {
-  return ({ IN_TRANSIT: 'En tránsito', PARTIALLY_RECEIVED: 'Recepción parcial', COMPLETED: 'Entregado', CANCELLED: 'Cancelado' } as Record<string, string>)[status] ?? 'Estado sin identificar';
+  return ({ PREPARING: 'En preparación', IN_TRANSIT: 'En tránsito', PARTIALLY_RECEIVED: 'Recepción parcial', COMPLETED: 'Entregado', INCIDENT: 'Incidencia', CANCELLED: 'Cancelado' } as Record<string, string>)[status] ?? 'Estado sin identificar';
 }

@@ -96,15 +96,15 @@ const DOCUMENT_STATUS: Record<string, string> = {
   pending_approval: 'Pendiente de aprobación', sent: 'Enviada al proveedor', partially_received: 'Recepción parcial', closed: 'Cerrada', pending_review: 'En revisión de Gerencia',
   calculated: 'Calculado', verified: 'Verificado', created: 'Creada',
   RECEIVED: 'Recibida', VERIFIED: 'Verificada', COSTED: 'Retaceada', CLOSED: 'Cerrada', CANCELLED: 'Cancelada',
-  IN_TRANSIT: 'En tránsito', PARTIALLY_RECEIVED: 'Recibido parcialmente', COMPLETED: 'Entregado',
+  PREPARING: 'En preparación', IN_TRANSIT: 'En tránsito', PARTIALLY_RECEIVED: 'Recibido parcialmente', COMPLETED: 'Entregado', INCIDENT: 'Incidencia',
 };
 export const documentStatusLabel = (status: string) => DOCUMENT_STATUS[status] ?? status;
 
 export function documentStatusVariant(status: string): 'success' | 'danger' | 'warning' | 'info' | 'neutral' {
   const key = status.toLowerCase();
   if (['approved', 'selected', 'received', 'completed', 'closed', 'fulfilled', 'verified', 'costed'].includes(key)) return 'success';
-  if (['rejected', 'cancelled', 'expired'].includes(key)) return 'danger';
-  if (['pending_approval', 'pending_review', 'returned', 'in_transit', 'draft'].includes(key)) return 'warning';
+  if (['rejected', 'cancelled', 'expired', 'incident'].includes(key)) return 'danger';
+  if (['pending_approval', 'pending_review', 'returned', 'in_transit', 'preparing', 'draft'].includes(key)) return 'warning';
   return 'neutral';
 }
 /** Colour of the dot that goes next to a document status; the label stays neutral so it keeps its contrast. */
