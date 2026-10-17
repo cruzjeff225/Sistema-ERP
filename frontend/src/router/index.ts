@@ -5,6 +5,7 @@ import { administrationPermissions, administrationRoute, administrationSections,
 import { operationsPermissions, operationsRoute } from '../config/operations.config';
 import { purchasingPermissions, purchasingRoute } from '../config/purchasing.config';
 import { salesPermissions, salesRoute } from '../config/sales.config';
+import { myPendingRoute } from '../config/my-pending.config';
 
 const administrationViews: Record<AdministrationSectionId, () => Promise<unknown>> = {
   users: () => import('../views/UsersView.vue'),
@@ -24,6 +25,7 @@ const router = createRouter({
     { path: salesRoute, name: 'sales', component: () => import('../views/SalesView.vue'), meta: { permissionsAny: salesPermissions } },
     { path: '/sales/customers', name: 'customers', component: () => import('../views/CustomersView.vue'), meta: { permission: 'customers.view' } },
     { path: '/customers', redirect: to => ({ path: '/sales/customers', query: to.query, hash: to.hash }) },
+    { path: myPendingRoute, name: 'my-pending', component: () => import('../views/MyPendingView.vue'), meta: { permission: 'purchases.view' } },
     { path: purchasingRoute, name: 'purchasing', component: () => import('../views/PurchasingView.vue'), meta: { permissionsAny: purchasingPermissions } },
     { path: operationsRoute, name: 'operations', component: () => import('../views/OperationsView.vue'), meta: { permissionsAny: operationsPermissions } },
     { path: administrationRoute, name: 'settings', component: () => import('../views/SettingsView.vue'), meta: { permissionsAny: administrationPermissions } },

@@ -1,12 +1,20 @@
 <script setup lang="ts">
 import { computed, onMounted, onBeforeUnmount, ref } from 'vue';
 import { RouterLink } from 'vue-router';
-import { ArrowUpRight, ClipboardCheck, Package, Building2, Sun, Moon, FilePlus2, ListChecks, PackageCheck, SlidersHorizontal, UserPlus, PackagePlus } from 'lucide-vue-next';
+import { Boxes, Building2, ClipboardCheck, ClipboardList, Clock, ListChecks, Moon, Package, PackageCheck, Sun, Tag, Users } from 'lucide-vue-next';
 import AdminLayout from '../layouts/AdminLayout.vue';
-import MyPendingPanel from '../components/purchases/MyPendingPanel.vue';
 import { usePermissions } from '../composables/usePermissions';
-import { purchasingPermissions, purchasingRoute } from '../config/purchasing.config';
+import { useMyPending } from '../composables/useMyPending';
+import { useRecentDocuments, type RecentDocument } from '../composables/useRecentDocuments';
+import { relativeTime } from '../utils/purchase-tracking';
+import { myPendingRoute } from '../config/my-pending.config';
+import { purchasingPermissions, purchasingRoute, purchasingSections } from '../config/purchasing.config';
+import { operationsSections } from '../config/operations.config';
+import { salesSections } from '../config/sales.config';
+
 const { currentUser, can, canAny } = usePermissions();
+const { items: pending, rows: processes, loading: pendingLoading, failed: pendingFailed, visible: pendingVisible } = useMyPending();
+const { items: recent } = useRecentDocuments(3);
 const now = ref(new Date());
 let timer: ReturnType<typeof setInterval> | undefined;
 onMounted(() => { timer = setInterval(() => now.value = new Date(), 60000); });
@@ -14,37 +22,48 @@ onBeforeUnmount(() => clearInterval(timer));
 const displayName = computed(() => (currentUser.value?.employee?.fullName || currentUser.value?.username || '').split(' ')[0]);
 const hour = computed(() => Number(new Intl.DateTimeFormat('en-GB', { hour: '2-digit', hourCycle: 'h23', timeZone: 'America/El_Salvador' }).format(now.value)));
 const greeting = computed(() => hour.value < 12 ? 'Buenos días' : hour.value < 18 ? 'Buenas tardes' : 'Buenas noches');
-const date = computed(() => new Intl.DateTimeFormat('es-SV', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'America/El_Salvador' }).format(now.value));
+const isDay = computed(() => hour.value >= 6 && hour.value < 18);
+const date = computed(() => { const text = new Intl.DateTimeFormat('es-SV', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'America/El_Salvador' }).format(now.value); return text.charAt(0).toUpperCase() + text.slice(1); });
 const time = computed(() => new Intl.DateTimeFormat('es-SV', { hour: '2-digit', minute: '2-digit', timeZone: 'America/El_Salvador' }).format(now.value));
+
+// Routes and permissions come from each module's own config, so the shortcuts never drift from the menu.
+const section = <T extends { id: string; route: string; permission: string }>(list: readonly T[], id: string) => list.find(item => item.id === id)!;
+const shortcuts = computed(() => [
+  { name: 'Solicitudes de compra', icon: ClipboardList, section: section(purchasingSections, 'requests') },
+  { name: 'Seguimiento de compras', icon: ListChecks, section: section(purchasingSections, 'tracking') },
+  { name: 'Recepciones de compra', icon: PackageCheck, section: section(purchasingSections, 'receipts') },
+  { name: 'Bodega', icon: Boxes, section: section(operationsSections, 'warehouse') },
+  { name: 'Productos', icon: Tag, section: section(operationsSections, 'products') },
+  { name: 'Clientes', icon: Users, section: section(salesSections, 'customers') },
+].filter(item => can(item.section.permission)).map(item => ({ name: item.name, icon: item.icon, route: item.section.route, detail: '' })));
 const destinations = computed(() => [
- { name: 'Gestionar compras', detail: 'Solicitudes, cotizaciones y órdenes.', icon: ClipboardCheck, route: canAny(purchasingPermissions) ? purchasingRoute : null },
- { name: 'Inventario', detail: 'Cada recurso, en su lugar.', icon: Package, route: can('inventory.view') ? '/inventory' : null },
- { name: 'Organización', detail: 'El equipo y sus espacios.', icon: Building2, route: can('companies.view') ? '/organization' : can('branches.view') ? '/organization/branches' : null },
-].filter(d => d.route));
-// The tasks done most often, one click away; each one only appears when the user's permissions allow it.
-const quickActions = computed(() => [
- { name: 'Nueva solicitud de compra', icon: FilePlus2, route: '/purchases/requests?new=1', allowed: can('purchase_requests.create') },
- { name: 'Seguimiento de compras', icon: ListChecks, route: '/purchases/tracking', allowed: can('purchases.view') },
- { name: 'Registrar recepción', icon: PackageCheck, route: '/purchases/receipts', allowed: can('purchases.create') },
- { name: 'Ajustar inventario', icon: SlidersHorizontal, route: '/inventory', allowed: can('inventory.adjust') },
- { name: 'Nuevo producto', icon: PackagePlus, route: '/products?new=1', allowed: can('products.create') },
- { name: 'Nuevo cliente', icon: UserPlus, route: '/sales/customers?new=1', allowed: can('customers.create') },
-].filter(action => action.allowed));
+  { name: 'Gestionar compras', detail: 'Solicitudes, cotizaciones y órdenes.', icon: ClipboardCheck, route: canAny(purchasingPermissions) ? purchasingRoute : null },
+  { name: 'Inventario', detail: 'Cada recurso, en su lugar.', icon: Package, route: can('inventory.view') ? '/inventory' : null },
+  { name: 'Organización', detail: 'El equipo y sus espacios.', icon: Building2, route: can('companies.view') ? '/organization' : can('branches.view') ? '/organization/branches' : null },
+].filter(d => d.route) as { name: string; detail: string; icon: typeof Package; route: string }[]);
+const quickAccess = computed(() => [...shortcuts.value, ...destinations.value]);
+
+// The live stage of the purchase when it is still in progress; otherwise the one saved when it was opened.
+const stageOf = (doc: RecentDocument) => processes.value.find(row => doc.anchor && row.anchor.type === doc.anchor.type && row.anchor.id === doc.anchor.id)?.currentStage?.label || doc.stage || '—';
+const showRecent = computed(() => canAny(purchasingPermissions));
+
+const pendingText = computed(() => pendingLoading.value || pendingFailed.value ? 'Mis pendientes' : `${pending.value.length} ${pending.value.length === 1 ? 'pendiente' : 'pendientes'}`);
+const pendingLabel = computed(() => pendingLoading.value || pendingFailed.value ? 'Mis pendientes' : `Mis pendientes: ${pending.value.length}`);
 </script>
 <template>
  <AdminLayout title="Inicio">
-  <div class="welcome">
-   <!-- The breadcrumb already says "Inicio"; the strip above the hero only carries the date. -->
-   <div class="welcome-meta"><span class="welcome-company" aria-hidden="true"></span><span class="welcome-date">{{ date }}</span></div>
-   <section class="welcome-hero" aria-labelledby="welcome-title">
-    <div class="welcome-copy">
-     <p class="welcome-eyebrow"><span></span>SU ESPACIO DE GESTIÓN</p>
-     <h1 id="welcome-title">{{ greeting }}<span v-if="displayName">,<br />{{ displayName }}.</span><span v-else>.</span></h1>
-     <p class="welcome-description">Una nueva perspectiva<br />para cada decisión.</p>
-     <div class="welcome-clock"><Sun v-if="hour >= 6 && hour < 18" :size="18" :stroke-width="1.3" /><Moon v-else :size="18" :stroke-width="1.3" /><span>{{ time }}</span><span class="clock-divider"></span><span>El Salvador</span></div>
+  <div class="mx-auto w-full max-w-6xl">
+   <section class="grid min-h-[220px] grid-cols-[minmax(0,1fr)_auto] items-center gap-4 overflow-hidden rounded-[12px] border border-border bg-surface px-5 sm:px-8 lg:h-[240px]" aria-labelledby="welcome-title">
+    <div class="min-w-0 py-6">
+     <h1 id="welcome-title" class="text-[26px] font-semibold leading-tight tracking-tight text-fg sm:text-4xl">{{ greeting }}<span v-if="displayName">, {{ displayName }}.</span><span v-else>.</span></h1>
+     <p class="mt-2 text-sm text-muted-fg sm:text-base">Una nueva perspectiva para cada decisión.</p>
+     <p class="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] tabular-nums text-muted-fg">
+      <span class="inline-flex items-center gap-2 whitespace-nowrap"><Sun v-if="isDay" class="h-4 w-4" :stroke-width="1.5" aria-label="Día" /><Moon v-else class="h-4 w-4" :stroke-width="1.5" aria-label="Noche" />{{ time }}<span class="h-3 w-px bg-border" aria-hidden="true"></span>El Salvador</span>
+      <span class="hidden items-center gap-3 sm:inline-flex"><span class="h-3 w-px bg-border" aria-hidden="true"></span>{{ date }}</span>
+     </p>
     </div>
-    <div class="welcome-art" aria-hidden="true">
-     <svg viewBox="0 0 600 600" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <div class="welcome-art h-[130px] self-center text-fg sm:h-[210px]" aria-hidden="true">
+     <svg viewBox="30 70 565 500" class="h-full w-auto" fill="none" xmlns="http://www.w3.org/2000/svg">
       <defs><linearGradient id="apex-wall" x1="250" y1="220" x2="480" y2="530" gradientUnits="userSpaceOnUse"><stop stop-color="currentColor" stop-opacity=".16"/><stop offset="1" stop-color="currentColor" stop-opacity=".02"/></linearGradient><linearGradient id="apex-roof" x1="230" y1="130" x2="485" y2="400" gradientUnits="userSpaceOnUse"><stop stop-color="#db3437"/><stop offset="1" stop-color="#af252a"/></linearGradient></defs>
       <circle cx="330" cy="290" r="224" class="art-orbit"/><circle cx="330" cy="290" r="174" class="art-orbit art-orbit-inner"/>
       <path d="M45 471L301 323L565 475M96 501L350 354M151 533L401 387M200 563L452 419" class="art-grid"/>
@@ -55,103 +74,62 @@ const quickActions = computed(() => [
       <path d="M153 388L281 206L463 388" class="art-outline"/>
       <path d="M328 458V499L365 478V437L328 458ZM378 429V470L415 449V408L378 429Z" fill="currentColor" opacity=".24"/>
       <path d="M185 421V462L220 482V441L185 421Z" fill="currentColor" opacity=".17"/>
-      <path d="M32 470H96M330 31V73M560 476H591" class="art-grid"/>
      </svg>
     </div>
-    <div class="hero-footer"><span class="hero-edition">DIRECCIÓN & OPERACIONES</span></div>
    </section>
-   <section v-if="destinations.length" class="welcome-destinations" aria-label="Accesos principales">
-    <RouterLink v-for="(destination, index) in destinations" :key="destination.name" :to="destination.route!" class="destination" :class="{ 'destination-purchases': destination.name === 'Gestionar compras' }">
-     <div class="destination-top"><component :is="destination.icon" :size="22" :stroke-width="1.4"/><ArrowUpRight :size="18" :stroke-width="1.5" class="destination-arrow"/></div>
-     <div class="destination-bottom"><div><h2>{{ destination.name }}</h2><p>{{ destination.detail }}</p></div><span v-if="destination.name !== 'Gestionar compras'" class="destination-number">0{{ index + 1 }}</span></div>
-    </RouterLink>
-   </section>
-   <!-- What needs the user right now, before the shortcuts (the panel hides itself without purchasing access). -->
-   <div class="mt-7 empty:hidden"><MyPendingPanel /></div>
-   <section v-if="quickActions.length" class="quick-actions" aria-labelledby="quick-actions-title">
-    <h2 id="quick-actions-title" class="quick-actions-title">Accesos rápidos</h2>
-    <div class="quick-actions-grid">
-     <RouterLink v-for="action in quickActions" :key="action.name" :to="action.route" class="quick-action">
-      <span class="quick-action-icon"><component :is="action.icon" :size="18" :stroke-width="1.6" aria-hidden="true" /></span>
-      <span class="quick-action-name">{{ action.name }}</span>
+
+   <section v-if="quickAccess.length || pendingVisible" class="mt-6" aria-labelledby="quick-title">
+    <div class="mb-3 flex items-center justify-between gap-3">
+     <h2 id="quick-title" class="text-base font-semibold text-fg">Accesos rápidos</h2>
+     <p v-if="pendingVisible" aria-live="polite" class="text-[13px]">
+      <RouterLink v-if="myPendingRoute" :to="myPendingRoute" :aria-label="pendingLabel" class="font-medium text-accent underline-offset-4 hover:underline">{{ pendingText }}</RouterLink>
+      <span v-else class="font-medium text-muted-fg">{{ pendingText }}</span>
+     </p>
+    </div>
+    <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+     <RouterLink v-for="item in quickAccess" :key="item.name" :to="item.route" class="flex min-h-14 items-center gap-4 rounded-[12px] border border-border bg-surface px-4 py-3 transition-colors hover:border-accent/50 hover:bg-surface-secondary">
+      <component :is="item.icon" class="h-5 w-5 shrink-0 text-muted-fg" :stroke-width="1.5" aria-hidden="true" />
+      <span class="min-w-0"><span class="block text-sm font-medium text-fg">{{ item.name }}</span><span v-if="item.detail" class="mt-0.5 block text-xs text-muted-fg">{{ item.detail }}</span></span>
      </RouterLink>
+    </div>
+    <p v-if="!quickAccess.length" class="rounded-[12px] border border-dashed border-border px-4 py-5 text-sm text-muted-fg">Tu cuenta no tiene accesos disponibles por ahora.</p>
+   </section>
+
+   <section v-if="showRecent" class="mt-6 overflow-hidden rounded-[12px] border border-border bg-surface" aria-labelledby="recent-title">
+    <div class="flex items-center gap-3 px-4 pt-4 sm:px-5">
+     <Clock class="h-5 w-5 shrink-0 text-muted-fg" :stroke-width="1.5" aria-hidden="true" />
+     <div><h2 id="recent-title" class="text-base font-semibold leading-tight text-fg">Consultados recientemente</h2><p class="mt-0.5 text-xs text-muted-fg">Los últimos documentos que abriste en este equipo.</p></div>
+    </div>
+    <p v-if="!recent.length" class="px-4 pb-5 pt-4 text-sm text-muted-fg sm:px-5">Aún no has consultado documentos. Los que abras aparecerán aquí.</p>
+    <div v-else class="mt-3 overflow-x-auto">
+     <table class="w-full text-left text-sm">
+      <thead><tr class="border-y border-border text-[11px] font-semibold uppercase tracking-wide text-muted-fg"><th scope="col" class="px-4 py-2 sm:pl-5">Código</th><th scope="col" class="hidden px-3 py-2 sm:table-cell">Tipo de documento</th><th scope="col" class="px-3 py-2">Estado actual</th><th scope="col" class="px-4 py-2 text-right sm:pr-5">Acción</th></tr></thead>
+      <tbody class="divide-y divide-border">
+       <tr v-for="doc in recent" :key="doc.key">
+        <td class="px-4 py-2.5 font-medium text-fg sm:pl-5">{{ doc.code }}<span class="block text-xs font-normal text-muted-fg sm:hidden">{{ doc.kind }}</span></td>
+        <td class="hidden px-3 py-2.5 text-fg sm:table-cell">{{ doc.kind }}<span class="ml-2 text-xs text-muted-fg">{{ relativeTime(doc.at) }}</span></td>
+        <td class="px-3 py-2.5 text-fg">{{ stageOf(doc) }}</td>
+        <td class="px-4 py-2.5 text-right sm:pr-5"><RouterLink :to="doc.to" :aria-label="`Abrir ${doc.kind} ${doc.code}`" class="font-medium text-accent underline-offset-4 hover:underline">Abrir</RouterLink></td>
+       </tr>
+      </tbody>
+     </table>
     </div>
    </section>
   </div>
  </AdminLayout>
 </template>
 <style scoped>
-.welcome { max-width: 1240px; margin: 0 auto; padding: 8px 0; }
-.welcome-meta { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:0 4px 22px; font-size:12px; color:hsl(var(--muted-fg)); }
-.welcome-company { font-weight:600; letter-spacing:.03em; }
-.welcome-date { text-transform:capitalize; }
-.welcome-hero { position:relative; overflow:hidden; display:grid; grid-template-columns:1fr 1fr; min-height:480px; border:1px solid hsl(var(--border) / .65); border-radius:24px; background:linear-gradient(125deg,#fff 0%,#f4f3f0 100%); color:#101f2b; }
-.welcome-copy { position:relative; z-index:1; padding:58px 0 90px 52px; }
-.welcome-eyebrow { display:flex; align-items:center; gap:10px; font-size:10px; font-weight:600; letter-spacing:.2em; color:#59616b; }
-.welcome-eyebrow span { width:6px; height:6px; border-radius:50%; background:#d3292c; }
-h1 { margin:32px 0 22px; font-size:clamp(36px,4vw,60px); line-height:1.09; letter-spacing:-.055em; font-weight:500; overflow-wrap:anywhere; }
-.welcome-description { font-size:17px; line-height:1.7; color:#606772; font-weight:400; letter-spacing:-.01em; }
-.welcome-clock { display:flex; align-items:center; gap:10px; margin-top:36px; font-size:12px; color:#646b73; font-variant-numeric:tabular-nums; }
-.clock-divider { height:12px; width:1px; margin:0 4px; background:currentColor; opacity:.3; }
-.welcome-art { position:relative; align-self:center; padding:10px 24px 52px 0; color:#142532; }
-.welcome-art svg { display:block; width:100%; max-height:470px; }
-.art-orbit { stroke:currentColor; stroke-opacity:.09; stroke-width:.7; }
+.art-orbit { stroke:currentColor; stroke-opacity:.1; stroke-width:1; }
 .art-orbit-inner { stroke-dasharray:2 8; }
-.art-grid { stroke:currentColor; stroke-opacity:.13; stroke-width:.75; }
-.art-building { stroke:currentColor; stroke-opacity:.12; stroke-width:.8; }
-.art-outline { stroke:currentColor; stroke-opacity:.28; stroke-width:1; }
-.art-caption { display:flex; justify-content:flex-end; align-items:center; gap:10px; padding-right:28px; font-size:10px; letter-spacing:.22em; color:#636c75; }
-.art-caption span:first-child { font-weight:700; color:#142532; font-size:14px; letter-spacing:.12em; }
-.hero-footer { position:absolute; bottom:0; left:0; right:0; display:flex; justify-content:space-between; gap:16px; margin:0 32px; padding:20px 0; border-top:1px solid rgb(16 31 43 / .1); font-size:11px; color:#626a74; }
-.hero-edition { font-size:9px; letter-spacing:.15em; }
-.welcome-destinations { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; margin-top:22px; }
-.destination { display:block; border:1px solid hsl(var(--border) / .65); border-radius:18px; background:hsl(var(--surface)); padding:24px; transition:border-color .2s,transform .2s; }
-.destination:hover { border-color:hsl(var(--accent) / .6); transform:translateY(-3px); }
-.destination-purchases { border-color:hsl(var(--accent) / .25); background:linear-gradient(140deg,hsl(var(--surface)),hsl(var(--accent-soft) / .55)); }
-.destination-purchases .destination-top > svg:first-child { box-sizing:content-box; padding:10px; border-radius:12px; background:hsl(var(--accent-soft)); color:hsl(var(--accent)); }
-.destination-purchases .destination-bottom { margin-top:16px; }
-.destination-top { display:flex; align-items:center; justify-content:space-between; color:hsl(var(--muted-fg)); }
-.destination-arrow { opacity:.65; }
-.destination:hover .destination-arrow { color:hsl(var(--accent)); opacity:1; }
-.destination-bottom { display:flex; align-items:flex-end; justify-content:space-between; gap:12px; margin-top:26px; }
-.destination h2 { font-size:16px; font-weight:500; letter-spacing:-.02em; }
-.destination p { font-size:12px; color:hsl(var(--muted-fg)); margin-top:6px; line-height:1.5; }
-.destination-number { font-size:11px; color:hsl(var(--muted-fg)); opacity:.6; font-variant-numeric:tabular-nums; }
-.welcome-footer { display:flex; justify-content:space-between; flex-wrap:wrap; gap:12px; padding:26px 4px 8px; font-size:10px; color:hsl(var(--muted-fg)); }
-.welcome-footer span:first-child { letter-spacing:.18em; font-weight:600; }
-@media (max-width:900px) { .welcome-copy { padding:40px 0 85px 32px; } .welcome-hero { min-height:430px; } .welcome-art { padding-right:8px; } }
-@media (max-width:600px) { .welcome-meta { align-items:flex-start; font-size:11px; } .welcome-date { text-align:right; } .welcome-hero { grid-template-columns:1fr; } .welcome-copy { padding:32px 28px 0; } h1 { margin:24px 0 18px; font-size:40px; } .welcome-description { font-size:15px; } .welcome-clock { margin-top:24px; } .welcome-art { width:85%; max-width:360px; justify-self:center; margin-top:0; padding:0 0 85px; } .art-caption { display:none; } .hero-footer { margin:0 24px; padding:18px 0; } .hero-edition { display:none; } .welcome-destinations { grid-template-columns:1fr; gap:10px; } .destination { padding:20px; } .destination-bottom { margin-top:16px; } .welcome-footer { font-size:9px; } }
-.quick-actions { margin-top:28px; }
-.quick-actions-title { margin:0 0 12px 4px; font-size:13px; font-weight:600; color:hsl(var(--muted-fg)); }
-.quick-actions-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:12px; }
-.quick-action { display:flex; align-items:center; gap:12px; border:1px solid hsl(var(--border) / .65); border-radius:12px; background:hsl(var(--surface)); padding:12px 14px; color:hsl(var(--fg)); font-size:14px; font-weight:500; transition:border-color .2s,background-color .2s; }
-.quick-action:hover { border-color:hsl(var(--accent) / .5); background:hsl(var(--accent-soft)); }
-.quick-action-icon { display:grid; place-items:center; width:34px; height:34px; flex:none; border-radius:9px; background:hsl(var(--accent-soft)); color:hsl(var(--accent)); }
-@media (prefers-reduced-motion:reduce) { .quick-action { transition:none; } }
-@media (prefers-reduced-motion:reduce) { .destination { transition:none; } .destination:hover { transform:none; } }
-</style>
-<style>
-/* Dark theme of the home. Kept outside the scoped block: scoped :global(.dark) rules were dropped by the build, so the hero never darkened. */
-.dark .welcome-hero { background:linear-gradient(125deg,#112131 0%,#0a141f 100%); border-color:#526476; color:#ffffff; box-shadow:0 16px 48px rgb(0 0 0 / .2); }
-.dark .welcome-eyebrow, .dark .welcome-description, .dark .welcome-clock, .dark .hero-footer, .dark .art-caption { color:#d1d9e4; }
-.dark .welcome-art, .dark .art-caption span:first-child { color:#ffffff; }
-.dark .hero-footer { border-color:rgb(255 255 255 / .24); }
-.dark .art-orbit { stroke-opacity:.26; }
-.dark .art-grid { stroke-opacity:.36; }
-.dark #apex-wall stop:first-child { stop-color:#ffffff; stop-opacity:.35; }
-.dark #apex-wall stop:last-child { stop-color:#ffffff; stop-opacity:.08; }
-.dark .art-building { stroke-opacity:.55; }
-.dark .welcome-art path[opacity=".24"], .dark .welcome-art path[opacity=".17"] { opacity:.55; }
-.dark .art-outline { stroke-opacity:.6; }
-.dark #apex-roof stop:first-child { stop-color:#f04d50; }
-.dark #apex-roof stop:last-child { stop-color:#cc3037; }
-.dark .welcome-eyebrow span { background:#ff8285; }
-.dark .destination { background:#222b37; border-color:#4c596b; }
-.dark .destination-purchases { background:linear-gradient(140deg,#222b37,#30282f); border-color:#72545b; }
-.dark .destination:hover { background:#293443; border-color:#ff8b8e; }
-.dark .destination h2 { color:#f8fafc; }
-.dark .destination p, .dark .destination-top, .dark .welcome-meta, .dark .welcome-footer { color:#cbd5e1; }
-.dark .destination-number, .dark .destination-arrow { opacity:1; }
-.dark .quick-action { background:#222b37; border-color:#4c596b; }
-.dark .quick-action:hover { background:#293443; border-color:#ff8b8e; }
+.art-grid { stroke:currentColor; stroke-opacity:.16; stroke-width:1; }
+.art-building { stroke:currentColor; stroke-opacity:.14; stroke-width:1; }
+.art-outline { stroke:currentColor; stroke-opacity:.3; stroke-width:1.2; }
+:global(.dark) .art-orbit { stroke-opacity:.26; }
+:global(.dark) .art-grid { stroke-opacity:.34; }
+:global(.dark) #apex-wall stop:first-child { stop-color:#ffffff; stop-opacity:.3; }
+:global(.dark) #apex-wall stop:last-child { stop-color:#ffffff; stop-opacity:.06; }
+:global(.dark) .art-building { stroke-opacity:.5; }
+:global(.dark) .art-outline { stroke-opacity:.55; }
+:global(.dark) #apex-roof stop:first-child { stop-color:#f04d50; }
+:global(.dark) #apex-roof stop:last-child { stop-color:#cc3037; }
 </style>

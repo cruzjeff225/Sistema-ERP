@@ -32,7 +32,7 @@ function harness(orderStatus = 'sent') {
   const state = effect.run(() => exportsMock.default.setup({ orderId: 1 }, { expose() {}, emit: (...args) => emitted.push(args) }));
   const order = { id: 1, code: 'OC-QA', status: orderStatus, warehouseId: 39, warehouse: { name: 'General' }, supplier: { name: 'QA' }, details: [{ id: 11, product: { name: 'Teja QA' }, unit: { name: 'Unidad' }, quantity: 3, receivedQuantity: 1 }] };
   return { state, calls, emitted, order, finish: () => effect.stop(), async open() {
-    await settle(); calls.find(c => c.url === '/purchase-orders/1').resolve(order); calls.find(c => c.url === '/purchase-catalogs').resolve({ branches: [{ warehouses: [{ id: 39, locations: [] }] }] }); await settle();
+    await settle(); calls.find(c => c.url === '/purchase-orders/1').resolve(order); await settle();
   } };
 }
 
@@ -41,14 +41,14 @@ test('solo se registra la recepción de una orden enviada al proveedor', async (
   try { assert.equal(h.state.order.value, null); assert.match(h.state.error.value, /enviada al proveedor/); } finally { h.finish(); }
 });
 
-test('la recepción sin espacios queda pendiente de ubicación y valida las cantidades', async () => {
+test('la recepción no pide espacio, queda pendiente de ubicación y valida las cantidades', async () => {
   const h = harness(); await h.open();
   try {
-    assert.equal(h.state.order.value.code, 'OC-QA'); assert.equal(h.state.locations.value.length, 0);
+    assert.equal(h.state.order.value.code, 'OC-QA'); assert(!h.calls.some(c => c.url === '/purchase-catalogs'), 'ya no se consultan los espacios del almacén');
     assert.equal(h.calls.find(c => c.url === '/purchase-orders/1').config.headers['X-Company-Id'], '3');
     assert.equal(h.state.form.items.length, 1, 'solo las líneas con saldo pendiente');
     h.state.form.items[0].quantity = 1; h.state.reviewReceipt();
-    assert(h.state.review.value); assert.equal(h.state.review.value.payload.items[0].quantity, 1); assert.equal(h.state.review.value.payload.items[0].locationId, undefined);
+    assert(h.state.review.value); assert.equal(h.state.review.value.payload.items[0].quantity, 1); assert.equal('locationId' in h.state.review.value.payload.items[0], false, 'la recepción nunca envía un espacio');
     assert.match(h.state.review.value.description, /pendientes de viñeteo/); assert.match(h.state.review.value.description, /Recepción parcial/);
     h.state.review.value = null; h.state.form.items[0].quantity = 3; h.state.reviewReceipt(); assert.equal(h.state.review.value, null); assert.match(h.state.error.value, /supera lo pendiente/);
     h.state.form.items[0].quantity = 0; h.state.reviewReceipt(); assert.equal(h.state.review.value, null); assert.match(h.state.error.value, /mayor que cero/);
@@ -66,5 +66,22 @@ test('confirmar envía la recepción una sola vez y avisa a la pantalla', async 
     assert.equal(post[0].url, '/purchase-orders/1/receive'); assert.equal(post[0].body.items[0].quantity, 2); assert.equal(post[0].config.headers['X-Company-Id'], '3');
     post[0].resolve({}); await first; await second;
     assert.deepEqual(h.emitted.map(e => e[0]), ['received']);
+  } finally { h.finish(); }
+});
+
+test('recepción total y parcial se registran sin elegir espacio y sin guardar al llenar pendientes', async () => {
+  const h = harness(); await h.open();
+  try {
+    assert.equal(h.state.canReview.value, false, 'sin cantidades no se puede revisar');
+    h.state.fillPending();
+    assert.equal(h.calls.filter(c => c.method === 'post').length, 0, 'recibir todo lo pendiente solo llena las cantidades');
+    assert.match(h.state.notice.value, /Revise y registre/);
+    assert.equal(h.state.canReview.value, true);
+    h.state.reviewReceipt();
+    assert.match(h.state.review.value.description, /recibida completamente/);
+    assert.deepEqual(JSON.parse(JSON.stringify(h.state.review.value.payload.items)), [{ orderDetailId: 11, quantity: 2 }], 'total: solo línea y cantidad, sin espacio');
+    h.state.review.value = null; h.state.form.items[0].quantity = 1; h.state.reviewReceipt();
+    assert.match(h.state.review.value.description, /Recepción parcial/);
+    assert.deepEqual(JSON.parse(JSON.stringify(h.state.review.value.payload.items)), [{ orderDetailId: 11, quantity: 1 }], 'parcial: solo línea y cantidad, sin espacio');
   } finally { h.finish(); }
 });

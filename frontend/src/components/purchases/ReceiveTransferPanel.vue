@@ -1,15 +1,14 @@
 <script setup lang="ts">
 // The branch confirms what arrived from the warehouse inside its own request: quantities received and where they were placed.
 import { computed, onMounted, ref, watch } from 'vue';
-import { Check, PackageCheck } from 'lucide-vue-next';
+import { Check } from 'lucide-vue-next';
 import AppButton from '../base/AppButton.vue';
-import AppBadge from '../base/AppBadge.vue';
 import ConfirmDialog from '../base/ConfirmDialog.vue';
 import { http } from '../../services/http.service';
 import { activeCompanyId } from '../../services/company-context';
 import { useFeedbackStore } from '../../stores/feedback.store';
 import { getApiErrorMessage } from '../../utils/api-error';
-import { documentStatusLabel, documentStatusVariant } from '../../utils/purchase-tracking';
+import { documentStatusLabel, documentStatusVariant, statusDotClass } from '../../utils/purchase-tracking';
 
 const props = defineProps<{ requestId: number }>();
 const emit = defineEmits<{ received: [] }>();
@@ -76,33 +75,47 @@ watch([() => props.requestId, activeCompanyId], () => { receiving.value = null; 
 </script>
 
 <template>
-  <section v-if="mine.length" aria-labelledby="receive-transfers-title" class="mt-6 border-t border-border/70 pt-5">
-    <h3 id="receive-transfers-title" class="flex items-center gap-2 text-sm font-semibold text-fg"><PackageCheck class="h-4 w-4 text-accent" aria-hidden="true" />Despachos del almacén</h3>
+  <section v-if="mine.length" aria-labelledby="receive-transfers-title" class="rounded-[12px] border border-border bg-surface p-5 sm:p-6">
+    <h2 id="receive-transfers-title" class="text-xl font-semibold tracking-tight text-fg">Despachos del almacén</h2>
     <p v-if="error && !receiving" role="alert" class="mt-3 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">{{ error }}</p>
-    <ul class="mt-3 divide-y divide-border/70 rounded-xl border border-border/70">
-      <li v-for="transfer in mine" :key="transfer.id" class="p-4">
-        <div class="flex flex-wrap items-center justify-between gap-3">
-          <div class="flex items-center gap-3"><strong class="text-sm">{{ transfer.documentNumber }}</strong><AppBadge :variant="documentStatusVariant(transfer.status)">{{ documentStatusLabel(transfer.status) }}</AppBadge></div>
-          <AppButton v-if="canReceive(transfer) && receiving?.id !== transfer.id" size="sm" :disabled="loading || saving" @click="start(transfer)">Recibir en sucursal</AppButton>
-        </div>
-        <p v-for="item in itemsOf(transfer)" :key="item.id" class="mt-2 text-sm text-muted-fg">{{ item.product.name }}: despachado {{ Number(item.quantity) }}, recibido {{ Number(item.receivedQuantity) }}<span v-if="pendingOf(item) > 0">, en tránsito {{ pendingOf(item) }}</span>.</p>
-
-        <form v-if="receiving?.id === transfer.id" class="mt-4 space-y-3 rounded-xl bg-surface-secondary p-4" @submit.prevent="review">
-          <p class="text-sm text-muted-fg">Registre solamente lo que recibió y confirme dónde quedó en la sucursal.</p>
-          <p v-if="error" role="alert" class="rounded-lg border border-danger/30 bg-surface px-3 py-2 text-sm text-danger">{{ error }}</p>
-          <div v-for="line in lines" :key="line.itemId" class="grid gap-3 sm:grid-cols-[minmax(0,1.4fr)_1fr_1.2fr] sm:items-end">
-            <p class="text-sm font-medium">{{ line.productName }}<span class="block text-xs font-normal text-muted-fg">Pendiente {{ line.pending }} {{ line.unit }}</span></p>
-            <label class="text-sm">Cantidad recibida<input v-model.number="line.quantity" type="number" min="0" :max="line.pending" step="1" required class="field-control" /></label>
-            <label class="text-sm">Ubicación confirmada<select v-model.number="line.locationId" required class="field-control"><option :value="0" disabled>Seleccione espacio</option><option v-for="location in locations" :key="location.id" :value="location.id">{{ location.code }}</option></select></label>
-          </div>
-          <div class="flex flex-wrap items-center gap-2">
-            <AppButton type="submit" :disabled="saving || !lines.some(line => line.quantity > 0)">Revisar recepción</AppButton>
-            <AppButton type="button" variant="outline" :disabled="saving" @click="fillPending"><Check class="h-4 w-4" />Recibir todo lo pendiente</AppButton>
-            <AppButton type="button" variant="ghost" :disabled="saving" @click="receiving = null">Cancelar</AppButton>
-          </div>
-        </form>
-      </li>
-    </ul>
+    <div class="relative mt-4 overflow-x-auto rounded-[12px] border border-border">
+      <table class="w-full min-w-[620px] text-left text-sm">
+        <caption class="sr-only">Despachos del almacén para esta solicitud</caption>
+        <thead class="border-b border-border bg-surface-secondary text-sm text-muted-fg"><tr><th scope="col" class="px-4 py-3 font-medium">Traslado</th><th scope="col" class="px-4 py-3 font-medium">Detalle</th><th scope="col" class="px-4 py-3 font-medium">Estado</th><th scope="col" class="px-4 py-3"><span class="sr-only">Acciones</span></th></tr></thead>
+        <tbody class="divide-y divide-border">
+          <template v-for="transfer in mine" :key="transfer.id">
+            <tr>
+              <th scope="row" class="whitespace-nowrap px-4 py-3.5 text-left align-top font-semibold text-fg">{{ transfer.documentNumber }}</th>
+              <td class="px-4 py-3.5 align-top"><div v-for="item in itemsOf(transfer)" :key="item.id" class="mb-1 last:mb-0"><p class="font-medium text-fg">{{ item.product.name }}</p><p class="mt-0.5 text-muted-fg">Despachado {{ Number(item.quantity) }} · Recibido {{ Number(item.receivedQuantity) }}<span v-if="pendingOf(item) > 0"> · En tránsito {{ pendingOf(item) }}</span></p></div></td>
+              <td class="px-4 py-3.5 align-top"><span class="inline-flex items-center gap-2"><span class="h-2.5 w-2.5 shrink-0 rounded-full" :class="statusDotClass(documentStatusVariant(transfer.status))" aria-hidden="true" />{{ documentStatusLabel(transfer.status) }}</span></td>
+              <td class="px-4 py-3 text-right align-top"><AppButton v-if="canReceive(transfer) && receiving?.id !== transfer.id" variant="outline" :disabled="loading || saving" @click="start(transfer)">Recibir en sucursal</AppButton></td>
+            </tr>
+            <tr v-if="receiving?.id === transfer.id">
+              <td colspan="4" class="p-4">
+                <form class="space-y-4" aria-labelledby="receive-form-title" @submit.prevent="review">
+                  <div class="flex flex-wrap items-center justify-between gap-3">
+                    <h3 id="receive-form-title" class="text-lg font-semibold tracking-tight text-fg">Recepción en sucursal</h3>
+                    <div class="flex items-center gap-2"><AppButton type="button" variant="ghost" :disabled="saving" @click="receiving = null">Cancelar</AppButton><AppButton type="submit" :disabled="saving || !lines.some(line => line.quantity > 0)">Revisar recepción</AppButton></div>
+                  </div>
+                  <p class="text-sm text-muted-fg">Registre solamente lo que recibió y confirme dónde quedó en la sucursal.</p>
+                  <p v-if="error" role="alert" class="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">{{ error }}</p>
+                  <div class="space-y-3">
+                    <div class="hidden gap-4 text-sm text-muted-fg sm:grid sm:grid-cols-[minmax(0,1.4fr)_6rem_minmax(0,1fr)_minmax(0,1.2fr)]" aria-hidden="true"><span>Producto</span><span>Pendiente</span><span>Cantidad recibida</span><span>Ubicación confirmada</span></div>
+                    <div v-for="line in lines" :key="line.itemId" class="grid gap-3 sm:grid-cols-[minmax(0,1.4fr)_6rem_minmax(0,1fr)_minmax(0,1.2fr)] sm:items-center sm:gap-4">
+                      <p class="text-base font-medium text-fg">{{ line.productName }}</p>
+                      <p class="text-base tabular-nums text-fg"><span class="text-sm text-muted-fg sm:sr-only">Pendiente: </span>{{ line.pending }}<span class="sr-only"> {{ line.unit }}</span></p>
+                      <label class="text-sm text-muted-fg"><span class="sm:sr-only">Cantidad recibida</span><input v-model.number="line.quantity" type="number" min="0" :max="line.pending" step="1" required :aria-label="'Cantidad recibida de ' + line.productName" class="field-control !mt-1.5 sm:!mt-0" /></label>
+                      <label class="text-sm text-muted-fg"><span class="sm:sr-only">Ubicación confirmada</span><select v-model.number="line.locationId" required :aria-label="'Ubicación confirmada de ' + line.productName" class="field-control !mt-1.5 sm:!mt-0"><option :value="0" disabled>Seleccione espacio</option><option v-for="location in locations" :key="location.id" :value="location.id">{{ location.code }}</option></select></label>
+                    </div>
+                  </div>
+                  <AppButton type="button" variant="outline" :disabled="saving" @click="fillPending"><Check class="h-4 w-4" aria-hidden="true" />Recibir todo lo pendiente</AppButton>
+                </form>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
     <ConfirmDialog v-if="confirming" title="Confirmar recepción de sucursal" description="Confirma las cantidades recibidas y los espacios donde quedaron físicamente los productos." :busy="saving" :error="error" @confirm="confirm" @close="confirming = false" />
   </section>
 </template>

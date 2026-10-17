@@ -1,8 +1,8 @@
 <script setup lang="ts">
 // Registers the goods that arrived for an order. It lives in Receipts because receiving is Warehouse's job;
-// Orders stays with Purchasing and Management.
+// Orders stays with Purchasing and Management. Where each product physically goes is NOT decided here:
+// the receipt is saved without a space and its lines wait in Warehouse → "Ubicar productos".
 import { computed, onMounted, reactive, ref } from 'vue';
-import { Check } from 'lucide-vue-next';
 import AppButton from '../base/AppButton.vue';
 import AppInput from '../base/AppInput.vue';
 import ConfirmDialog from '../base/ConfirmDialog.vue';
@@ -17,12 +17,12 @@ const emit = defineEmits<{ close: []; received: [] }>();
 const feedback = useFeedbackStore();
 
 const order = ref<any>(null);
-const locations = ref<any[]>([]);
 const loading = ref(true);
 const saving = ref(false);
 const error = ref('');
+const notice = ref('');
 const review = ref<{ payload: object; description: string } | null>(null);
-const form = reactive({ requestId: '', supplierInvoiceNumber: '', supplierInvoiceDate: '', notes: '', items: [] as { orderDetailId: number; locationId: number; quantity: any }[] });
+const form = reactive({ requestId: '', supplierInvoiceNumber: '', supplierInvoiceDate: '', notes: '', items: [] as { orderDetailId: number; quantity: any }[] });
 
 const today = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/El_Salvador' }).format(new Date());
 const roundMoney = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
@@ -33,28 +33,33 @@ const rows = computed(() => form.items.map(item => {
   const pending = line ? roundMoney(Number(line.quantity) - Number(line.receivedQuantity)) : 0;
   return { item, line, pending, remaining: Math.max(0, roundMoney(pending - Number(item.quantity || 0))) };
 }));
+const canReview = computed(() => !saving.value && !review.value && form.items.some(item => Number(item.quantity) > 0));
 
 async function load() {
   const companyId = activeCompanyId.value;
   if (!companyId) return;
   loading.value = true; error.value = '';
   try {
-    const [orderResponse, catalogs] = await Promise.all([http.get(`/purchase-orders/${props.orderId}`, headers()), http.get('/purchase-catalogs', headers())]);
+    const orderResponse = await http.get(`/purchase-orders/${props.orderId}`, headers());
     if (companyId !== activeCompanyId.value) return;
     const fresh = orderResponse.data.data;
     if (!['sent', 'partially_received'].includes(fresh.status)) { error.value = 'La orden debe estar enviada al proveedor para registrar la recepción. Actualice el listado.'; return; }
     order.value = fresh;
-    locations.value = catalogs.data.data.branches.flatMap((branch: any) => branch.warehouses).find((warehouse: any) => warehouse.id === fresh.warehouseId)?.locations ?? [];
     Object.assign(form, { requestId: crypto.randomUUID(), supplierInvoiceNumber: '', supplierInvoiceDate: today(), notes: '',
-      items: fresh.details.filter((line: any) => Number(line.quantity) > Number(line.receivedQuantity)).map((line: any) => ({ orderDetailId: line.id, locationId: 0, quantity: 0 })) });
+      items: fresh.details.filter((line: any) => Number(line.quantity) > Number(line.receivedQuantity)).map((line: any) => ({ orderDetailId: line.id, quantity: 0 })) });
   } catch (caught) { error.value = getApiErrorMessage(caught, 'No se pudieron consultar las cantidades pendientes'); }
   finally { loading.value = false; }
 }
 
-function fillPending() { for (const row of rows.value) row.item.quantity = row.pending; }
+// Only fills the quantities; nothing is saved until the receipt is reviewed and confirmed.
+function fillPending() {
+  for (const row of rows.value) row.item.quantity = row.pending;
+  notice.value = 'Se llenó «Recibido ahora» con la cantidad pendiente de cada producto. Revise y registre la recepción.';
+}
 
 function reviewReceipt() {
-  const items = form.items.filter(item => Number(item.quantity) > 0).map(item => ({ ...item, locationId: item.locationId || undefined, quantity: Number(item.quantity) }));
+  notice.value = '';
+  const items = form.items.filter(item => Number(item.quantity) > 0).map(item => ({ orderDetailId: item.orderDetailId, quantity: Number(item.quantity) }));
   if (!items.length) { error.value = 'Indique una cantidad recibida mayor que cero'; return; }
   for (const item of items) {
     const line = order.value.details.find((detail: any) => detail.id === item.orderDetailId);
@@ -88,39 +93,53 @@ onMounted(() => void load());
 
 <template>
   <div class="fixed inset-0 z-50 flex justify-end bg-black/35" @click.self="!saving && emit('close')">
-    <aside role="dialog" aria-modal="true" aria-label="Registrar recepción" class="h-full w-full max-w-3xl overflow-y-auto bg-surface p-4 shadow-[var(--shadow-float)] sm:p-6" @keydown.esc="!saving && emit('close')">
-      <div><p class="section-eyebrow">Proceso de compras</p><h2 class="mt-1 text-xl font-semibold text-fg">Registrar recepción</h2></div>
-      <p v-if="error" role="alert" class="sticky top-0 z-10 mt-4 rounded-lg border border-danger/30 bg-surface p-3 text-sm text-danger">{{ error }}</p>
-      <p v-if="loading" role="status" class="mt-6 text-sm text-muted-fg">Consultando las cantidades pendientes…</p>
-      <form v-else-if="order" class="mt-6 space-y-6" @submit.prevent="reviewReceipt">
+    <aside role="dialog" aria-modal="true" aria-labelledby="receive-title" class="h-full w-full max-w-3xl overflow-y-auto bg-surface shadow-[var(--shadow-float)]" @keydown.esc="!saving && emit('close')">
+      <header class="sticky top-0 z-10 flex flex-wrap items-start justify-between gap-x-4 gap-y-3 border-b border-border bg-surface px-4 py-3 sm:px-6 sm:py-4">
+        <div class="min-w-0 flex-1 basis-72">
+          <p class="text-sm text-muted-fg">Proceso de compras</p>
+          <h2 id="receive-title" class="mt-0.5 text-2xl font-semibold tracking-tight text-fg">Registrar recepción</h2>
+          <p v-if="order" class="mt-1 text-sm text-muted-fg">{{ order.code }} · {{ order.supplier.name }} · {{ order.warehouse.name }}</p>
+        </div>
+        <div class="flex shrink-0 flex-wrap items-center gap-2">
+          <AppButton type="button" variant="outline" :disabled="saving" @click="emit('close')">{{ order ? 'Cancelar' : 'Cerrar' }}</AppButton>
+          <AppButton v-if="order" type="submit" form="receive-form" :disabled="!canReview">Revisar recepción</AppButton>
+        </div>
+      </header>
+      <div class="p-4 sm:p-6">
+      <p v-if="error" role="alert" class="mb-4 rounded-[12px] border border-danger/30 bg-danger/10 p-3 text-sm text-danger">{{ error }}</p>
+      <p v-if="loading" role="status" class="mt-2 text-sm text-muted-fg">Consultando las cantidades pendientes…</p>
+      <form v-else-if="order" id="receive-form" class="space-y-6" @submit.prevent="reviewReceipt">
         <fieldset :disabled="saving || !!review" class="min-w-0 space-y-6">
           <div class="grid gap-4 sm:grid-cols-2"><AppInput v-model="form.supplierInvoiceNumber" label="Factura del proveedor" placeholder="Opcional" /><AppInput v-model="form.supplierInvoiceDate" type="date" label="Fecha de factura" /></div>
           <div>
-            <p class="mb-4 text-sm text-muted-fg">{{ order.code }} · {{ order.supplier.name }} · {{ order.warehouse.name }}</p>
-            <div class="flex flex-wrap items-center justify-between gap-2"><h3 class="font-semibold text-fg">Mercadería recibida</h3><AppButton type="button" variant="outline" size="sm" @click="fillPending"><Check class="h-4 w-4" />Completar pendientes</AppButton></div>
-            <div class="mt-3 overflow-x-auto">
-              <table class="w-full min-w-[650px] text-left text-sm">
-                <thead class="border-y border-border bg-surface-secondary text-xs text-muted-fg"><tr><th class="p-3">Producto / Ubicación</th><th class="p-3 text-right">Ordenado</th><th class="p-3 text-right">Recibido anteriormente</th><th class="w-32 p-3">Recibido ahora</th><th class="p-3 text-right">Pendiente</th></tr></thead>
+            <div class="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+              <div><h3 class="text-base font-semibold text-fg">Mercadería recibida</h3><p class="mt-0.5 text-sm text-muted-fg">La ubicación física se confirma después en Bodega.</p></div>
+              <div>
+                <AppButton type="button" variant="outline" aria-describedby="fill-pending-help" @click="fillPending">Recibir todo lo pendiente</AppButton>
+                <span id="fill-pending-help" class="sr-only">Llena «Recibido ahora» con la cantidad pendiente de cada producto. No registra la recepción.</span>
+              </div>
+            </div>
+            <p class="sr-only" role="status" aria-live="polite">{{ notice }}</p>
+            <div class="mt-3 max-h-[55vh] overflow-auto rounded-[12px] border border-border">
+              <table class="w-full min-w-[620px] text-left text-sm">
+                <caption class="sr-only">Productos de la orden con su cantidad ordenada, recibida antes, recibida ahora y pendiente</caption>
+                <thead class="sticky top-0 z-[1] border-b border-border bg-surface-secondary text-sm text-muted-fg"><tr><th scope="col" class="px-3 py-2.5 font-medium">Producto</th><th scope="col" class="px-3 py-2.5 text-right font-medium">Ordenado</th><th scope="col" class="px-3 py-2.5 text-right font-medium">Recibido anteriormente</th><th scope="col" class="w-32 px-3 py-2.5 text-right font-medium">Recibido ahora</th><th scope="col" class="px-3 py-2.5 text-right font-medium">Pendiente</th></tr></thead>
                 <tbody class="divide-y divide-border">
                   <tr v-for="row in rows" :key="row.item.orderDetailId">
-                    <td class="min-w-52 p-3"><p class="font-medium">{{ row.line?.product.name }}</p><p class="mt-1 text-xs text-muted-fg">{{ row.line?.unit.name }}</p>
-                      <select v-model.number="row.item.locationId" :aria-label="'Ubicación de ' + row.line?.product.name" :disabled="Number(row.item.quantity) <= 0" class="field-control mt-2"><option :value="0">Sugerir espacio (pendiente de confirmación)</option><option v-for="location in locations" :key="location.id" :value="location.id">{{ location.code }} · {{ location.aisle }} / {{ location.rack }} / {{ location.level }}</option></select>
-                    </td>
-                    <td class="p-3 text-right tabular-nums">{{ Number(row.line?.quantity) }}</td>
-                    <td class="p-3 text-right tabular-nums">{{ Number(row.line?.receivedQuantity) }}</td>
-                    <td class="p-3"><input v-model="row.item.quantity" type="number" min="0" :max="row.pending" step="1" :aria-label="'Recibido ahora de ' + row.line?.product.name" required class="field-control w-28" /></td>
-                    <td class="p-3 text-right font-medium tabular-nums">{{ row.remaining }}</td>
+                    <th scope="row" class="min-w-60 px-3 py-3 text-left font-normal"><p class="font-medium text-fg">{{ row.line?.product.name }}</p><p class="mt-0.5 text-xs text-muted-fg">{{ row.line?.unit.name }}</p></th>
+                    <td class="px-3 py-3 text-right tabular-nums">{{ Number(row.line?.quantity) }}</td>
+                    <td class="px-3 py-3 text-right tabular-nums">{{ Number(row.line?.receivedQuantity) }}</td>
+                    <td class="px-3 py-3"><input v-model="row.item.quantity" type="number" min="0" :max="row.pending" step="1" :aria-label="'Recibido ahora de ' + row.line?.product.name" required class="field-control !mt-0 !h-9 !w-24 ml-auto tabular-nums" /></td>
+                    <td class="px-3 py-3 text-right font-medium tabular-nums">{{ row.remaining }}</td>
                   </tr>
                 </tbody>
               </table>
             </div>
-            <p v-if="!locations.length" class="mt-4 text-sm text-muted-fg">La recepción quedará pendiente de ubicación hasta registrar un espacio.</p>
           </div>
-          <label class="block text-sm font-medium text-fg">Observaciones de recepción<textarea v-model="form.notes" class="field-control h-auto py-2 min-h-20" maxlength="2000" /></label>
-          <div class="flex justify-end gap-2"><AppButton variant="outline" type="button" @click="emit('close')">Cancelar</AppButton><AppButton type="submit" :disabled="saving || !form.items.some(item => Number(item.quantity) > 0)">Revisar recepción</AppButton></div>
+          <label class="block text-base font-semibold text-fg">Observaciones de recepción<textarea v-model="form.notes" class="field-control mt-2 h-auto min-h-24 py-2 font-normal" maxlength="2000" /></label>
         </fieldset>
       </form>
-      <div v-else-if="!loading" class="mt-6 flex justify-end"><AppButton variant="outline" @click="emit('close')">Cerrar</AppButton></div>
+      </div>
     </aside>
     <ConfirmDialog v-if="review" title="Confirmar recepción" :description="review.description" :busy="saving" :error="error" @confirm="confirm" @close="review = null" />
   </div>

@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, onBeforeUnmount, reactive, ref, watch } from "vue";
-import { Calculator, Settings2, LockKeyhole, Pencil, Plus, RefreshCw, ShieldCheck, X, XCircle } from "lucide-vue-next";
+import { Calculator, Check, ChevronDown, FileText, ChevronLeft, ChevronRight, Settings2, LockKeyhole, Pencil, Plus, RefreshCw, ShieldCheck, X, XCircle } from "lucide-vue-next";
+import { statusDotClass } from "../utils/purchase-tracking";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 import ExpenseTypesManager from '../components/purchases/ExpenseTypesManager.vue';
+import SearchableSelect from '../components/base/SearchableSelect.vue';
 import ConfirmDialog from "../components/base/ConfirmDialog.vue";
 import AdminLayout from "../layouts/AdminLayout.vue";
-import AppDrawer from "../components/base/AppDrawer.vue";
 import SearchField from "../components/base/SearchField.vue";
 import PageHeader from "../components/base/PageHeader.vue";
 import PurchaseTabs from "../components/purchases/PurchaseTabs.vue";
@@ -50,7 +51,7 @@ const loading = ref(false);
 const saving = ref(false);
 const drawerOpen = ref(false);
 const formStep = ref(1);
-const showBreakdown = ref(false);
+const showBreakdown = ref(true);
 const steps = ['Recepción', 'Gastos', 'Revisión'];
 function nextStep() {
   const error = retaceoStepError(form, formStep.value);
@@ -91,6 +92,11 @@ const selected = computed(() => filteredRecords.value.find((record) => record.id
 const selectedPurchase = computed(() => purchases.value.find((purchase) => purchase.id === form.purchaseId) ?? null);
 const contextPurchaseId = computed(() => Number(route.query.purchaseId) || 0);
 const contextPurchase = computed(() => purchases.value.find(purchase => purchase.id === contextPurchaseId.value) ?? selected.value?.purchase);
+const purchaseOptions = computed(() => {
+  const list = eligiblePurchases.value.map((purchase: any) => ({ id: purchase.id, label: purchase.documentNumber, description: purchase.supplier.name }));
+  if (editingId.value && selectedPurchase.value && !list.some(option => option.id === selectedPurchase.value.id)) list.push({ id: selectedPurchase.value.id, label: selectedPurchase.value.documentNumber, description: selectedPurchase.value.supplier.name });
+  return list;
+});
 const eligiblePurchases = computed(() => purchases.value.filter((purchase) => (!contextPurchaseId.value || purchase.id === contextPurchaseId.value) && !purchase.hasActiveRetaceo && !purchase.retaceos?.some((record: any) => record.status !== "cancelled") && (!purchase.purchaseOrderId || purchase.status === 'VERIFIED')));
 const contextNotice = computed(() => !contextPurchaseId.value || selected.value || eligiblePurchases.value.length ? '' : contextPurchase.value?.retaceoArchived ? 'El retaceo de esta recepción está en la papelera.' : contextPurchase.value?.status === 'RECEIVED' ? 'Verifica la recepción antes de preparar su retaceo.' : 'Esta recepción no está disponible para un nuevo retaceo.');
 const filteredRecords = computed(() => {
@@ -140,10 +146,11 @@ function statusLabel(status: string) {
   return ({ draft: "Borrador", calculated: "Calculado", verified: "Verificado", closed: "Cerrado", cancelled: "Cancelado" } as Record<string, string>)[status] ?? status;
 }
 
+const statusTextClass = (status: string) => ({ success: 'text-success', danger: 'text-danger', warning: 'text-warning', info: 'text-accent', neutral: 'text-muted-fg' })[statusVariant(status)];
 function statusVariant(status: string): "success" | "danger" | "warning" | "info" | "neutral" {
   if (status === "closed") return "success";
   if (status === "cancelled") return "danger";
-  if (status === "verified") return "info";
+  if (status === "verified") return "success";
   if (status === "calculated") return "warning";
   return "neutral";
 }
@@ -191,10 +198,7 @@ function fillFromPurchase(purchase: any) {
   Object.assign(form, retaceoSourceFields(purchase));
 }
 
-function changePurchase(event: Event) {
-  const input = event.target as HTMLSelectElement;
-  const id = Number(input.value);
-  input.value = String(form.purchaseId);
+function changePurchase(id: number) {
   if (id === form.purchaseId || editingId.value || saving.value) return;
   if (!eligiblePurchases.value.some(purchase => purchase.id === id)) return;
   pendingPurchaseId.value = id;
@@ -376,43 +380,43 @@ onMounted(load);
     </PageHeader>
 
     <nav v-if="contextPurchaseId" class="mb-5 flex flex-wrap items-center justify-between gap-3 text-sm" aria-label="Recepción de origen">
-      <RouterLink v-if="can('purchases.view')" :to="'/purchases/receipts?id=' + contextPurchaseId" class="text-accent">Volver a {{ contextPurchase?.documentNumber || 'la recepción' }}</RouterLink>
-      <RouterLink to="/purchases/retaceos" class="text-muted-fg hover:text-fg">Ver todos los retaceos</RouterLink>
+      <RouterLink v-if="can('purchases.view')" :to="'/purchases/receipts?id=' + contextPurchaseId" class="inline-flex items-center gap-2 font-medium text-accent hover:underline"><ChevronLeft class="h-4 w-4" aria-hidden="true" />Volver a {{ contextPurchase?.documentNumber || 'la recepción' }}</RouterLink>
+      <RouterLink to="/purchases/retaceos" class="inline-flex items-center gap-2 text-muted-fg hover:text-fg">Ver todos los retaceos<ChevronRight class="h-4 w-4" aria-hidden="true" /></RouterLink>
     </nav>
     <div v-if="errorMessage" role="alert" class="mb-4 rounded-lg border border-danger/25 bg-danger/10 px-4 py-3 text-sm text-danger">{{ errorMessage }}</div>
-    <div v-if="successMessage" role="status" class="mb-4 rounded-lg border border-success/25 bg-success/10 px-4 py-3 text-sm text-success">{{ successMessage }}</div>
+    <div v-if="successMessage" role="status" class="mb-4 flex items-center gap-3 rounded-[12px] border border-success/25 bg-success/10 px-4 py-3 text-sm text-fg"><span class="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-success text-white" aria-hidden="true"><Check class="h-4 w-4" /></span>{{ successMessage }}</div>
     <div v-if="!loading && contextNotice" role="status" class="mb-4 flex flex-wrap items-center justify-between gap-3 border-y border-border py-3 text-sm"><span class="text-muted-fg">{{ contextNotice }}</span><RouterLink v-if="contextPurchase?.retaceoArchived && can('trash.view')" to="/administration/trash" class="font-medium text-accent">Recuperar retaceo</RouterLink></div>
     <div v-else-if="!loading && !contextPurchaseId && !eligiblePurchases.length && can('retaceos.create')" role="status" class="mb-4 flex flex-wrap items-center justify-between gap-3 border-y border-border py-3 text-sm"><span class="text-muted-fg">No hay recepciones disponibles para un nuevo retaceo.</span><RouterLink v-if="can('purchases.view')" to="/purchases/receipts" class="font-medium text-accent">Ver recepciones</RouterLink></div>
 
     <div class="grid items-start gap-5 lg:grid-cols-[300px_minmax(0,1fr)]">
-      <aside class="min-w-0 overflow-hidden rounded-2xl border border-border bg-surface">
+      <aside class="min-w-0 overflow-hidden rounded-[12px] border border-border bg-surface">
         <div class="space-y-3 border-b border-border p-4">
-          <div class="flex items-center justify-between gap-3"><strong class="text-sm">Retaceos</strong><div class="flex items-center gap-2"><span class="text-xs text-muted-fg">{{ filteredRecords.length }} registros</span><button type="button" class="icon-button" title="Actualizar" aria-label="Actualizar retaceos" :disabled="loading || saving || drawerOpen" @click="load"><RefreshCw class="h-4 w-4" :class="loading && 'animate-spin'" /></button></div></div>
+          <div class="flex items-center justify-between gap-3"><strong class="text-base font-semibold">Retaceos</strong><div class="flex items-center gap-2"><span class="text-sm text-muted-fg">{{ filteredRecords.length }} registros</span><button type="button" class="icon-button" title="Actualizar" aria-label="Actualizar retaceos" :disabled="loading || saving || drawerOpen" @click="load"><RefreshCw class="h-4 w-4" :class="loading && 'animate-spin'" /></button></div></div>
           <PurchaseTabs :model-value="ageTab" :items="[{ value: 'recent', label: 'Esta semana' }, { value: 'older', label: 'Anteriores' }]" label="Período de retaceos" :disabled="loading || saving || drawerOpen || expenseSettingsOpen" @update:model-value="changeTab" />
           <SearchField v-model="search" :disabled="saving || drawerOpen" aria-label="Buscar retaceos" placeholder="Código, proveedor o recepción" />
           <details><summary class="cursor-pointer text-xs text-muted-fg">Filtros{{ filterCount ? ' (' + filterCount + ')' : '' }}</summary><div class="mt-3 space-y-3"><label class="block text-sm">Estado<select v-model="statusFilter" :disabled="saving || drawerOpen" class="field-control"><option value="">Todos los estados</option><option v-for="status in ['draft','calculated','verified','closed','cancelled']" :key="status" :value="status">{{ statusLabel(status) }}</option></select></label><div v-if="ageTab === 'older'" class="grid grid-cols-2 gap-2"><AppInput v-model="historyFrom" label="Desde" type="date" :disabled="saving || drawerOpen" :max="historyTo || undefined" /><AppInput v-model="historyTo" label="Hasta" type="date" :disabled="saving || drawerOpen" :min="historyFrom || undefined" /></div><button type="button" class="text-xs font-medium text-accent" :disabled="saving || drawerOpen" @click="clearFilters">Limpiar filtros</button></div></details>
         </div>
         <div class="scrollbar-thin max-h-[250px] lg:max-h-[650px] overflow-y-auto p-2">
-          <button v-for="record in filteredRecords" :key="record.id" type="button" :aria-pressed="selectedId === record.id" class="mb-1 w-full rounded-xl px-3 py-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent" :class="selectedId === record.id ? 'bg-accent-soft' : 'hover:bg-surface-secondary'" :disabled="saving" @click="selectRecord(record.id)">
-            <span class="flex items-start justify-between gap-3"><span class="min-w-0"><strong class="block truncate text-fg">{{ record.code }}</strong><span class="mt-1 block truncate text-xs text-muted-fg">{{ record.supplier.name }} · {{ record.purchase.documentNumber }}</span></span><AppBadge :variant="statusVariant(record.status)">{{ statusLabel(record.status) }}</AppBadge></span>
-            <span class="mt-2 flex justify-between text-xs text-muted-fg"><span>{{ shortDate(record.retaceoDate) }}</span><strong class="text-fg">{{ money(record.totalCost, record.purchase.currency) }}</strong></span>
+          <button v-for="record in filteredRecords" :key="record.id" type="button" :aria-pressed="selectedId === record.id" class="mb-1 w-full rounded-lg border-l-[3px] px-3 py-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent" :class="selectedId === record.id ? 'border-accent bg-accent-soft' : 'border-transparent hover:bg-surface-secondary'" :disabled="saving" @click="selectRecord(record.id)">
+            <span class="flex items-start justify-between gap-3"><span class="min-w-0"><strong class="flex items-center gap-2 truncate text-fg"><span class="h-2 w-2 shrink-0 rounded-full" :class="statusDotClass(statusVariant(record.status))" aria-hidden="true" />{{ record.code }}</strong><span class="mt-1 block truncate text-sm text-muted-fg">{{ record.supplier.name }} · {{ record.purchase.documentNumber }}</span></span><AppBadge v-if="statusVariant(record.status) === 'neutral'" :variant="statusVariant(record.status)">{{ statusLabel(record.status) }}</AppBadge><span v-else class="shrink-0 text-sm font-semibold" :class="statusTextClass(record.status)">{{ statusLabel(record.status) }}</span></span>
+            <span class="mt-2 flex justify-between text-sm text-muted-fg"><span>{{ shortDate(record.retaceoDate) }}</span><strong class="text-fg">{{ money(record.totalCost, record.purchase.currency) }}</strong></span>
           </button>
           <p v-if="!filteredRecords.length" class="px-4 py-12 text-center text-sm text-muted-fg">{{ loading ? 'Cargando retaceos…' : search || filterCount ? 'No hay retaceos para estos filtros.' : ageTab === 'recent' ? 'Sin retaceos esta semana.' : 'Sin retaceos registrados.' }}</p>
         </div>
       </aside>
 
-      <section aria-label="Detalle de retaceo" v-if="selected" class="min-w-0 overflow-hidden rounded-2xl border border-border bg-surface">
-        <header class="border-b border-border p-5">
+      <section aria-label="Detalle de retaceo" v-if="selected" class="min-w-0 overflow-hidden rounded-[12px] border border-border bg-surface">
+        <header class="p-5 pb-4">
           <div class="flex flex-wrap items-start justify-between gap-4">
-            <div><div class="flex items-center gap-2"><h2 class="text-xl font-semibold text-fg">{{ selected.code }}</h2><AppBadge :variant="statusVariant(selected.status)">{{ statusLabel(selected.status) }}</AppBadge><TrackingLink type="retaceo" :id="selected.id" /></div><p class="mt-1 text-sm text-muted-fg">{{ selected.supplier.name }} · Recepción {{ selected.purchase.documentNumber }}</p></div>
+            <div class="min-w-0"><div class="flex flex-wrap items-center gap-x-3 gap-y-1"><h2 class="text-2xl font-semibold tracking-tight text-fg">{{ selected.code }}</h2><span class="inline-flex items-center gap-2"><span class="h-2.5 w-2.5 shrink-0 rounded-full" :class="statusDotClass(statusVariant(selected.status))" aria-hidden="true" /><AppBadge v-if="statusVariant(selected.status) === 'neutral'" :variant="statusVariant(selected.status)">{{ statusLabel(selected.status) }}</AppBadge><span v-else class="text-sm font-semibold" :class="statusTextClass(selected.status)">{{ statusLabel(selected.status) }}</span></span><TrackingLink type="retaceo" :id="selected.id" /></div><p class="mt-1.5 text-base text-muted-fg">{{ selected.supplier.name }} · Recepción {{ selected.purchase.documentNumber }}</p></div>
             <fieldset :disabled="saving" class="flex flex-wrap gap-2">
               <AppButton v-if="selected.status === 'draft' && can('retaceos.calculate')" @click="workflow('calculate','Retaceo calculado')"><Calculator class="h-4 w-4" />Distribuir gastos</AppButton>
               <AppButton v-if="selected.status === 'calculated' && can('retaceos.verify')" @click="workflow('verify','Retaceo verificado')"><ShieldCheck class="h-4 w-4" />Confirmar revisión</AppButton>
               <AppButton v-if="selected.status === 'verified' && can('retaceos.close')" @click="workflow('close','Retaceo cerrado y costo real confirmado')"><LockKeyhole class="h-4 w-4" />Cerrar retaceo</AppButton>
               <RouterLink v-if="selected.status === 'closed' && selected.purchase.status !== 'CLOSED' && can('purchases.view')" :to="'/purchases/receipts?id=' + selected.purchaseId" class="inline-flex items-center rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-foreground">Cerrar recepción</RouterLink>
               <RouterLink v-if="selected.status === 'closed' && selected.purchase.status === 'CLOSED' && can('inventory.view') && can('purchase_requests.view')" :to="{path:'/inventory/warehouse',query:{tab:'transfers'}}" class="inline-flex items-center rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-foreground">Distribuir a sucursales</RouterLink>
-              <details v-if="can('trash.delete') || (['draft','calculated'].includes(selected.status) && can('retaceos.update')) || (selected.status === 'calculated' && can('retaceos.calculate')) || (!['closed','cancelled'].includes(selected.status) && can('retaceos.cancel')) || (selected.status === 'draft' && can('purchase_expenses.create') && can('purchases.view') && can('inventory.view'))" :key="'retaceo-actions-' + selected.id" class="relative"><summary class="cursor-pointer rounded-lg border border-border px-3 py-2 text-sm text-muted-fg">Más acciones</summary>
-                <div class="absolute right-0 z-30 mt-2 flex min-w-52 flex-col gap-2 rounded-xl border border-border bg-surface p-3 shadow-subtle">
+              <details v-if="can('trash.delete') || (['draft','calculated'].includes(selected.status) && can('retaceos.update')) || (selected.status === 'calculated' && can('retaceos.calculate')) || (!['closed','cancelled'].includes(selected.status) && can('retaceos.cancel')) || (selected.status === 'draft' && can('purchase_expenses.create') && can('purchases.view') && can('inventory.view'))" :key="'retaceo-actions-' + selected.id" class="relative"><summary class="inline-flex h-10 cursor-pointer list-none items-center gap-2 rounded-lg border border-border bg-surface px-4 text-sm font-medium text-fg transition-colors hover:bg-surface-secondary [&::-webkit-details-marker]:hidden">Más acciones<ChevronDown class="h-4 w-4" aria-hidden="true" /></summary>
+                <div class="absolute right-0 z-30 mt-2 flex min-w-52 flex-col gap-2 rounded-[12px] border border-border bg-surface p-3 shadow-subtle">
                   <AppButton v-if="['draft','calculated'].includes(selected.status) && can('retaceos.update')" variant="outline" @click="editRetaceo(selected)"><Pencil class="h-4 w-4" />Editar</AppButton>
                   <RouterLink v-if="selected.status === 'draft' && can('purchase_expenses.create') && can('purchases.view') && can('inventory.view')" :to="{ path: '/inventory/warehouse', query: { purchaseId: selected.purchaseId, tab: 'expenses' } }" class="rounded-lg border border-border px-3 py-2 text-center text-sm">Registrar gastos reales</RouterLink>
                   <AppButton v-if="selected.status === 'calculated' && can('retaceos.calculate')" variant="outline" @click="workflow('calculate','Retaceo recalculado')">Volver a distribuir gastos</AppButton>
@@ -422,56 +426,68 @@ onMounted(load);
               </details>
             </fieldset>
           </div>
-          <ol v-if="selected.status !== 'cancelled'" aria-label="Estado del retaceo" class="mt-4 flex flex-wrap gap-x-5 gap-y-2 border-t border-border pt-4 text-sm"><li v-for="(stage, index) in ['Borrador', 'Distribuido', 'Revisado', 'Cerrado']" :key="stage" :aria-current="['draft','calculated','verified','closed'][index] === selected.status ? 'step' : undefined" :class="['draft','calculated','verified','closed'].indexOf(selected.status) >= index ? 'font-semibold text-accent' : 'text-muted-fg'">{{ index + 1 }}. {{ stage }}</li></ol>
         </header>
 
-        <div class="border-b border-border px-5 py-3"><PurchaseTabs v-model="detailView" :items="[{ value: 'products', label: 'Costo por producto' }, { value: 'expenses', label: 'Gastos' }, { value: 'documents', label: 'Datos y documentos' }]" label="Detalle del retaceo" :disabled="saving" /></div>
+        <div class="border-b border-border px-5"><PurchaseTabs variant="underline" v-model="detailView" :items="[{ value: 'products', label: 'Costo por producto' }, { value: 'expenses', label: 'Gastos' }, { value: 'documents', label: 'Datos y documentos' }]" label="Detalle del retaceo" :disabled="saving" /></div>
         <section v-if="detailView === 'expenses'" class="p-5 sm:p-6">
-          <h3 class="font-semibold">Gastos y costo de adquisición</h3>
-          <dl class="mt-5 max-w-2xl space-y-4 text-sm">
-            <div class="flex items-center justify-between gap-4"><dt class="text-muted-fg">Mercadería (FOB)</dt><dd class="font-medium">{{ money(selected.totalFob) }}</dd></div>
-            <div class="flex items-center justify-between gap-4"><dt class="text-muted-fg">Flete</dt><dd class="font-medium">{{ money(selected.totalFreight) }}</dd></div>
-            <div class="flex items-center justify-between gap-4"><dt class="text-muted-fg">Otros gastos</dt><dd class="font-medium">{{ money(selected.totalExpenses) }}</dd></div>
-            <div class="flex items-center justify-between gap-4"><dt class="text-muted-fg">Aranceles de importación (DAI)</dt><dd class="font-medium">{{ money(selected.totalDai) }}</dd></div>
-            <div class="flex items-center justify-between gap-4 border-t border-border pt-4"><dt class="font-semibold">{{ selected.status === 'draft' ? 'Costo previsto' : 'Costo de adquisición' }}</dt><dd class="text-lg font-semibold">{{ money(selected.totalCost) }}</dd></div>
-            <div class="flex items-center justify-between gap-4 rounded-xl bg-surface-secondary p-3 text-muted-fg"><dt>IVA de importación · excluido del costo</dt><dd class="font-medium">{{ money(selected.importVat) }}</dd></div>
+          <h3 class="text-xl font-semibold tracking-tight text-fg">Gastos y costo de adquisición</h3>
+          <dl class="mt-5 text-base text-fg">
+            <div class="space-y-4 px-1">
+              <div class="flex items-center justify-between gap-4"><dt>Mercadería (FOB)</dt><dd class="tabular-nums">{{ money(selected.totalFob) }}</dd></div>
+              <div class="flex items-center justify-between gap-4"><dt>Flete</dt><dd class="tabular-nums">{{ money(selected.totalFreight) }}</dd></div>
+              <div class="flex items-center justify-between gap-4"><dt>Otros gastos</dt><dd class="tabular-nums">{{ money(selected.totalExpenses) }}</dd></div>
+              <div class="flex items-center justify-between gap-4"><dt>Aranceles de importación (DAI)</dt><dd class="tabular-nums">{{ money(selected.totalDai) }}</dd></div>
+            </div>
+            <div class="mt-5 flex items-center justify-between gap-4 border-t border-border px-1 pt-5"><dt class="font-semibold">{{ selected.status === 'draft' ? 'Costo previsto' : 'Costo de adquisición' }}</dt><dd class="text-2xl font-semibold tracking-tight tabular-nums">{{ money(selected.totalCost) }}</dd></div>
+            <div class="mt-5 flex items-center justify-between gap-4 border-t border-border px-1 pt-5 text-muted-fg"><dt>IVA de importación · excluido del costo</dt><dd class="tabular-nums">{{ money(selected.importVat) }}</dd></div>
           </dl>
           <RouterLink v-if="selected.status === 'draft' && can('purchase_expenses.create') && can('purchases.view') && can('inventory.view')" :to="{ path: '/inventory/warehouse', query: { purchaseId: selected.purchaseId, tab: 'expenses' } }" class="mt-5 inline-flex rounded-lg border border-border px-4 py-2 text-sm font-medium text-accent">Registrar gastos reales</RouterLink>
         </section>
 
         <section v-if="detailView === 'products'" class="p-5 sm:p-6">
-          <div class="mb-3 flex flex-wrap items-center justify-between gap-3"><h3 class="font-semibold text-fg">Costo por producto</h3><label class="flex items-center gap-2 text-sm text-muted-fg"><input v-model="showBreakdown" type="checkbox" class="h-4 w-4" />Ver desglose de gastos</label></div>
-          <div class="overflow-x-auto rounded-lg border border-border"><table class="w-full min-w-[580px] text-left text-sm"><thead class="data-thead"><tr><th class="px-4 py-3">Producto</th><th class="px-4 py-3 text-right">Cantidad</th><th class="px-4 py-3 text-right">FOB</th><th v-if="showBreakdown" class="px-4 py-3 text-right">Distribución</th><th v-if="showBreakdown" class="px-4 py-3 text-right">Flete</th><th v-if="showBreakdown" class="px-4 py-3 text-right">Gastos</th><th v-if="showBreakdown" class="px-4 py-3 text-right">DAI</th><th class="px-4 py-3 text-right">Costo unitario</th><th class="px-4 py-3 text-right">Costo total</th></tr></thead><tbody class="divide-y divide-border"><tr v-for="detail in selected.details" :key="detail.id"><td class="px-4 py-3"><strong class="text-fg">{{ detail.product.name }}</strong><span class="block text-xs text-muted-fg">{{ detail.product.internalCode }} · {{ detail.purchaseItem?.location?.code ?? 'Sin ubicación' }}</span></td><td class="px-4 py-3 text-right">{{ Number(detail.quantity) }}</td><td class="px-4 py-3 text-right">{{ money(detail.costFob) }}</td><td v-if="showBreakdown" class="px-4 py-3 text-right">{{ Number(detail.distributionPercent).toFixed(2) }}%</td><td v-if="showBreakdown" class="px-4 py-3 text-right">{{ money(detail.freightAmount) }}</td><td v-if="showBreakdown" class="px-4 py-3 text-right">{{ money(detail.expenseAmount) }}</td><td v-if="showBreakdown" class="px-4 py-3 text-right">{{ money(detail.daiAmount) }}</td><td class="px-4 py-3 text-right font-medium">{{ selected.status === 'draft' ? 'Pendiente' : money(detail.unitCost) }}</td><td class="px-4 py-3 text-right font-semibold text-fg">{{ selected.status === 'draft' ? 'Pendiente' : money(detail.totalCost) }}</td></tr></tbody></table></div>
-          <div class="mt-5 flex items-center justify-between gap-4 border-t border-border pt-4 text-sm"><span class="text-muted-fg">{{ selected.status === 'draft' ? 'Costo previsto' : 'Costo de adquisición' }}</span><strong class="text-lg">{{ money(selected.totalCost) }}</strong></div>
+          <div class="mb-3 flex flex-wrap items-center justify-between gap-3"><h3 class="text-xl font-semibold tracking-tight text-fg">Costo por producto</h3><label class="flex items-center gap-2 text-sm text-muted-fg"><input v-model="showBreakdown" type="checkbox" class="h-4 w-4 accent-accent" />Ver desglose de gastos</label></div>
+          <div class="overflow-x-auto rounded-[12px]"><table class="w-full min-w-[580px] text-left text-sm"><thead class="bg-surface-secondary text-sm text-muted-fg"><tr><th class="px-4 py-3">Producto</th><th class="px-4 py-3 text-right">Cantidad</th><th class="px-4 py-3 text-right">FOB</th><th v-if="showBreakdown" class="px-4 py-3 text-right">Distribución</th><th v-if="showBreakdown" class="px-4 py-3 text-right">Flete</th><th v-if="showBreakdown" class="px-4 py-3 text-right">Gastos</th><th v-if="showBreakdown" class="px-4 py-3 text-right">DAI</th><th class="px-4 py-3 text-right">Costo unitario</th><th class="px-4 py-3 text-right">Costo total</th></tr></thead><tbody class="divide-y divide-border border-b border-border"><tr v-for="detail in selected.details" :key="detail.id"><td class="px-4 py-3"><strong class="text-fg">{{ detail.product.name }}</strong><span class="block text-sm text-muted-fg">{{ detail.product.internalCode }} · {{ detail.purchaseItem?.location?.code ?? 'Sin ubicación' }}</span></td><td class="px-4 py-3 text-right">{{ Number(detail.quantity) }}</td><td class="px-4 py-3 text-right">{{ money(detail.costFob) }}</td><td v-if="showBreakdown" class="px-4 py-3 text-right">{{ Number(detail.distributionPercent).toFixed(2) }}%</td><td v-if="showBreakdown" class="px-4 py-3 text-right">{{ money(detail.freightAmount) }}</td><td v-if="showBreakdown" class="px-4 py-3 text-right">{{ money(detail.expenseAmount) }}</td><td v-if="showBreakdown" class="px-4 py-3 text-right">{{ money(detail.daiAmount) }}</td><td class="px-4 py-3 text-right font-medium">{{ selected.status === 'draft' ? 'Pendiente' : money(detail.unitCost) }}</td><td class="px-4 py-3 text-right font-semibold text-fg">{{ selected.status === 'draft' ? 'Pendiente' : money(detail.totalCost) }}</td></tr></tbody></table></div>
+          <div class="mt-5 flex items-center justify-between gap-4 px-1 pt-1"><span class="text-base text-muted-fg">{{ selected.status === 'draft' ? 'Costo previsto' : 'Costo de adquisición' }}</span><strong class="text-2xl font-semibold tracking-tight tabular-nums">{{ money(selected.totalCost) }}</strong></div>
         </section>
         <section v-if="detailView === 'documents'" :key="'import-' + selected.id" class="p-5 sm:p-6">
-          <h3 class="font-semibold">Datos de importación</h3>
-          <dl class="mt-3 grid gap-4 text-sm sm:grid-cols-2">
-            <div><dt class="text-muted-fg">Factura</dt><dd>{{ selected.importInvoiceNumber || 'Sin factura' }}<span v-if="selected.importInvoiceDate"> · {{ shortDate(selected.importInvoiceDate) }}</span></dd></div>
-            <div><dt class="text-muted-fg">Póliza</dt><dd>{{ selected.importPolicyNumber || 'Sin póliza' }}<span v-if="selected.importPolicyDate"> · {{ shortDate(selected.importPolicyDate) }}</span></dd></div>
-            <div><dt class="text-muted-fg">Origen</dt><dd>{{ selected.originCountry || 'No indicado' }}</dd></div>
-            <div><dt class="text-muted-fg">Destino</dt><dd>{{ selected.purchase.branch?.name }} · {{ selected.purchase.warehouse?.name }}</dd></div>
+          <h3 class="text-xl font-semibold tracking-tight text-fg">Datos de importación</h3>
+          <dl class="mt-4 grid gap-x-8 gap-y-5 text-base sm:grid-cols-2">
+            <div><dt class="text-muted-fg">Factura</dt><dd class="mt-0.5 text-fg">{{ selected.importInvoiceNumber || 'Sin factura' }}<span v-if="selected.importInvoiceDate"> · {{ shortDate(selected.importInvoiceDate) }}</span></dd></div>
+            <div><dt class="text-muted-fg">Póliza</dt><dd class="mt-0.5 text-fg">{{ selected.importPolicyNumber || 'Sin póliza' }}<span v-if="selected.importPolicyDate"> · {{ shortDate(selected.importPolicyDate) }}</span></dd></div>
+            <div><dt class="text-muted-fg">Origen</dt><dd class="mt-0.5 text-fg">{{ selected.originCountry || 'No indicado' }}</dd></div>
+            <div><dt class="text-muted-fg">Destino</dt><dd class="mt-0.5 text-fg">{{ selected.purchase.branch?.name }} · {{ selected.purchase.warehouse?.name }}</dd></div>
           </dl>
-          <p v-if="selected.notes" class="mt-4 whitespace-pre-wrap break-words text-sm text-muted-fg">{{ selected.notes }}</p>
-          <div class="mt-6 border-t border-border pt-5"><h3 class="font-semibold">Documentos relacionados</h3>
-          <nav aria-label="Documentos de origen del retaceo" class="mt-4 flex flex-wrap items-center gap-4 text-sm"><RouterLink v-for="document in traceDocuments(selected)" :key="document.path" :to="document.path" class="font-medium text-accent hover:underline">{{ document.code }}</RouterLink></nav>
+          <p v-if="selected.notes" class="mt-4 whitespace-pre-wrap break-words text-base text-muted-fg">{{ selected.notes }}</p>
+          <div class="mt-6 border-t border-border pt-6"><h3 class="text-xl font-semibold tracking-tight text-fg">Documentos relacionados</h3>
+          <nav aria-label="Documentos de origen del retaceo" class="mt-4 flex flex-wrap items-center gap-x-8 gap-y-3 text-base"><RouterLink v-for="document in traceDocuments(selected)" :key="document.path" :to="document.path" class="inline-flex items-center gap-2 font-medium text-accent underline underline-offset-2 hover:opacity-80"><FileText class="h-5 w-5 shrink-0 text-muted-fg" aria-hidden="true" />{{ document.code }}</RouterLink></nav>
           </div>
         </section>
       </section>
-      <section aria-label="Detalle de retaceo" v-else class="grid min-h-[420px] place-items-center rounded-2xl border border-border bg-surface p-10 text-center"><div><Calculator class="mx-auto h-10 w-10 text-muted-fg" /><p class="mt-3 font-medium text-fg">{{ loading ? 'Cargando retaceos...' : eligiblePurchases.length ? 'Recepciones disponibles para retaceo' : 'Sin retaceos pendientes' }}</p><AppButton v-if="!loading && eligiblePurchases.length && can('retaceos.create')" class="mt-4" @click="newRetaceo"><Plus class="h-4 w-4" />Preparar retaceo</AppButton><RouterLink v-else-if="can('purchases.view')" to="/purchases/receipts" class="mt-4 block text-sm font-medium text-accent">Ver recepciones</RouterLink></div></section>
+      <section aria-label="Detalle de retaceo" v-else class="grid min-h-[420px] place-items-center rounded-[12px] border border-border bg-surface p-10 text-center"><div><Calculator class="mx-auto h-10 w-10 text-muted-fg" /><p class="mt-3 font-medium text-fg">{{ loading ? 'Cargando retaceos...' : eligiblePurchases.length ? 'Recepciones disponibles para retaceo' : 'Sin retaceos pendientes' }}</p><AppButton v-if="!loading && eligiblePurchases.length && can('retaceos.create')" class="mt-4" @click="newRetaceo"><Plus class="h-4 w-4" />Preparar retaceo</AppButton><RouterLink v-else-if="can('purchases.view')" to="/purchases/receipts" class="mt-4 block text-sm font-medium text-accent">Ver recepciones</RouterLink></div></section>
     </div>
 
     </div>
 
-    <AppDrawer v-if="drawerOpen" label="Retaceo de importación" size="lg" padded @close="closeDrawer()"><div class="flex items-start justify-between"><div><p class="section-eyebrow">{{ editingId ? 'Modificar borrador' : 'Nueva distribución' }}</p><h2 class="mt-1 text-xl font-semibold text-fg">Retaceo de importación</h2></div><button class="icon-button" title="Cerrar" @click="closeDrawer()"><X class="h-5 w-5" /></button></div>
-      <p v-if="errorMessage" role="alert" class="sticky top-0 z-10 mt-4 rounded-lg border border-danger/30 bg-surface p-3 text-sm text-danger">{{ errorMessage }}</p>
-      <ol aria-label="Etapas del retaceo" class="mt-5 grid grid-cols-3 gap-2 border-b border-border pb-4">
-        <li v-for="(step, index) in steps" :key="step" :aria-current="formStep === index + 1 ? 'step' : undefined" class="flex items-center gap-2 text-sm" :class="formStep === index + 1 ? 'font-semibold text-accent' : 'text-muted-fg'"><span class="grid h-6 w-6 shrink-0 place-items-center rounded-full border border-current text-xs">{{ index + 1 }}</span>{{ step }}</li>
-      </ol>
-      <form class="mt-6 space-y-6" @submit.prevent="submitForm"><fieldset :disabled="saving" class="min-w-0 space-y-6">
+    <div v-if="drawerOpen" class="fixed inset-0 z-50 bg-black/45" @click.self="closeDrawer()"><aside role="dialog" aria-modal="true" aria-labelledby="retaceo-title" class="ml-auto h-full w-full max-w-3xl overflow-y-auto bg-surface shadow-2xl" @keydown.esc="closeDrawer()">
+      <header class="sticky top-0 z-10 border-b border-border bg-surface px-4 pt-4 sm:px-6 sm:pt-5">
+        <div class="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+          <div class="min-w-0 flex-1 basis-60"><p v-if="editingId" class="section-eyebrow">Modificar borrador</p><h2 id="retaceo-title" class="text-2xl font-semibold tracking-tight text-fg">Retaceo de importación</h2></div>
+          <div class="flex shrink-0 flex-wrap items-center gap-2">
+            <AppButton variant="outline" type="button" :disabled="saving" @click="formStep > 1 ? (formStep--, errorMessage = '') : closeDrawer()">{{ formStep > 1 ? 'Atrás' : 'Cancelar' }}</AppButton>
+            <AppButton type="submit" form="retaceo-form" :disabled="saving || !form.purchaseId || !form.details.length">{{ saving ? 'Guardando...' : formStep === 1 ? 'Continuar a gastos' : formStep === 2 ? 'Revisar importes' : 'Guardar borrador' }}</AppButton>
+            <button type="button" class="icon-button" aria-label="Cerrar" title="Cerrar" @click="closeDrawer()"><X class="h-5 w-5" /></button>
+          </div>
+        </div>
+        <ol aria-label="Etapas del retaceo" class="mt-4 grid grid-cols-3">
+          <li v-for="(step, index) in steps" :key="step" :aria-current="formStep === index + 1 ? 'step' : undefined" class="-mb-px border-b-2 pb-3 text-sm font-medium" :class="[index > 0 ? 'pl-3' : '', formStep === index + 1 ? 'border-accent text-accent' : 'border-transparent text-muted-fg']"><span class="sr-only">Paso {{ index + 1 }}: </span>{{ step }}</li>
+        </ol>
+      </header>
+      <div class="p-4 sm:p-6">
+      <p v-if="errorMessage" role="alert" class="mb-4 rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger">{{ errorMessage }}</p>
+      <form id="retaceo-form" class="space-y-6" @submit.prevent="submitForm"><fieldset :disabled="saving" class="min-w-0 space-y-6">
         <section v-if="formStep === 1" class="space-y-5">
           <div class="grid gap-4 sm:grid-cols-2">
-            <label class="text-sm font-medium text-fg">Recepción<select :value="form.purchaseId" @change="changePurchase" :disabled="!!editingId" required class="field-control"><option :value="0" disabled>Seleccionar recepción</option><option v-for="purchase in eligiblePurchases" :key="purchase.id" :value="purchase.id">{{ purchase.documentNumber }} · {{ purchase.supplier.name }}</option><option v-if="editingId && selectedPurchase" :value="selectedPurchase.id">{{ selectedPurchase.documentNumber }} · {{ selectedPurchase.supplier.name }}</option></select></label>
+            <SearchableSelect :model-value="form.purchaseId" :options="purchaseOptions" label="Recepción" placeholder="Seleccionar recepción" search-label="Buscar recepción por código o proveedor" :disabled="!!editingId" @select="changePurchase" />
             <AppInput v-model="form.retaceoDate" type="date" label="Fecha de retaceo" required />
           </div>
           <dl v-if="selectedPurchase" class="grid gap-4 border-y border-border py-4 text-sm sm:grid-cols-2">
@@ -484,35 +500,48 @@ onMounted(load);
           <details :open="!!form.importPolicyNumber || !!form.originCountry" class="border-t border-border pt-4"><summary class="cursor-pointer text-sm font-medium text-muted-fg">Documentos de importación</summary><div class="mt-4 grid gap-4 sm:grid-cols-2"><AppInput v-model="form.originCountry" label="País de origen" maxlength="100" /><AppInput v-model="form.importPolicyNumber" label="Póliza de importación" maxlength="100" /><AppInput v-model="form.importPolicyDate" type="date" label="Fecha de póliza" /></div></details>
         </section>
         <section v-else-if="formStep === 2" class="space-y-5">
-          <h3 class="font-semibold">Gastos de la recepción</h3>
+          <h3 class="text-xl font-semibold tracking-tight text-fg">Gastos de la recepción</h3>
           <div class="grid gap-4 sm:grid-cols-2"><AppInput :disabled="!!selectedPurchase?.actualExpenses?.length" v-model="form.totalFreight as any" type="number" min="0" step="0.01" label="Transporte / flete" required /><AppInput :disabled="!!selectedPurchase?.actualExpenses?.length" v-model="form.totalExpenses as any" type="number" min="0" step="0.01" label="Otros gastos" required /><AppInput :disabled="!!selectedPurchase?.actualExpenses?.length" v-model="form.totalDai as any" type="number" min="0" step="0.01" label="Aranceles de importación (DAI)" required /><AppInput v-model="form.importVat as any" type="number" min="0" step="0.01" label="IVA de importación · fuera del costo" required /></div>
-          <h3 class="border-t border-border pt-4 font-semibold">Valor total por producto (FOB)</h3>
-          <div v-for="line in form.details" :key="line.purchaseItemId" class="grid items-end gap-3 border-b border-border pb-4 sm:grid-cols-[1fr_180px]"><div class="min-w-0"><p class="break-words font-medium">{{ selectedPurchase?.items.find((item: any) => item.id === line.purchaseItemId)?.product.name }}</p><p class="text-xs text-muted-fg">Cantidad recibida: {{ selectedPurchase?.items.find((item: any) => item.id === line.purchaseItemId)?.quantity }}</p></div><AppInput v-model="line.costFob as any" type="number" min="0" step="0.01" label="Valor total, no unitario" required /></div>
+          <h3 class="border-t border-border pt-5 text-xl font-semibold tracking-tight text-fg">Valor total por producto (FOB)</h3>
+          <div class="overflow-x-auto rounded-[12px]">
+            <table class="w-full min-w-[460px] text-left text-sm">
+              <caption class="sr-only">Cantidad recibida y valor total FOB de cada producto de la recepción</caption>
+              <thead class="bg-surface-secondary text-muted-fg"><tr><th scope="col" class="rounded-tl-[12px] px-4 py-3 font-semibold text-fg">Producto</th><th scope="col" class="px-3 py-3 text-right font-semibold text-fg">Cantidad recibida</th><th scope="col" class="w-40 rounded-tr-[12px] px-4 py-3 font-semibold text-fg">Valor total, no unitario</th></tr></thead>
+              <tbody class="divide-y divide-border border-b border-border">
+                <tr v-for="line in form.details" :key="line.purchaseItemId">
+                  <th scope="row" class="min-w-48 break-words px-4 py-3 text-left font-normal text-fg">{{ selectedPurchase?.items.find((item: any) => item.id === line.purchaseItemId)?.product.name }}</th>
+                  <td class="px-3 py-3 text-right tabular-nums">{{ Number(selectedPurchase?.items.find((item: any) => item.id === line.purchaseItemId)?.quantity) }}</td>
+                  <td class="px-4 py-2.5"><input v-model="line.costFob as any" type="number" min="0" step="0.01" required class="field-control !mt-0 !h-10 w-full tabular-nums" :aria-label="'Valor total de ' + selectedPurchase?.items.find((item: any) => item.id === line.purchaseItemId)?.product.name + ', no unitario'" /></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </section>
         <section v-else class="space-y-5">
-          <div><h3 class="font-semibold">Resumen del retaceo</h3><p class="mt-1 text-sm text-muted-fg">{{ selectedPurchase?.documentNumber }} · {{ selectedPurchase?.supplier.name }}</p></div>
-          <dl class="space-y-3 text-sm">
-            <div class="flex justify-between gap-4"><dt>Valor de mercadería (FOB)</dt><dd>{{ money(preview.fob) }}</dd></div>
-            <div class="flex justify-between gap-4"><dt>Transporte / flete</dt><dd>{{ money(form.totalFreight) }}</dd></div>
-            <div class="flex justify-between gap-4"><dt>Otros gastos</dt><dd>{{ money(form.totalExpenses) }}</dd></div>
-            <div class="flex justify-between gap-4"><dt>Aranceles (DAI)</dt><dd>{{ money(form.totalDai) }}</dd></div>
-            <div class="flex justify-between gap-4 border-t border-border pt-3 text-base font-semibold"><dt>Costo total de adquisición</dt><dd>{{ money(preview.acquisition) }}</dd></div>
-            <div class="flex justify-between gap-4 text-muted-fg"><dt>IVA de importación · excluido del costo</dt><dd>{{ money(form.importVat) }}</dd></div>
+          <div><h3 class="text-xl font-semibold tracking-tight text-fg">Resumen del retaceo</h3><p class="mt-1 text-base text-muted-fg">{{ selectedPurchase?.documentNumber }} · {{ selectedPurchase?.supplier.name }}</p></div>
+          <dl class="text-base text-fg">
+            <div class="space-y-3 px-1">
+              <div class="flex justify-between gap-4"><dt>Valor de mercadería (FOB)</dt><dd class="tabular-nums">{{ money(preview.fob) }}</dd></div>
+              <div class="flex justify-between gap-4"><dt>Transporte / flete</dt><dd class="tabular-nums">{{ money(form.totalFreight) }}</dd></div>
+              <div class="flex justify-between gap-4"><dt>Otros gastos</dt><dd class="tabular-nums">{{ money(form.totalExpenses) }}</dd></div>
+              <div class="flex justify-between gap-4"><dt>Aranceles (DAI)</dt><dd class="tabular-nums">{{ money(form.totalDai) }}</dd></div>
+            </div>
+            <div class="mt-5 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-[8px] bg-surface-secondary px-4 py-4"><dt class="text-lg font-semibold">Costo total de adquisición</dt><dd class="text-2xl font-semibold tabular-nums tracking-tight">{{ money(preview.acquisition) }}</dd></div>
+            <div class="mt-4 flex justify-between gap-4 px-1 text-muted-fg"><dt>IVA de importación · excluido del costo</dt><dd class="tabular-nums">{{ money(form.importVat) }}</dd></div>
           </dl>
           <details :open="!!form.notes" class="border-t border-border pt-4"><summary class="cursor-pointer text-sm font-medium text-muted-fg">Observaciones (opcional)</summary><textarea v-model="form.notes" aria-label="Observaciones" maxlength="2000" class="field-control mt-3 min-h-24" /></details>
         </section>
-        <footer class="sticky bottom-0 flex flex-wrap items-center justify-between gap-3 border-t border-border bg-surface py-4">
-          <AppButton variant="outline" type="button" @click="formStep > 1 ? (formStep--, errorMessage = '') : closeDrawer()">{{ formStep > 1 ? 'Atrás' : 'Cancelar' }}</AppButton>
-          <AppButton type="submit" :disabled="saving || !form.purchaseId || !form.details.length">{{ saving ? 'Guardando...' : formStep === 1 ? 'Continuar a gastos' : formStep === 2 ? 'Revisar importes' : 'Guardar borrador' }}</AppButton>
-        </footer>
       </fieldset></form>
-    </AppDrawer>
+      </div>
+    </aside></div>
     <ConfirmDialog v-if="confirmation" :title="confirmation.title" :description="confirmation.description" :require-reason="confirmation.reason" :busy="saving" :error="errorMessage" @confirm="confirmWorkflow" @close="confirmation = null" />
     <ConfirmDialog v-if="discardChanges" title="Descartar cambios" description="Los cambios del retaceo no se han guardado." @confirm="closeDrawer(true)" @close="discardChanges = false" />
     <ConfirmDialog v-if="pendingPurchaseId !== null" title="Cambiar recepción" description="Se reemplazarán los productos y la factura. Se borrarán los gastos y datos de importación capturados para la recepción anterior." @confirm="confirmPurchaseChange" @close="pendingPurchaseId = null" />
     <ConfirmDialog v-if="leaving" title="Salir sin guardar" description="Los cambios del retaceo no se han guardado." @confirm="resolveLeave(true)" @close="resolveLeave(false)" />
-    <AppDrawer v-if="expenseSettingsOpen" label="Configurar tipos de gasto" @close="expenseSettings?.requestClose()">
+    <div v-if="expenseSettingsOpen" class="fixed inset-0 z-50 flex justify-end bg-black/40" @click.self="expenseSettings?.requestClose()">
+      <aside role="dialog" aria-modal="true" aria-label="Configurar tipos de gasto" class="h-full w-full max-w-2xl overflow-y-auto bg-surface p-5 shadow-xl sm:p-7" @keydown.esc.stop="expenseSettings?.requestClose()">
         <ExpenseTypesManager ref="expenseSettings" embedded @close="expenseSettingsOpen = false" />
-      </AppDrawer>
+      </aside>
+    </div>
   </AdminLayout>
 </template>

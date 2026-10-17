@@ -1,47 +1,17 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed } from 'vue';
 import { RouterLink } from 'vue-router';
 import { ArrowRight, CircleCheck, ListChecks } from 'lucide-vue-next';
-import { http } from '../../services/http.service';
-import { activeCompanyId } from '../../services/company-context';
-import { usePermissions } from '../../composables/usePermissions';
-import { myOwners, pendingFor, waitingOnOthers } from '../../utils/my-pending';
+import { useMyPending } from '../../composables/useMyPending';
 import { processSummary, relativeTime, stepLocation, type ProcessRow } from '../../utils/purchase-tracking';
 
 const props = withDefaults(defineProps<{ limit?: number }>(), { limit: 4 });
-const { can } = usePermissions();
+const { loading, failed, visible, owners, items, waiting, rows } = useMyPending();
 
-const rows = ref<ProcessRow[]>([]);
-const loading = ref(false);
-const failed = ref(false);
-let version = 0;
-
-const visible = computed(() => can('purchases.view'));
-const owners = computed(() => myOwners(can));
-const items = computed(() => pendingFor(rows.value, owners.value, can));
 const shown = computed(() => items.value.slice(0, props.limit));
-const waiting = computed(() => waitingOnOthers(rows.value, items.value));
 // Only name the team on each row when the user acts for several (e.g. an administrator).
 const manyTeams = computed(() => owners.value.length > 1);
 const firstCode = (item: { row: ProcessRow }) => processSummary(item.row.documents).split(' · ')[0] ?? '';
-
-async function load() {
-  const companyId = activeCompanyId.value;
-  if (!companyId || !visible.value) return;
-  const current = ++version;
-  loading.value = true; failed.value = false;
-  try {
-    const response = await http.get('/purchases/tracking/processes', { params: { scope: 'open', limit: 50 }, headers: { 'X-Company-Id': String(companyId) } });
-    if (current !== version || companyId !== activeCompanyId.value) return;
-    rows.value = response.data.data.items;
-  } catch {
-    if (current === version) { rows.value = []; failed.value = true; }
-  } finally { if (current === version) loading.value = false; }
-}
-
-onMounted(() => void load());
-onBeforeUnmount(() => { version++; });
-watch(activeCompanyId, () => void load());
 </script>
 
 <template>
