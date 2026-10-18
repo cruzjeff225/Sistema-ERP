@@ -32,6 +32,16 @@ export class WarehouseMapQueryDto {
   @Type(() => Number) @IsInt() @Min(1) warehouseId!: number;
 }
 
+export class RelocationDto {
+  @IsInt() @Min(1) lotId!: number;
+  @IsInt() @Min(1) fromLocationId!: number;
+  @IsInt() @Min(1) toLocationId!: number;
+  @IsInt({ message: "La cantidad de productos debe ser un número entero" }) @Min(1) @Max(9999999999) quantity!: number;
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
+  @IsString() @MinLength(5) @MaxLength(500) reason!: string;
+  @IsUUID() requestId!: string;
+}
+
 export class KardexQueryDto {
   @Type(() => Number) @IsInt() @Min(1) page = 1;
   @Type(() => Number) @IsInt() @Min(1) @Max(500) limit = 100;

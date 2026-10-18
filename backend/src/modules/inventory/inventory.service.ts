@@ -3,7 +3,7 @@ import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../infrastructure/database/prisma/prisma.service";
 import { AuditService } from "../audit/application/services/audit.service";
 import { purchaseTransaction } from "../purchases/application/services/purchase-transaction";
-import { InventoryAdjustmentDto, InventoryQueryDto, KardexQueryDto, LabelPrintDto, LotQueryDto } from "./inventory.dto";
+import { InventoryAdjustmentDto, InventoryQueryDto, KardexQueryDto, LabelPrintDto, LotQueryDto, RelocationDto } from "./inventory.dto";
 import { applyEntry, applyExit, applyRevaluation, allocateFifo, lotCodeForAdjustment, lotCodeForReceipt, type CostBalance, type LotSlice } from './inventory-costing';
 import { locationMapState } from './location-map';
 
@@ -411,6 +411,44 @@ export class InventoryService {
     const movement = await this.record(tx, userId, { productId: lot.productId, lotId: lot.id, place: placed[0] ? { id: placed[0].locationId, warehouseId } : null, warehouseId, type: 'ADJUSTMENT', unitCost: data.unitCost, totalCost: delta, key, reason: `Costo final del retaceo (${lot.unitCost.toFixed(4)} → ${data.unitCost.toFixed(4)})`, reference: { type: 'retaceo', id: data.retaceoId }, balance: next.quantity });
     await this.audit.record(tx, { controller: 'inventory', action: 'REVALUE', recordId: movement.id, originalData: { companyId, unitCost: lot.unitCost }, modifiedData: { companyId, ...movement }, userId });
     return movement;
+  }
+
+  /** RN-INV-009: mover entre ubicaciones del mismo almacén cambia dónde está el lote, no cuánto hay ni cuánto vale. */
+  relocate(companyId: number, userId: number, dto: RelocationDto) {
+    return purchaseTransaction(this.prisma, companyId, tx => this.relocateIn(tx, companyId, userId, dto));
+  }
+
+  /** El espacio guarda un solo producto y no puede superar su capacidad nominal. */
+  private async assertFits(tx: Tx, locationId: number, productId: number, quantity: Prisma.Decimal) {
+    const space = await tx.location.findUniqueOrThrow({ where: { id: locationId }, include: { stocks: { where: { quantity: { gt: 0 } } } } });
+    if (space.stocks.length && !space.stocks.some(stock => stock.productId === productId)) throw new ConflictException('El espacio de destino guarda otro producto');
+    if (sum(space.stocks.map(stock => stock.quantity)).add(quantity).gt(space.capacity)) throw new ConflictException('El espacio de destino no tiene capacidad suficiente');
+  }
+
+  private async relocateIn(tx: Tx, companyId: number, userId: number, dto: RelocationDto) {
+    const key = `relocate:${companyId}:${dto.requestId.toLowerCase()}`;
+    const quantity = new Prisma.Decimal(dto.quantity);
+    this.integer(quantity, false);
+    const prior = await tx.inventoryMovement.findMany({ where: { key: { startsWith: `${key}:`, mode: 'insensitive' } }, orderBy: { id: 'asc' } });
+    if (prior.length) {
+      const [out, entry] = prior;
+      if (prior.length !== 2 || out!.lotId !== dto.lotId || out!.locationId !== dto.fromLocationId || entry!.locationId !== dto.toLocationId || !out!.quantityOut.eq(quantity) || out!.reason !== dto.reason) throw new ConflictException('La referencia ya fue usada para otro movimiento');
+      return { out: out!, in: entry! };
+    }
+    if (dto.fromLocationId === dto.toLocationId) throw new BadRequestException('El destino debe ser distinto del origen');
+    const lot = await tx.inventoryLot.findFirst({ where: { id: dto.lotId, product: { companyId }, status: { not: 'CANCELLED' } } });
+    if (!lot) throw new NotFoundException('Lote no disponible');
+    const from = await this.place(tx, companyId, dto.fromLocationId, false), to = await this.place(tx, companyId, dto.toLocationId, true);
+    if (from.warehouseId !== to.warehouseId) throw new BadRequestException('Solo se mueve entre ubicaciones del mismo almacén; entre almacenes use un traslado');
+    await this.assertFits(tx, to.id, lot.productId, quantity);
+    const outBalance = await this.moveStock(tx, lot.productId, lot.id, from.id, quantity.negated());
+    const inBalance = await this.moveStock(tx, lot.productId, lot.id, to.id, quantity);
+    const unitCost = (await this.costOf(tx, companyId, lot.productId)).average;
+    const reference = { type: 'relocation' };
+    const out = await this.record(tx, userId, { productId: lot.productId, lotId: lot.id, place: from, warehouseId: from.warehouseId, type: 'TRANSFER_OUT', quantityOut: quantity, unitCost, key: `${key}:out`, reason: dto.reason, reference, balance: outBalance });
+    const entry = await this.record(tx, userId, { productId: lot.productId, lotId: lot.id, place: to, warehouseId: to.warehouseId, type: 'TRANSFER_IN', quantityIn: quantity, unitCost, key: `${key}:in`, reason: dto.reason, reference, balance: inBalance });
+    await this.audit.record(tx, { controller: 'inventory', action: 'RELOCATE', recordId: entry.id, originalData: { companyId, from: from.id }, modifiedData: { companyId, lot: lot.lotCode, from: from.id, to: to.id, quantity: quantity.toString() }, userId });
+    return { out, in: entry };
   }
 
   private async adjustIn(tx: Tx, companyId: number, userId: number, dto: InventoryAdjustmentDto) {

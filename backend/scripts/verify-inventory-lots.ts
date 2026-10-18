@@ -97,6 +97,28 @@ async function main() {
   assert.equal(await db.inventoryLabelPrint.count({ where: { lotId: slot.lotId } }) >= first + 1, true);
   pass('etiquetas: código interno, lote y fecha; reimpresión con motivo; todo registrado');
 
+  // Mover entre ubicaciones del mismo almacén: cambia dónde está el lote, no cantidad ni valor (RN-INV-009)
+  const here = await db.location.findUniqueOrThrow({ where: { id: slot.locationId } });
+  const target = await db.location.findFirst({ where: { warehouseId: here.warehouseId, id: { not: here.id }, isActive: true, deletedAt: null, capacity: { gte: 1 }, stocks: { none: { quantity: { gt: 0 }, productId: { not: slot.lot.productId } } } } });
+  if (target) {
+    const costBefore = await db.inventoryCostAverage.findUniqueOrThrow({ where: { companyId_productId: { companyId, productId: slot.lot.productId } } });
+    const move = { lotId: slot.lotId, fromLocationId: here.id, toLocationId: target.id, quantity: 1, reason: 'QA lotes: reubicación de prueba', requestId: randomUUID() };
+    const held = async () => num((await db.inventoryLocationDetail.findUnique({ where: { lotId_locationId: { lotId: slot.lotId, locationId: target.id } } }))?.quantity ?? 0);
+    const heldBefore = await held();
+    const moved = await api('/inventory/relocations', 'POST', move);
+    assert.equal(num(moved.out.quantityOut), 1); assert.equal(num(moved.in.quantityIn), 1); assert.equal(moved.in.locationId, target.id);
+    assert.equal((await api('/inventory/relocations', 'POST', move)).in.id, moved.in.id, 'el reintento no duplica el movimiento');
+    assert.equal(await held(), heldBefore + 1);
+    const costAfter = await db.inventoryCostAverage.findUniqueOrThrow({ where: { companyId_productId: { companyId, productId: slot.lot.productId } } });
+    assert.equal(num(costAfter.quantityOnHand), num(costBefore.quantityOnHand)); assert.equal(num(costAfter.inventoryValue), num(costBefore.inventoryValue));
+    await api('/inventory/relocations', 'POST', { ...move, requestId: randomUUID(), toLocationId: here.id }, 400);
+    await api('/inventory/relocations', 'POST', { ...move, requestId: randomUUID(), quantity: 9999 }, 409);
+    const other = await db.location.findFirst({ where: { warehouseId: { not: here.warehouseId }, isActive: true, deletedAt: null } });
+    if (other) await api('/inventory/relocations', 'POST', { ...move, requestId: randomUUID(), toLocationId: other.id }, 400);
+    await api('/inventory/relocations', 'POST', { ...move, requestId: randomUUID(), fromLocationId: target.id, toLocationId: here.id });
+    pass('reubicación: mismo almacén, idempotente, sin cambiar cantidad ni valor; rechaza otro almacén, capacidad y saldo insuficiente');
+  } else console.log('SKIP reubicación: no hay un espacio libre en el mismo almacén');
+
   const after = await api('/inventory/reconciliation');
   assert.equal(after.consistent, true, 'La conciliación final debe estar limpia: ' + JSON.stringify(after.issues.slice(0, 3)));
   pass('conciliación final limpia tras ajustes, Kardex y etiquetas');

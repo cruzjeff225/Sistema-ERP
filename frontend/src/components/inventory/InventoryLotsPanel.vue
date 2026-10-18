@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import { ChevronLeft, ChevronRight, PackageSearch, Printer, Search, X } from 'lucide-vue-next';
+import { ChevronLeft, ChevronRight, MoveRight, PackageSearch, Printer, Search, X } from 'lucide-vue-next';
 import AppBadge from '../base/AppBadge.vue';
 import AppButton from '../base/AppButton.vue';
 import AppDrawer from '../base/AppDrawer.vue';
 import SearchField from '../base/SearchField.vue';
 import LabelPrintDialog from './LabelPrintDialog.vue';
+import RelocateLotDialog from './RelocateLotDialog.vue';
 import { inventoryGet } from '../../services/inventory.service';
 import { activeCompanyId } from '../../services/company-context';
 import { usePermissions } from '../../composables/usePermissions';
@@ -26,13 +27,15 @@ type LotDetail = Lot & {
   labelPrints: { id: number; quantityPrinted: number; printDate: string; reprintReason: string | null; user: { username: string } }[];
 };
 
-const props = defineProps<{ warehouses: { id: number; name: string; branch: { id: number; name: string } }[] }>();
+const props = defineProps<{ warehouses: { id: number; name: string; branch: { id: number; name: string }; locations: { id: number; code: string }[] }[] }>();
 const { can } = usePermissions();
 const lots = ref<Lot[]>([]), loading = ref(false), error = ref('');
 const search = ref(''), warehouseId = ref(0), onlyAvailable = ref(true), status = ref('');
 const page = ref(1), pages = ref(1), total = ref(0);
 const selected = ref<LotDetail | null>(null), detailLoading = ref(false);
 const printing = ref<LotDetail | Lot | null>(null);
+const moving = ref<{ lot: LotDetail; from: Loc; available: number } | null>(null);
+const destinations = computed(() => props.warehouses.find(w => w.id === moving.value?.from.warehouse.id)?.locations ?? []);
 let version = 0;
 
 const statusVariant = (value: string) => value === 'ACTIVE' ? 'success' : value === 'CANCELLED' ? 'danger' : 'neutral';
@@ -58,8 +61,9 @@ async function openDetail(lot: Lot) {
 }
 function applyFilters() { page.value = 1; void load(); }
 function clear() { search.value = ''; warehouseId.value = 0; status.value = ''; onlyAvailable.value = true; applyFilters(); }
+async function moved() { await printed(); }
 async function printed() { await load(); if (selected.value) { const id = selected.value.id; const result = await inventoryGet<LotDetail>(`lots/${id}`); if (result.company === activeCompanyId.value) selected.value = result.data; } }
-watch(activeCompanyId, () => { selected.value = null; printing.value = null; lots.value = []; page.value = 1; search.value = ''; warehouseId.value = 0; status.value = ''; void load(); }, { immediate: true });
+watch(activeCompanyId, () => { selected.value = null; printing.value = null; moving.value = null; lots.value = []; page.value = 1; search.value = ''; warehouseId.value = 0; status.value = ''; void load(); }, { immediate: true });
 </script>
 
 <template>
@@ -134,7 +138,7 @@ watch(activeCompanyId, () => { selected.value = null; printing.value = null; lot
 
         <section><h3 class="text-sm font-semibold">Distribución actual</h3>
           <p v-if="!selected.locations.length" class="mt-3 text-sm text-muted-fg">Este lote no tiene existencias en ubicaciones.</p>
-          <ul v-else class="mt-3 divide-y divide-border/70 rounded-xl border border-border/70 text-sm"><li v-for="row in selected.locations" :key="row.location.id" class="flex items-center justify-between gap-4 px-4 py-3"><span>{{ row.location.warehouse.name }} <span class="text-muted-fg">· {{ row.location.warehouse.branch.name }} · {{ row.location.code }}</span></span><strong class="tabular-nums">{{ quantity(row.quantity) }}</strong></li></ul>
+          <ul v-else class="mt-3 divide-y divide-border/70 rounded-xl border border-border/70 text-sm"><li v-for="row in selected.locations" :key="row.location.id" class="flex items-center justify-between gap-4 px-4 py-3"><span>{{ row.location.warehouse.name }} <span class="text-muted-fg">· {{ row.location.warehouse.branch.name }} · {{ row.location.code }}</span></span><span class="flex items-center gap-3"><strong class="tabular-nums">{{ quantity(row.quantity) }}</strong><button v-if="can('inventory.location.assign') && selected.status !== 'CANCELLED'" type="button" class="inline-flex items-center gap-1 text-xs text-accent hover:underline" :aria-label="`Mover lote desde ${row.location.code}`" @click="moving = { lot: selected, from: row.location, available: Number(row.quantity) }"><MoveRight class="h-3.5 w-3.5" />Mover</button></span></li></ul>
         </section>
 
         <section v-if="selected.transferItems.length"><h3 class="text-sm font-semibold">Traslados</h3>
@@ -153,5 +157,6 @@ watch(activeCompanyId, () => { selected.value = null; printing.value = null; lot
     </div>
   </AppDrawer>
 
+  <RelocateLotDialog v-if="moving" :lot="{ id: moving.lot.id, lotCode: moving.lot.lotCode, productName: moving.lot.product.name }" :from="{ id: moving.from.id, code: moving.from.code, warehouseName: moving.from.warehouse.name, available: moving.available }" :destinations="destinations" @close="moving = null" @moved="moved" />
   <LabelPrintDialog v-if="printing" :lot="{ id: printing.id, lotCode: printing.lotCode, productName: printing.product.name, onHand: Number(printing.onHand), hasPrints: 'labelPrints' in printing ? printing.labelPrints.length > 0 : printing._count.labelPrints > 0 }" @close="printing = null" @printed="printed" />
 </template>
