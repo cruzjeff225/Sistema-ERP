@@ -119,6 +119,19 @@ async function main() {
     pass('reubicación: mismo almacén, idempotente, sin cambiar cantidad ni valor; rechaza otro almacén, capacidad y saldo insuficiente');
   } else console.log('SKIP reubicación: no hay un espacio libre en el mismo almacén');
 
+  // Devolución aceptada: vuelve al lote de origen, valorada a su costo, y no puede exceder lo entregado
+  const returned = { lotId: slot.lotId, locationId: slot.locationId, quantity: 1, reason: 'QA lotes: devolución aceptada', requestId: randomUUID() };
+  const giveAway = await api('/inventory/adjustments', 'POST', { productId: slot.lot.productId, locationId: slot.locationId, quantity: -1, lotId: slot.lotId, reason: 'QA lotes: entrega que luego se devuelve', requestId: randomUUID() });
+  const stockBefore = await db.inventoryCostAverage.findUniqueOrThrow({ where: { companyId_productId: { companyId, productId: slot.lot.productId } } });
+  const back = await api('/inventory/returns', 'POST', returned);
+  assert.equal(back.movementType, 'RETURN'); assert.equal(num(back.quantityIn), 1); assert.equal(back.lotId, slot.lotId); assert.equal(num(back.unitCost), num(slot.lot.unitCost));
+  assert.equal((await api('/inventory/returns', 'POST', returned)).id, back.id, 'el reintento no duplica el movimiento');
+  const stockAfter = await db.inventoryCostAverage.findUniqueOrThrow({ where: { companyId_productId: { companyId, productId: slot.lot.productId } } });
+  assert.equal(num(stockAfter.quantityOnHand), num(stockBefore.quantityOnHand) + 1);
+  await api('/inventory/returns', 'POST', { ...returned, quantity: num(slot.lot.quantityReceived) + 1, requestId: randomUUID() }, 409);
+  assert(giveAway.id);
+  pass('devolución: reingresa solo lo entregado por el lote, a su costo, idempotente, sin exceder lo recibido');
+
   const after = await api('/inventory/reconciliation');
   assert.equal(after.consistent, true, 'La conciliación final debe estar limpia: ' + JSON.stringify(after.issues.slice(0, 3)));
   pass('conciliación final limpia tras ajustes, Kardex y etiquetas');
