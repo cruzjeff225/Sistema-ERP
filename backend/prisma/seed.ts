@@ -64,6 +64,7 @@ const INHERITED_FROM: Record<string, string> = {
   "inventory.label.print": "inventory.adjust",
   "inventory.location.assign": "inventory.adjust",
   "inventory.transfer": "inventory.adjust",
+  "inventory.deliver": "inventory.adjust",
 };
 
 const REMOVED_PERMISSION_ACTIONS = [
@@ -95,6 +96,7 @@ const PERMISSIONS: Array<{
   ["trash.purge", "Eliminar definitivamente de papelera", "Eliminar sin recuperación y conservar referencias históricas", "trash"],
   ["inventory.view", "Consultar inventario", "Existencias y kardex por empresa", "inventory"],
   ["inventory.adjust", "Ajustar inventario", "Entradas y salidas justificadas", "inventory"],
+  ["inventory.deliver", "Entregar ventas", "Registrar la salida de inventario de una venta entregada", "inventory"],
   ["inventory.lots.view", "Consultar lotes", "Lotes recibidos, su distribución y trazabilidad", "inventory"],
   ["inventory.receive", "Confirmar ingreso de mercancía", "Confirmar la recepción física que origina lotes", "inventory"],
   ["inventory.label.print", "Imprimir etiquetas", "Imprimir y reimprimir etiquetas de lote", "inventory"],

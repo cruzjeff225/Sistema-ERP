@@ -132,6 +132,27 @@ async function main() {
   assert(giveAway.id);
   pass('devolución: reingresa solo lo entregado por el lote, a su costo, idempotente, sin exceder lo recibido');
 
+  // Venta entregada: sale de la sucursal que entrega, por lote, todo o nada; la anulación compensa sin borrar
+  const branchId = (await db.warehouse.findUniqueOrThrow({ where: { id: here.warehouseId } })).branchId;
+  const availableIn = async () => num((await api(`/inventory/availability?branchId=${branchId}&productId=${slot.lot.productId}`))[0]?.available ?? 0);
+  const onHandBefore = await availableIn(), costQty = async () => num((await db.inventoryCostAverage.findUniqueOrThrow({ where: { companyId_productId: { companyId, productId: slot.lot.productId } } })).quantityOnHand);
+  const globalBefore = await costQty();
+  const sale = { requestId: randomUUID(), branchId, saleId: 987001, reason: 'QA lotes: venta entregada', lines: [{ productId: slot.lot.productId, quantity: 2 }] };
+  const delivered = await api('/inventory/sale-deliveries', 'POST', sale);
+  assert(delivered.length >= 1 && delivered.every((m: any) => m.movementType === 'SALE' && m.referenceType === 'sale' && m.referenceId === 987001 && m.lotId));
+  assert.equal(delivered.reduce((n: number, m: any) => n + num(m.quantityOut), 0), 2);
+  assert.equal(await availableIn(), onHandBefore - 2); assert.equal(await costQty(), globalBefore - 2);
+  assert.equal((await api('/inventory/sale-deliveries', 'POST', sale)).length, delivered.length, 'el reintento no duplica la salida');
+  await api('/inventory/sale-deliveries', 'POST', { ...sale, lines: [{ productId: slot.lot.productId, quantity: 3 }] }, 409);
+  await api('/inventory/sale-deliveries', 'POST', { ...sale, requestId: randomUUID(), lines: [{ productId: slot.lot.productId, quantity: onHandBefore + 1 }] }, 409);
+  assert.equal(await availableIn(), onHandBefore - 2, 'una entrega rechazada no descuenta nada');
+  const undone = await api('/inventory/sale-deliveries/reversal', 'POST', { requestId: sale.requestId, reason: 'QA lotes: venta anulada' });
+  assert(undone.every((m: any) => m.movementType === 'REVERSAL' && num(m.quantityIn) > 0));
+  assert.equal(await availableIn(), onHandBefore); assert.equal(await costQty(), globalBefore);
+  assert.equal((await api('/inventory/sale-deliveries/reversal', 'POST', { requestId: sale.requestId, reason: 'QA lotes: venta anulada' })).length, undone.length);
+  assert.equal(await availableIn(), onHandBefore, 'anular dos veces no reingresa dos veces');
+  pass('venta entregada: descuenta de la sucursal por lote, todo o nada, idempotente; la anulación compensa sin borrar el historial');
+
   const after = await api('/inventory/reconciliation');
   assert.equal(after.consistent, true, 'La conciliación final debe estar limpia: ' + JSON.stringify(after.issues.slice(0, 3)));
   pass('conciliación final limpia tras ajustes, Kardex y etiquetas');

@@ -3,7 +3,7 @@ import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../infrastructure/database/prisma/prisma.service";
 import { AuditService } from "../audit/application/services/audit.service";
 import { purchaseTransaction } from "../purchases/application/services/purchase-transaction";
-import { InventoryAdjustmentDto, InventoryQueryDto, KardexQueryDto, LabelPrintDto, LotQueryDto, RelocationDto, ReturnDto } from "./inventory.dto";
+import { InventoryAdjustmentDto, InventoryQueryDto, KardexQueryDto, LabelPrintDto, LotQueryDto, RelocationDto, ReturnDto, SaleDeliveryDto, SaleReversalDto } from "./inventory.dto";
 import { applyEntry, applyExit, applyRevaluation, allocateFifo, lotCodeForAdjustment, lotCodeForReceipt, type CostBalance, type LotSlice } from './inventory-costing';
 import { locationMapState } from './location-map';
 
@@ -446,6 +446,76 @@ export class InventoryService {
     const movement = await this.record(tx, userId, { productId: lot.productId, lotId: lot.id, place, warehouseId: place.warehouseId, type: 'RETURN', quantityIn: quantity, unitCost: lot.unitCost, key, reason: dto.reason, reference: { type: 'return', id: dto.saleId ?? null }, balance });
     await this.audit.record(tx, { controller: 'inventory', action: 'RETURN', recordId: movement.id, originalData: { companyId, quantity: balance.sub(quantity) }, modifiedData: { companyId, lot: lot.lotCode, ...movement }, userId });
     return movement;
+  }
+
+  /** Existencias disponibles para vender en una sucursal (lo que está en sus ubicaciones; lo que va en tránsito no cuenta). */
+  async availability(companyId: number, branchId: number, productIds?: number[]) {
+    const rows = await this.prisma.inventoryStock.groupBy({ by: ['productId'], where: { quantity: { gt: 0 }, product: { companyId, ...(productIds?.length ? { id: { in: productIds } } : {}) }, location: { locationType: 'STORAGE', warehouse: { branchId, branch: { companyId } } } }, _sum: { quantity: true } });
+    return rows.map(row => ({ productId: row.productId, available: row._sum.quantity ?? ZERO }));
+  }
+
+  /**
+   * 6.9.14: la venta confirmada y entregada descuenta de las ubicaciones de la sucursal que entrega, lote por lote.
+   * Todo ocurre en la transacción de quien llama; si una línea no alcanza, no se descuenta nada.
+   */
+  deliverSale(companyId: number, userId: number, dto: SaleDeliveryDto) {
+    return purchaseTransaction(this.prisma, companyId, tx => this.deliverIn(tx, companyId, userId, dto));
+  }
+
+  private async deliverIn(tx: Tx, companyId: number, userId: number, dto: SaleDeliveryDto) {
+    const base = `sale:${companyId}:${dto.requestId.toLowerCase()}`;
+    const prior = await tx.inventoryMovement.findMany({ where: { key: { startsWith: `${base}:`, mode: 'insensitive' } }, orderBy: { id: 'asc' } });
+    if (prior.length) {
+      const sameLines = dto.lines.every(line => sum(prior.filter(m => m.productId === line.productId).map(m => m.quantityOut)).eq(line.quantity)) && prior.every(m => dto.lines.some(line => line.productId === m.productId));
+      if (!sameLines || prior[0]!.reason !== dto.reason) throw new ConflictException('La referencia ya fue usada para otra entrega');
+      return prior;
+    }
+    const branch = await tx.branch.findFirst({ where: { id: dto.branchId, companyId, isActive: true, deletedAt: null } });
+    if (!branch) throw new BadRequestException('La sucursal que entrega no está disponible');
+    const movements = [];
+    for (const [index, line] of dto.lines.entries()) {
+      const quantity = new Prisma.Decimal(line.quantity);
+      this.integer(quantity, false);
+      const product = await tx.product.findFirst({ where: { id: line.productId, companyId, isActive: true, deletedAt: null } });
+      if (!product) throw new BadRequestException('Producto no disponible para la venta');
+      const rows = await tx.inventoryLocationDetail.findMany({ where: { quantity: { gt: 0 }, lot: { productId: product.id, status: { not: 'CANCELLED' } }, location: { isActive: true, deletedAt: null, locationType: 'STORAGE', warehouse: { branchId: branch.id, isActive: true, deletedAt: null } } }, select: { lotId: true, locationId: true, quantity: true, lot: { select: { receivedAt: true } }, location: { select: { warehouseId: true } } } });
+      const available = sum(rows.map(row => row.quantity));
+      if (available.lt(quantity)) throw new ConflictException(`Existencias insuficientes en ${branch.name} para ${product.name}: hay ${available.toString()} y se piden ${quantity.toString()}`);
+      const slices = allocateFifo(rows.map(row => ({ lotId: row.lotId, locationId: row.locationId, available: row.quantity, receivedAt: row.lot.receivedAt })), quantity);
+      let cost = await this.costOf(tx, companyId, product.id);
+      const unitCost = cost.average;
+      for (const slice of slices) {
+        const place = { id: slice.locationId, warehouseId: rows.find(row => row.locationId === slice.locationId)!.location.warehouseId };
+        const balance = await this.moveStock(tx, product.id, slice.lotId, slice.locationId, slice.quantity.negated());
+        movements.push(await this.record(tx, userId, { productId: product.id, lotId: slice.lotId, place, warehouseId: place.warehouseId, type: 'SALE', quantityOut: slice.quantity, unitCost, key: `${base}:${index}:${slice.lotId}:${slice.locationId}`, reason: dto.reason, reference: { type: 'sale', id: dto.saleId ?? null }, balance }));
+      }
+      cost = applyExit(cost, quantity);
+      await this.saveCost(tx, companyId, product.id, cost);
+    }
+    for (const movement of movements) await this.audit.record(tx, { controller: 'inventory', action: 'SALE', recordId: movement.id, originalData: { companyId }, modifiedData: { companyId, ...movement }, userId });
+    return movements;
+  }
+
+  /** Anular una entrega ya registrada no borra nada: cada salida recibe su movimiento compensatorio en el mismo lote y espacio. */
+  reverseSale(companyId: number, userId: number, dto: SaleReversalDto) {
+    return purchaseTransaction(this.prisma, companyId, async tx => {
+      const originals = await tx.inventoryMovement.findMany({ where: { key: { startsWith: `sale:${companyId}:${dto.requestId.toLowerCase()}:`, mode: 'insensitive' } }, orderBy: { id: 'asc' } });
+      if (!originals.length) throw new NotFoundException('No hay una entrega registrada con esa referencia');
+      const compensations = [];
+      for (const original of originals) {
+        const key = `salerev:${original.id}`;
+        const done = await tx.inventoryMovement.findUnique({ where: { key } });
+        if (done) { compensations.push(done); continue; }
+        const place = await this.place(tx, companyId, original.locationId!, false);
+        const quantity = original.quantityOut;
+        const balance = await this.moveStock(tx, original.productId, original.lotId!, place.id, quantity);
+        await this.saveCost(tx, companyId, original.productId, applyEntry(await this.costOf(tx, companyId, original.productId), quantity, original.unitCost));
+        const movement = await this.record(tx, userId, { productId: original.productId, lotId: original.lotId, place, warehouseId: place.warehouseId, type: 'REVERSAL', quantityIn: quantity, unitCost: original.unitCost, key, reason: dto.reason, reference: { type: 'sale', id: original.referenceId }, balance });
+        await this.audit.record(tx, { controller: 'inventory', action: 'REVERSE_SALE', recordId: movement.id, originalData: { companyId, original: original.id }, modifiedData: { companyId, ...movement }, userId });
+        compensations.push(movement);
+      }
+      return compensations;
+    });
   }
 
   /** El espacio guarda un solo producto y no puede superar su capacidad nominal. */
