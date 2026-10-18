@@ -1,3 +1,4 @@
+import { allowMovementChanges } from './movement-maintenance';
 import 'dotenv/config';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
@@ -28,7 +29,7 @@ async function main(){
  assert.equal(dump.status,0,'Database backup failed');assert(statSync(backup).size>0,'Empty database backup');
  const dumpHash=createHash('sha256').update(readFileSync(backup)).digest('hex');
  const toc=spawnSync('C:/Program Files/PostgreSQL/18/bin/pg_restore.exe',['--list',backup],{windowsHide:true,encoding:'utf8',timeout:20000});assert.equal(toc.status,0,'Backup archive cannot be read');writeFileSync(resolve(directory,'backup-index.txt'),toc.stdout);
- const result=await db.$transaction(async tx=>{
+ const result=await db.$transaction(async tx=>{await allowMovementChanges(tx);
   const companies=await tx.company.findMany({select:{id:true},orderBy:{id:'asc'}});for(const company of companies)await tx.$queryRaw`SELECT pg_advisory_xact_lock(68431, ${company.id}::integer)::text`;
   const kept=await snapshot(tx,catalogs), removed=await snapshot(tx,operations);
   const trash=await tx.trashEntry.findMany({where:{entity:{in:entities}},orderBy:{id:'asc'}});

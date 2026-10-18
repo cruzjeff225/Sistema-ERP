@@ -1,3 +1,4 @@
+import { withMovementChanges } from './movement-maintenance';
 import 'dotenv/config';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -187,7 +188,7 @@ async function cleanup() {
   if (productId) {
     const records = await db.inventoryMovement.findMany({ where: { productId }, select: { id: true } });
     await db.log.deleteMany({ where: { controller: 'inventory', recordId: { in: records.map(r => r.id) } } });
-    await db.inventoryMovement.deleteMany({ where: { productId } }); await db.inventoryLabelPrint.deleteMany({ where: { lot: { productId } } }); await db.inventoryLocationDetail.deleteMany({ where: { lot: { productId } } }); await db.inventoryLot.deleteMany({ where: { productId } }); await db.inventoryCostAverage.deleteMany({ where: { productId } });
+    await withMovementChanges(db, tx => tx.inventoryMovement.deleteMany({ where: { productId } })); await db.inventoryLabelPrint.deleteMany({ where: { lot: { productId } } }); await db.inventoryLocationDetail.deleteMany({ where: { lot: { productId } } }); await db.inventoryLot.deleteMany({ where: { productId } }); await db.inventoryCostAverage.deleteMany({ where: { productId } });
     for (const [controller, id] of [['purchase_requests', requestId], ['purchase_requests', secondaryRequestId], ['purchase_quotations', quotationId], ['purchase_quotations', cancelledQuotationId], ['purchase_orders', orderId], ['purchases', purchaseId]] as const) {
       if (id) await db.log.deleteMany({ where: { controller, recordId: id } });
     }

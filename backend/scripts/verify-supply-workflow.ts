@@ -1,3 +1,4 @@
+import { allowMovementChanges, withMovementChanges } from './movement-maintenance';
 import 'dotenv/config';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -231,7 +232,7 @@ async function main() {
   const adjustment={requestId:randomUUID(),productId:productIds[1],locationId:slot.id,quantity:1,reason:'QA reintento de ajuste UUID'};
   const stockBeforeAdjustment=Number((await db.inventoryStock.findUniqueOrThrow({where:{productId_locationId:{productId:productIds[1],locationId:slot.id}}})).quantity);
   const adjustmentResult=await api('/inventory/adjustments','POST',adjustment);
-  await db.inventoryMovement.update({where:{id:adjustmentResult.id},data:{key:adjustmentResult.key.toUpperCase()}});
+  await withMovementChanges(db,tx=>tx.inventoryMovement.update({where:{id:adjustmentResult.id},data:{key:adjustmentResult.key.toUpperCase()}}));
   await api('/inventory/adjustments','POST',{...adjustment,requestId:adjustment.requestId.toUpperCase()});
   assert.equal(Number((await db.inventoryStock.findUniqueOrThrow({where:{productId_locationId:{productId:productIds[1],locationId:slot.id}}})).quantity),stockBeforeAdjustment+1);
   await api('/inventory/adjustments','POST',{...adjustment,requestId:randomUUID(),quantity:-1,reason:'QA compensación del ajuste temporal'});
@@ -283,6 +284,7 @@ async function main() {
 }
 async function cleanup() {
   await db.$transaction(async tx=>{
+    await allowMovementChanges(tx);
     await tx.trashEntry.deleteMany({where:{id:{in:trashIds}}});
     const movementIds=(await tx.inventoryMovement.findMany({where:{productId:{in:productIds}},select:{id:true}})).map(m=>m.id);
     const actualExpenseIds=(await tx.purchaseActualExpense.findMany({where:{purchaseId:{in:purchaseIds}},select:{id:true}})).map(e=>e.id);

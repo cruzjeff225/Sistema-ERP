@@ -1,3 +1,4 @@
+import { withMovementChanges } from './movement-maintenance';
 import 'dotenv/config';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -100,7 +101,7 @@ async function main() {
 }
 async function clean() {
  for(const item of owned) {await db.trashEntry.deleteMany({where:{entity:item.entity,recordId:item.id}});await db.log.deleteMany({where:{controller:item.entity,recordId:item.id}});}
- if(stockId){await db.inventoryMovement.deleteMany({where:{productId}});await db.inventoryLocationDetail.deleteMany({where:{lot:{productId}}});await db.inventoryLot.deleteMany({where:{productId}});await db.inventoryStock.deleteMany({where:{id:stockId}});}
+ if(stockId){await withMovementChanges(db,tx=>tx.inventoryMovement.deleteMany({where:{productId}}));await db.inventoryLocationDetail.deleteMany({where:{lot:{productId}}});await db.inventoryLot.deleteMany({where:{productId}});await db.inventoryStock.deleteMany({where:{id:stockId}});}
  if(locationId)await db.location.deleteMany({where:{id:locationId}});
  if(productId)await db.product.deleteMany({where:{id:productId}});
  if(subcategoryId)await db.productSubcategory.deleteMany({where:{id:subcategoryId}});

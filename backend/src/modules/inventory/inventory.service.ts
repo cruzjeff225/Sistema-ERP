@@ -209,6 +209,13 @@ export class InventoryService {
     }
     for (const a of averages) if (a.quantityOnHand.gt(0) && !a.inventoryValue.sub(a.quantityOnHand.mul(a.averageUnitCost)).abs().lte(Math.max(0.05, a.quantityOnHand.toNumber() * 0.00005)))
       issues.push({ productId: a.productId, stock: stock.get(a.productId) ?? ZERO, lots: lotted.get(a.productId) ?? ZERO, inTransit: moving.get(a.productId) ?? ZERO, valued: a.quantityOnHand, problem: 'Valor distinto de cantidad × costo promedio' });
+    // RN-INV-005: un lote no puede tener más unidades ubicadas (o en tránsito) que las que recibió.
+    const lotRows = await this.prisma.inventoryLot.findMany({ where: { product: { companyId }, status: { not: 'CANCELLED' } }, select: { id: true, lotCode: true, productId: true, quantityReceived: true, locations: { select: { quantity: true } } } });
+    const lotTransit = await this.openTransit(this.prisma, lotRows.map(lot => lot.id));
+    for (const lot of lotRows) {
+      const located = sum(lot.locations.map(row => row.quantity)), moving = lotTransit.get(lot.id) ?? ZERO;
+      if (located.add(moving).gt(lot.quantityReceived)) issues.push({ productId: lot.productId, stock: located, lots: located, inTransit: moving, valued: lot.quantityReceived, problem: `Lote ${lot.lotCode}: hay más unidades ubicadas que recibidas` });
+    }
     return { checkedProducts: ids.size, consistent: issues.length === 0, issues };
   }
 
