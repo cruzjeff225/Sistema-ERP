@@ -2,7 +2,7 @@ import { Body, Controller, Get, Headers, Param, ParseIntPipe, Post, Query } from
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
 import { CompanyScopeService } from '../../common/services/company-scope.service';
 import { AuthenticatedUser, CurrentUser } from '../auth/presentation/decorators/current-user.decorator';
-import { InventoryAdjustmentDto, InventoryQueryDto, KardexQueryDto, LabelPrintDto, LotQueryDto, RelocationDto, ReturnDto, WarehouseMapQueryDto } from './inventory.dto';
+import { AvailabilityQueryDto, SaleDeliveryDto, SaleReversalDto, InventoryAdjustmentDto, InventoryQueryDto, KardexQueryDto, LabelPrintDto, LotQueryDto, RelocationDto, ReturnDto, WarehouseMapQueryDto } from './inventory.dto';
 import { InventoryService } from './inventory.service';
 
 @Controller('inventory')
@@ -32,6 +32,12 @@ export class InventoryController {
   async relocate(@Body() dto: RelocationDto, @CurrentUser() user: AuthenticatedUser, @Headers('x-company-id') header?: string) { return { data: await this.service.relocate(await this.scope.resolve(user, header), user.sub, dto) }; }
   @Post('returns') @RequirePermissions('inventory.receive')
   async returns(@Body() dto: ReturnDto, @CurrentUser() user: AuthenticatedUser, @Headers('x-company-id') header?: string) { return { data: await this.service.returnToStock(await this.scope.resolve(user, header), user.sub, dto) }; }
+  @Get('availability') @RequirePermissions('inventory.view')
+  async availability(@Query() q: AvailabilityQueryDto, @CurrentUser() user: AuthenticatedUser, @Headers('x-company-id') header?: string) { return { data: await this.service.availability(await this.scope.resolve(user, header), q.branchId, q.productId ? [q.productId] : undefined) }; }
+  @Post('sale-deliveries') @RequirePermissions('inventory.deliver')
+  async deliverSale(@Body() dto: SaleDeliveryDto, @CurrentUser() user: AuthenticatedUser, @Headers('x-company-id') header?: string) { return { data: await this.service.deliverSale(await this.scope.resolve(user, header), user.sub, dto) }; }
+  @Post('sale-deliveries/reversal') @RequirePermissions('inventory.adjust')
+  async reverseSale(@Body() dto: SaleReversalDto, @CurrentUser() user: AuthenticatedUser, @Headers('x-company-id') header?: string) { return { data: await this.service.reverseSale(await this.scope.resolve(user, header), user.sub, dto) }; }
   @Post('adjustments') @RequirePermissions('inventory.adjust')
   async adjust(@Body() dto: InventoryAdjustmentDto, @CurrentUser() user: AuthenticatedUser, @Headers('x-company-id') header?: string) { return { data: await this.service.adjust(await this.scope.resolve(user, header), user.sub, dto) }; }
 }

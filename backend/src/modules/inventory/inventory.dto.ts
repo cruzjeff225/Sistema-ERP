@@ -1,5 +1,5 @@
 import { Type, Transform } from "class-transformer";
-import { IsBoolean, IsDateString, IsIn, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength, NotEquals } from "class-validator";
+import { ArrayMinSize, ArrayUnique, IsArray, ValidateNested, IsBoolean, IsDateString, IsIn, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength, NotEquals } from "class-validator";
 
 export const MOVEMENT_TYPES = ['OPENING', 'RECEIPT', 'REVERSAL', 'ADJUSTMENT', 'TRANSFER_OUT', 'TRANSFER_IN', 'SALE', 'RETURN'];
 
@@ -51,6 +51,32 @@ export class ReturnDto {
   @IsUUID() requestId!: string;
   /** Venta de origen, cuando la devolución proviene de una. */
   @IsOptional() @IsInt() @Min(1) saleId?: number;
+}
+
+export class SaleLineDto {
+  @IsInt() @Min(1) productId!: number;
+  @IsInt({ message: "La cantidad de productos debe ser un número entero" }) @Min(1) @Max(9999999999) quantity!: number;
+}
+
+export class SaleDeliveryDto {
+  @IsUUID() requestId!: string;
+  @IsInt() @Min(1) branchId!: number;
+  @IsOptional() @IsInt() @Min(1) saleId?: number;
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
+  @IsString() @MinLength(5) @MaxLength(500) reason!: string;
+  @IsArray() @ArrayMinSize(1) @ArrayUnique((line: SaleLineDto) => line?.productId) @ValidateNested({ each: true }) @Type(() => SaleLineDto) lines!: SaleLineDto[];
+}
+
+export class SaleReversalDto {
+  /** Referencia con la que se registró la entrega que se anula. */
+  @IsUUID() requestId!: string;
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
+  @IsString() @MinLength(5) @MaxLength(500) reason!: string;
+}
+
+export class AvailabilityQueryDto {
+  @Type(() => Number) @IsInt() @Min(1) branchId!: number;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) productId?: number;
 }
 
 export class KardexQueryDto {
