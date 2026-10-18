@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import { ChevronLeft, ChevronRight, MoveRight, PackageSearch, Printer, Search, X } from 'lucide-vue-next';
+import { ChevronLeft, ChevronRight, MoveRight, PackageSearch, Printer, Search, Undo2, X } from 'lucide-vue-next';
 import AppBadge from '../base/AppBadge.vue';
 import AppButton from '../base/AppButton.vue';
 import AppDrawer from '../base/AppDrawer.vue';
 import SearchField from '../base/SearchField.vue';
 import LabelPrintDialog from './LabelPrintDialog.vue';
 import RelocateLotDialog from './RelocateLotDialog.vue';
+import ReturnLotDialog from './ReturnLotDialog.vue';
 import { inventoryGet } from '../../services/inventory.service';
 import { activeCompanyId } from '../../services/company-context';
 import { usePermissions } from '../../composables/usePermissions';
@@ -34,6 +35,8 @@ const search = ref(''), warehouseId = ref(0), onlyAvailable = ref(true), status 
 const page = ref(1), pages = ref(1), total = ref(0);
 const selected = ref<LotDetail | null>(null), detailLoading = ref(false);
 const printing = ref<LotDetail | Lot | null>(null);
+const returning = ref<LotDetail | null>(null);
+const returnable = (lot: LotDetail) => Math.max(0, Number(lot.quantityReceived) - Number(lot.onHand) - Number(lot.inTransit));
 const moving = ref<{ lot: LotDetail; from: Loc; available: number } | null>(null);
 const destinations = computed(() => props.warehouses.find(w => w.id === moving.value?.from.warehouse.id)?.locations ?? []);
 let version = 0;
@@ -63,7 +66,7 @@ function applyFilters() { page.value = 1; void load(); }
 function clear() { search.value = ''; warehouseId.value = 0; status.value = ''; onlyAvailable.value = true; applyFilters(); }
 async function moved() { await printed(); }
 async function printed() { await load(); if (selected.value) { const id = selected.value.id; const result = await inventoryGet<LotDetail>(`lots/${id}`); if (result.company === activeCompanyId.value) selected.value = result.data; } }
-watch(activeCompanyId, () => { selected.value = null; printing.value = null; moving.value = null; lots.value = []; page.value = 1; search.value = ''; warehouseId.value = 0; status.value = ''; void load(); }, { immediate: true });
+watch(activeCompanyId, () => { selected.value = null; printing.value = null; moving.value = null; returning.value = null; lots.value = []; page.value = 1; search.value = ''; warehouseId.value = 0; status.value = ''; void load(); }, { immediate: true });
 </script>
 
 <template>
@@ -116,7 +119,7 @@ watch(activeCompanyId, () => { selected.value = null; printing.value = null; mov
     <div class="flex h-full min-h-0 flex-col">
       <header class="flex items-start justify-between gap-4 border-b border-border p-5 sm:p-6">
         <div class="min-w-0"><p class="font-mono text-xs text-muted-fg">{{ selected.lotCode }}</p><h2 class="mt-1 truncate text-lg font-semibold">{{ selected.product.name }}</h2><p class="mt-1 text-sm text-muted-fg">{{ selected.product.sku }} · código interno {{ selected.product.internalCode }}</p></div>
-        <div class="flex shrink-0 items-center gap-2"><AppButton v-if="can('inventory.label.print') && selected.status !== 'CANCELLED'" variant="outline" @click="printing = selected"><Printer class="h-4 w-4" />Etiquetas</AppButton><button type="button" class="icon-button" aria-label="Cerrar detalle" @click="selected = null"><X class="h-4 w-4" /></button></div>
+        <div class="flex shrink-0 items-center gap-2"><AppButton v-if="can('inventory.receive') && selected.status !== 'CANCELLED' && returnable(selected) > 0" variant="outline" @click="returning = selected"><Undo2 class="h-4 w-4" />Devolución</AppButton><AppButton v-if="can('inventory.label.print') && selected.status !== 'CANCELLED'" variant="outline" @click="printing = selected"><Printer class="h-4 w-4" />Etiquetas</AppButton><button type="button" class="icon-button" aria-label="Cerrar detalle" @click="selected = null"><X class="h-4 w-4" /></button></div>
       </header>
       <div class="min-h-0 flex-1 space-y-7 overflow-y-auto p-5 sm:p-6">
         <dl class="grid grid-cols-2 gap-4 rounded-xl bg-surface-secondary p-4 text-sm sm:grid-cols-4">
@@ -157,6 +160,7 @@ watch(activeCompanyId, () => { selected.value = null; printing.value = null; mov
     </div>
   </AppDrawer>
 
+  <ReturnLotDialog v-if="returning" :lot="{ id: returning.id, lotCode: returning.lotCode, productName: returning.product.name, returnable: returnable(returning) }" :warehouses="props.warehouses" @close="returning = null" @returned="moved" />
   <RelocateLotDialog v-if="moving" :lot="{ id: moving.lot.id, lotCode: moving.lot.lotCode, productName: moving.lot.product.name }" :from="{ id: moving.from.id, code: moving.from.code, warehouseName: moving.from.warehouse.name, available: moving.available }" :destinations="destinations" @close="moving = null" @moved="moved" />
   <LabelPrintDialog v-if="printing" :lot="{ id: printing.id, lotCode: printing.lotCode, productName: printing.product.name, onHand: Number(printing.onHand), hasPrints: 'labelPrints' in printing ? printing.labelPrints.length > 0 : printing._count.labelPrints > 0 }" @close="printing = null" @printed="printed" />
 </template>

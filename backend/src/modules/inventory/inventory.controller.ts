@@ -2,7 +2,7 @@ import { Body, Controller, Get, Headers, Param, ParseIntPipe, Post, Query } from
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
 import { CompanyScopeService } from '../../common/services/company-scope.service';
 import { AuthenticatedUser, CurrentUser } from '../auth/presentation/decorators/current-user.decorator';
-import { InventoryAdjustmentDto, InventoryQueryDto, KardexQueryDto, LabelPrintDto, LotQueryDto, RelocationDto, WarehouseMapQueryDto } from './inventory.dto';
+import { InventoryAdjustmentDto, InventoryQueryDto, KardexQueryDto, LabelPrintDto, LotQueryDto, RelocationDto, ReturnDto, WarehouseMapQueryDto } from './inventory.dto';
 import { InventoryService } from './inventory.service';
 
 @Controller('inventory')
@@ -30,6 +30,8 @@ export class InventoryController {
   async catalogs(@CurrentUser() user: AuthenticatedUser, @Headers('x-company-id') header?: string) { return { data: await this.service.catalogs(await this.scope.resolve(user, header)) }; }
   @Post('relocations') @RequirePermissions('inventory.location.assign')
   async relocate(@Body() dto: RelocationDto, @CurrentUser() user: AuthenticatedUser, @Headers('x-company-id') header?: string) { return { data: await this.service.relocate(await this.scope.resolve(user, header), user.sub, dto) }; }
+  @Post('returns') @RequirePermissions('inventory.receive')
+  async returns(@Body() dto: ReturnDto, @CurrentUser() user: AuthenticatedUser, @Headers('x-company-id') header?: string) { return { data: await this.service.returnToStock(await this.scope.resolve(user, header), user.sub, dto) }; }
   @Post('adjustments') @RequirePermissions('inventory.adjust')
   async adjust(@Body() dto: InventoryAdjustmentDto, @CurrentUser() user: AuthenticatedUser, @Headers('x-company-id') header?: string) { return { data: await this.service.adjust(await this.scope.resolve(user, header), user.sub, dto) }; }
 }

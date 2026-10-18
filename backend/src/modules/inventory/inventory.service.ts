@@ -3,7 +3,7 @@ import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../infrastructure/database/prisma/prisma.service";
 import { AuditService } from "../audit/application/services/audit.service";
 import { purchaseTransaction } from "../purchases/application/services/purchase-transaction";
-import { InventoryAdjustmentDto, InventoryQueryDto, KardexQueryDto, LabelPrintDto, LotQueryDto, RelocationDto } from "./inventory.dto";
+import { InventoryAdjustmentDto, InventoryQueryDto, KardexQueryDto, LabelPrintDto, LotQueryDto, RelocationDto, ReturnDto } from "./inventory.dto";
 import { applyEntry, applyExit, applyRevaluation, allocateFifo, lotCodeForAdjustment, lotCodeForReceipt, type CostBalance, type LotSlice } from './inventory-costing';
 import { locationMapState } from './location-map';
 
@@ -416,6 +416,36 @@ export class InventoryService {
   /** RN-INV-009: mover entre ubicaciones del mismo almacén cambia dónde está el lote, no cuánto hay ni cuánto vale. */
   relocate(companyId: number, userId: number, dto: RelocationDto) {
     return purchaseTransaction(this.prisma, companyId, tx => this.relocateIn(tx, companyId, userId, dto));
+  }
+
+  /**
+   * RN-INV-012: una devolución solo suma existencias cuando el producto se recibió y se aceptó para reingresar.
+   * Vuelve al lote de origen, valorada a su costo, y no puede superar lo que ese lote ya entregó.
+   */
+  returnToStock(companyId: number, userId: number, dto: ReturnDto) {
+    return purchaseTransaction(this.prisma, companyId, tx => this.returnIn(tx, companyId, userId, dto));
+  }
+
+  private async returnIn(tx: Tx, companyId: number, userId: number, dto: ReturnDto) {
+    const key = `return:${companyId}:${dto.requestId.toLowerCase()}`;
+    const quantity = new Prisma.Decimal(dto.quantity);
+    this.integer(quantity, false);
+    const prior = await tx.inventoryMovement.findUnique({ where: { key } });
+    if (prior) {
+      if (prior.lotId !== dto.lotId || prior.locationId !== dto.locationId || !prior.quantityIn.eq(quantity) || prior.reason !== dto.reason) throw new ConflictException('La referencia ya fue usada para otro movimiento');
+      return prior;
+    }
+    const lot = await tx.inventoryLot.findFirst({ where: { id: dto.lotId, product: { companyId }, status: { not: 'CANCELLED' } } });
+    if (!lot) throw new NotFoundException('Lote no disponible');
+    const place = await this.place(tx, companyId, dto.locationId, true);
+    const located = sum((await tx.inventoryLocationDetail.findMany({ where: { lotId: lot.id } })).map(row => row.quantity)).add((await this.openTransit(tx, [lot.id])).get(lot.id) ?? ZERO);
+    if (located.add(quantity).gt(lot.quantityReceived)) throw new ConflictException(`La devolución supera lo que este lote entregó (${lot.quantityReceived.sub(located).toString()} disponibles para reingresar)`);
+    await this.assertFits(tx, place.id, lot.productId, quantity);
+    const balance = await this.moveStock(tx, lot.productId, lot.id, place.id, quantity);
+    await this.saveCost(tx, companyId, lot.productId, applyEntry(await this.costOf(tx, companyId, lot.productId), quantity, lot.unitCost));
+    const movement = await this.record(tx, userId, { productId: lot.productId, lotId: lot.id, place, warehouseId: place.warehouseId, type: 'RETURN', quantityIn: quantity, unitCost: lot.unitCost, key, reason: dto.reason, reference: { type: 'return', id: dto.saleId ?? null }, balance });
+    await this.audit.record(tx, { controller: 'inventory', action: 'RETURN', recordId: movement.id, originalData: { companyId, quantity: balance.sub(quantity) }, modifiedData: { companyId, lot: lot.lotCode, ...movement }, userId });
+    return movement;
   }
 
   /** El espacio guarda un solo producto y no puede superar su capacidad nominal. */
