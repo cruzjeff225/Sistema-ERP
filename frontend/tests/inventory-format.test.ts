@@ -25,6 +25,11 @@ test('cantidades y costos se muestran con la precisión que se almacena', () => 
   assert.equal(quantity('12.5'), '12.5');
   assert.match(money('13.3333', 'USD', 4), /13[.,]3333/);
   assert.match(money('200'), /200[.,]00/);
+  // Presentación: un costo redondo no arrastra ceros de más, pero uno con 4 decimales se muestra completo
+  assert.match(money('35', 'USD', 4), /35[.,]00$/);
+  assert.match(money('35.5', 'USD', 4), /35[.,]50$/);
+  assert.match(money('13.3333', 'USD', 4), /13[.,]3333$/);
+  assert.match(money('0.125', 'USD', 4), /0[.,]125$/);
 });
 
 test('la ubicación se lee como almacén y espacio', () => {

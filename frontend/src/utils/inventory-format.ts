@@ -9,8 +9,9 @@ export const transferStatusLabels: Record<string, string> = {
 };
 
 export const quantity = (value: string | number) => new Intl.NumberFormat('es-SV', { maximumFractionDigits: 2 }).format(Number(value));
+/** Siempre 2 decimales; solo muestra hasta `digits` cuando el costo los necesita ($35.00, pero $13.3333). */
 export const money = (value: string | number, currency = 'USD', digits = 2) =>
-  new Intl.NumberFormat('es-SV', { style: 'currency', currency, minimumFractionDigits: digits, maximumFractionDigits: Math.max(digits, 2) }).format(Number(value));
+  new Intl.NumberFormat('es-SV', { style: 'currency', currency, minimumFractionDigits: Math.min(digits, 2), maximumFractionDigits: Math.max(digits, 2) }).format(Number(value));
 export const dateTime = (date: string) => new Intl.DateTimeFormat('es-SV', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/El_Salvador' }).format(new Date(date));
 export const day = (date: string) => new Intl.DateTimeFormat('es-SV', { dateStyle: 'medium', timeZone: 'America/El_Salvador' }).format(new Date(date));
 
