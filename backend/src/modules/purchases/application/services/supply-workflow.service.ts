@@ -203,7 +203,7 @@ export class SupplyWorkflowService {
   /** Received lines waiting for a physical space, each with the spaces of its warehouse that can (or cannot) take it. */
   async pendingPlacement(companyId: number) {
     const items = await this.prisma.purchaseItem.findMany({ where: { locationId: null, purchase: { companyId, deletedAt: null, status: { not: 'CANCELLED' } } },
-      include: { product: true, unit: true, purchase: { include: { warehouse: { include: { locations: { where: { isActive: true, deletedAt: null, locationType: 'STORAGE' }, include: { stocks: { where: { quantity: { gt: 0 } }, include: { product: true } } } } } } } } }, orderBy: { id: 'asc' } });
+      include: { product: true, unit: true, lots: { where: { status: { not: 'CANCELLED' } }, select: { id: true, lotCode: true, status: true, _count: { select: { labelPrints: true } } } }, purchase: { include: { warehouse: { include: { locations: { where: { isActive: true, deletedAt: null, locationType: 'STORAGE' }, include: { stocks: { where: { quantity: { gt: 0 } }, include: { product: true } } } } } } } } }, orderBy: { id: 'asc' } });
     return items.map(item => {
       const warehouse = item.purchase.warehouse;
       const locationOptions = describeSlots(warehouse?.locations ?? [], item.productId, item.unitId, item.unit.name, Number(item.quantity));

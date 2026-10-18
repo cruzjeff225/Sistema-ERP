@@ -145,7 +145,17 @@ async function main() {
     await db.location.update({where:{id:slot.id},data:{capacity:occupied+amount-1}});
     await api(`/supply/placements/${p.id}/confirm`,'POST',{locationId:slot.id,barcode:barcode.internalCode,confirmed:true},409);
     await db.location.update({where:{id:slot.id},data:{capacity:10000}});
+    // El lote nace con la recepción: etiquetable desde ya, sin existencias ni valoración hasta ubicarlo
+    const pendingLot=await db.inventoryLot.findFirstOrThrow({where:{purchaseItemId:p.id}});
+    assert.equal(pendingLot.status,'PENDING_PLACEMENT');assert.equal(pendingLot.lotCode,`LT-${String(p.id).padStart(6,'0')}`);assert.equal(Number(pendingLot.quantityReceived),amount);
+    assert.equal(await db.inventoryLocationDetail.count({where:{lotId:pendingLot.id}}),0);assert.equal(await db.inventoryMovement.count({where:{lotId:pendingLot.id}}),0);assert.equal(await db.inventoryCostAverage.count({where:{productId:p.productId}}),0);
+    assert((await api('/inventory/lots?status=PENDING_PLACEMENT&limit=100')).items.some((l:any)=>l.id===pendingLot.id),'El lote pendiente aparece en Lotes');
+    assert.equal((await api(`/inventory/lots/${pendingLot.id}/labels`,'POST',{quantity:2})).label.lotCode,pendingLot.lotCode);
+    await api('/inventory/returns','POST',{lotId:pendingLot.id,locationId:slot.id,quantity:1,reason:'No aplica a un lote sin ubicar',requestId:randomUUID()},404);
+    await api('/inventory/adjustments','POST',{productId:p.productId,locationId:slot.id,quantity:1,lotId:pendingLot.id,reason:'No aplica a un lote sin ubicar',requestId:randomUUID()},400);
     await api(`/supply/placements/${p.id}/confirm`,'POST',{locationId:slot.id,barcode:barcode.internalCode,confirmed:true});
+    const activeLot=await db.inventoryLot.findUniqueOrThrow({where:{id:pendingLot.id}});assert.equal(activeLot.status,'ACTIVE','La colocación activa el mismo lote, no crea otro');assert.equal(await db.inventoryLot.count({where:{purchaseItemId:p.id}}),1);
+    assert.equal(Number((await db.inventoryCostAverage.findFirstOrThrow({where:{productId:p.productId}})).quantityOnHand),amount);
     await api(`/supply/placements/${p.id}/confirm`,'POST',{locationId:slot.id,barcode:barcode.internalCode,confirmed:true});
     assert.equal(await db.inventoryMovement.count({where:{referenceType:'purchase_detail',referenceId:p.id}}),1); assert.equal(Number((await db.inventoryStock.findUniqueOrThrow({where:{productId_locationId:{productId:p.productId,locationId:slot.id}}})).quantity),amount);
     await api(`/purchases/${purchases[0].id}/verify`,'POST');

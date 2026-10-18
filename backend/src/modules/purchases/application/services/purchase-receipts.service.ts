@@ -90,7 +90,8 @@ export class PurchaseReceiptsService {
         if (!current.purchaseOrderId || current.items.some((item) => !item.purchaseOrderDetailId)) throw new ConflictException("La compra historica no tiene trazabilidad suficiente para revertirla");
         for (const item of current.items) {
           const posted = await tx.inventoryMovement.findUnique({ where: { key: `receipt:${item.id}` } });
-          if (posted && item.locationId !== null) await this.inventory.reverseReceipt(tx, companyId, userId, { purchaseItemId: item.id, locationId: item.locationId, reason: `Cancelacion ${current.documentNumber}: ${reason}` });
+          // Con existencias se revierte la entrada; sin ubicar solo se cancela el lote.
+          if (posted ? item.locationId !== null : true) await this.inventory.reverseReceipt(tx, companyId, userId, { purchaseItemId: item.id, locationId: posted ? item.locationId : null, reason: `Cancelacion ${current.documentNumber}: ${reason}` });
           const changed = await tx.purchaseOrderDetail.updateMany({ where: { id: item.purchaseOrderDetailId!, orderId: current.purchaseOrderId, receivedQuantity: { gte: item.quantity } }, data: { receivedQuantity: { decrement: item.quantity } } });
           if (changed.count !== 1) throw new ConflictException("El saldo recibido no coincide con la orden");
         }

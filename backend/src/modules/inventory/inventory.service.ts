@@ -139,8 +139,12 @@ export class InventoryService {
     const where: Prisma.InventoryLotWhereInput = {
       product: { companyId }, ...(q.productId ? { productId: q.productId } : {}), ...(q.status ? { status: q.status } : {}),
       ...(search ? { OR: [{ lotCode: { contains: search, mode: 'insensitive' } }, { product: { name: { contains: search, mode: 'insensitive' } } }, { product: { sku: { contains: search, mode: 'insensitive' } } }] } : {}),
-      ...(q.warehouseId ? { locations: { some: { quantity: { gt: 0 }, location: { warehouseId: q.warehouseId } } } } : {}),
-      ...(q.onlyAvailable ? { locations: { some: { quantity: { gt: 0 } } } } : {}),
+      // Un lote de una recepción enviada a la papelera no se muestra.
+      AND: [
+        { OR: [{ purchaseItemId: null }, { purchaseItem: { purchase: { deletedAt: null } } }] },
+        ...(q.warehouseId ? [{ locations: { some: { quantity: { gt: 0 }, location: { warehouseId: q.warehouseId } } } }] : []),
+        ...(q.onlyAvailable ? [{ OR: [{ locations: { some: { quantity: { gt: 0 } } } }, { status: 'PENDING_PLACEMENT' }] }] : []),
+      ],
     };
     const [rows, total] = await this.prisma.$transaction([
       this.prisma.inventoryLot.findMany({ where, orderBy: [{ receivedAt: 'desc' }, { id: 'desc' }], skip: (q.page - 1) * q.limit, take: q.limit, include: {
@@ -303,11 +307,19 @@ export class InventoryService {
    * Entrada de compra: la colocación confirmada crea el lote de la recepción y lo coloca en la ubicación.
    * Actualiza saldo por lote/ubicación, movimiento y costo promedio en la transacción de quien llama.
    */
+  async registerPendingLot(tx: Tx, data: { purchaseItemId: number }) {
+    const existing = await tx.inventoryLot.findFirst({ where: { purchaseItemId: data.purchaseItemId, status: { not: 'CANCELLED' } } });
+    if (existing) return existing;
+    const item = await tx.purchaseItem.findUniqueOrThrow({ where: { id: data.purchaseItemId }, include: { purchase: true } });
+    // Nace con la recepción confirmada: se puede etiquetar y seguir, pero todavía no hay existencias ni valoración.
+    return tx.inventoryLot.create({ data: { lotCode: lotCodeForReceipt(item.id), productId: item.productId, purchaseItemId: item.id, receivedAt: item.purchase.purchaseDate, quantityReceived: item.quantity, unitCost: item.unitCost, totalCost: item.quantity.mul(item.unitCost).toDecimalPlaces(2), status: 'PENDING_PLACEMENT' } });
+  }
+
   async receive(tx: Tx, companyId: number, userId: number, data: { purchaseItemId: number; locationId: number; reason: string }) {
     const key = `receipt:${data.purchaseItemId}`;
     const item = await tx.purchaseItem.findUniqueOrThrow({ where: { id: data.purchaseItemId }, include: { purchase: true } });
     const prior = await tx.inventoryLot.findFirst({ where: { purchaseItemId: item.id, status: { not: 'CANCELLED' } } });
-    if (prior) {
+    if (prior && prior.status !== 'PENDING_PLACEMENT') {
       const moved = await tx.inventoryMovement.findUnique({ where: { key } });
       if (moved?.locationId === data.locationId) return { lot: prior, movement: moved };
       throw new ConflictException('La referencia ya fue usada para otro movimiento');
@@ -319,7 +331,11 @@ export class InventoryService {
     const place = await this.place(tx, companyId, data.locationId, true);
     const retaceo = await tx.retaceoDetail.findFirst({ where: { purchaseItemId: item.id, retaceo: { status: 'closed', deletedAt: null } }, orderBy: { id: 'desc' } });
     const unitCost = retaceo?.unitCost ?? item.unitCost;
-    const lot = await tx.inventoryLot.create({ data: { lotCode: lotCodeForReceipt(item.id), productId: item.productId, purchaseItemId: item.id, receivedAt: item.purchase.purchaseDate, quantityReceived: quantity, unitCost, totalCost: quantity.mul(unitCost).toDecimalPlaces(2) } });
+    const costed = { unitCost, totalCost: quantity.mul(unitCost).toDecimalPlaces(2) };
+    // La colocación confirmada activa el lote que ya se creó con la recepción (o lo crea si la recepción es anterior).
+    const lot = prior
+      ? await tx.inventoryLot.update({ where: { id: prior.id }, data: { status: 'ACTIVE', quantityReceived: quantity, receivedAt: item.purchase.purchaseDate, ...costed } })
+      : await tx.inventoryLot.create({ data: { lotCode: lotCodeForReceipt(item.id), productId: item.productId, purchaseItemId: item.id, receivedAt: item.purchase.purchaseDate, quantityReceived: quantity, ...costed } });
     const balance = await this.moveStock(tx, item.productId, lot.id, place.id, quantity);
     const cost = applyEntry(await this.costOf(tx, companyId, item.productId), quantity, unitCost);
     await this.saveCost(tx, companyId, item.productId, cost);
@@ -392,10 +408,17 @@ export class InventoryService {
   }
 
   /** Reversión de una recepción cancelada: la salida usa el mismo lote y lo deja cancelado. */
-  async reverseReceipt(tx: Tx, companyId: number, userId: number, data: { purchaseItemId: number; locationId: number; reason: string }) {
+  async reverseReceipt(tx: Tx, companyId: number, userId: number, data: { purchaseItemId: number; locationId: number | null; reason: string }) {
     const item = await tx.purchaseItem.findUniqueOrThrow({ where: { id: data.purchaseItemId } });
     const lot = await tx.inventoryLot.findFirst({ where: { purchaseItemId: item.id, status: { not: 'CANCELLED' } } });
     if (!lot) return null;
+    if (lot.status === 'PENDING_PLACEMENT') {
+      // Nunca tuvo existencias: no hay movimiento que revertir, solo se anula el lote y su etiqueta deja de ser válida.
+      await tx.inventoryLot.update({ where: { id: lot.id }, data: { status: 'CANCELLED' } });
+      await this.audit.record(tx, { controller: 'inventory', action: 'CANCEL_LOT', recordId: lot.id, originalData: { companyId, status: lot.status }, modifiedData: { companyId, status: 'CANCELLED', reason: data.reason }, userId });
+      return [];
+    }
+    if (data.locationId === null) throw new ConflictException('La recepción ya tiene existencias y requiere su ubicación para revertirse');
     const movements = await this.take(tx, companyId, userId, { productId: item.productId, locationId: data.locationId, quantity: item.quantity, lotId: lot.id, type: 'REVERSAL', key: `reversal:${item.id}`, reason: data.reason, reference: { type: 'purchase_detail', id: item.id } })
       .catch(error => { if (error instanceof ConflictException) throw new ConflictException('Existencias insuficientes para registrar la salida o revertir la recepcion'); throw error; });
     await tx.inventoryLot.update({ where: { id: lot.id }, data: { status: 'CANCELLED' } });
@@ -445,7 +468,7 @@ export class InventoryService {
       if (prior.lotId !== dto.lotId || prior.locationId !== dto.locationId || !prior.quantityIn.eq(quantity) || prior.reason !== dto.reason) throw new ConflictException('La referencia ya fue usada para otro movimiento');
       return prior;
     }
-    const lot = await tx.inventoryLot.findFirst({ where: { id: dto.lotId, product: { companyId }, status: { not: 'CANCELLED' } } });
+    const lot = await tx.inventoryLot.findFirst({ where: { id: dto.lotId, product: { companyId }, status: { notIn: ['CANCELLED', 'PENDING_PLACEMENT'] } } });
     if (!lot) throw new NotFoundException('Lote no disponible');
     const place = await this.place(tx, companyId, dto.locationId, true);
     const located = sum((await tx.inventoryLocationDetail.findMany({ where: { lotId: lot.id } })).map(row => row.quantity)).add((await this.openTransit(tx, [lot.id])).get(lot.id) ?? ZERO);
@@ -599,8 +622,8 @@ export class InventoryService {
     const unitCost = cost.average.gt(0) ? cost.average : product.unitCost;
     let lotId = dto.lotId;
     if (lotId) {
-      const lot = await tx.inventoryLot.findFirst({ where: { id: lotId, productId: dto.productId, status: { not: 'CANCELLED' } } });
-      if (!lot) throw new BadRequestException('El lote no pertenece al producto o fue cancelado');
+      const lot = await tx.inventoryLot.findFirst({ where: { id: lotId, productId: dto.productId, status: { notIn: ['CANCELLED', 'PENDING_PLACEMENT'] } } });
+      if (!lot) throw new BadRequestException('El lote no pertenece al producto, fue cancelado o aún no se ubica');
       const located = sum((await tx.inventoryLocationDetail.findMany({ where: { lotId } })).map(row => row.quantity)).add((await this.openTransit(tx, [lotId])).get(lotId) ?? ZERO);
       if (located.add(delta).gt(lot.quantityReceived)) throw new ConflictException('El ajuste supera la cantidad recibida del lote; deje el lote en blanco para crear un lote de ajuste');
     } else {

@@ -809,7 +809,8 @@ export class PurchasesService {
         },
         include: { items: true },
       });
-      // Physical placement posts inventory only after the warehouse operator confirms barcode and space.
+      // El lote nace con la recepción confirmada (pendiente de ubicar); las existencias llegan solo al confirmar barcode y espacio.
+      for (const item of purchase.items) await this.inventory.registerPendingLot(tx, { purchaseItemId: item.id });
       for (const item of itemData) {
         await tx.purchaseOrderDetail.update({ where: { id: item.purchaseOrderDetailId }, data: { receivedQuantity: { increment: item.quantity } } });
       }

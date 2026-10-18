@@ -41,7 +41,8 @@ const moving = ref<{ lot: LotDetail; from: Loc; available: number } | null>(null
 const destinations = computed(() => props.warehouses.find(w => w.id === moving.value?.from.warehouse.id)?.locations ?? []);
 let version = 0;
 
-const statusVariant = (value: string) => value === 'ACTIVE' ? 'success' : value === 'CANCELLED' ? 'danger' : 'neutral';
+const statusVariant = (value: string) => value === 'ACTIVE' ? 'success' : value === 'CANCELLED' ? 'danger' : value === 'PENDING_PLACEMENT' ? 'warning' : 'neutral';
+const stored = (status: string) => !['CANCELLED', 'PENDING_PLACEMENT'].includes(status);
 const hasFilters = computed(() => !!(search.value || warehouseId.value || status.value || !onlyAvailable.value));
 
 async function load() {
@@ -119,7 +120,7 @@ watch(activeCompanyId, () => { selected.value = null; printing.value = null; mov
     <div class="flex h-full min-h-0 flex-col">
       <header class="flex items-start justify-between gap-4 border-b border-border p-5 sm:p-6">
         <div class="min-w-0"><p class="font-mono text-xs text-muted-fg">{{ selected.lotCode }}</p><h2 class="mt-1 truncate text-lg font-semibold">{{ selected.product.name }}</h2><p class="mt-1 text-sm text-muted-fg">{{ selected.product.sku }} · código interno {{ selected.product.internalCode }}</p></div>
-        <div class="flex shrink-0 items-center gap-2"><AppButton v-if="can('inventory.receive') && selected.status !== 'CANCELLED' && returnable(selected) > 0" variant="outline" @click="returning = selected"><Undo2 class="h-4 w-4" />Devolución</AppButton><AppButton v-if="can('inventory.label.print') && selected.status !== 'CANCELLED'" variant="outline" @click="printing = selected"><Printer class="h-4 w-4" />Etiquetas</AppButton><button type="button" class="icon-button" aria-label="Cerrar detalle" @click="selected = null"><X class="h-4 w-4" /></button></div>
+        <div class="flex shrink-0 items-center gap-2"><AppButton v-if="can('inventory.receive') && stored(selected.status) && returnable(selected) > 0" variant="outline" @click="returning = selected"><Undo2 class="h-4 w-4" />Devolución</AppButton><AppButton v-if="can('inventory.label.print') && selected.status !== 'CANCELLED'" variant="outline" @click="printing = selected"><Printer class="h-4 w-4" />Etiquetas</AppButton><button type="button" class="icon-button" aria-label="Cerrar detalle" @click="selected = null"><X class="h-4 w-4" /></button></div>
       </header>
       <div class="min-h-0 flex-1 space-y-7 overflow-y-auto p-5 sm:p-6">
         <dl class="grid grid-cols-2 gap-4 rounded-xl bg-surface-secondary p-4 text-sm sm:grid-cols-4">
@@ -140,8 +141,9 @@ watch(activeCompanyId, () => { selected.value = null; printing.value = null; mov
         </section>
 
         <section><h3 class="text-sm font-semibold">Distribución actual</h3>
-          <p v-if="!selected.locations.length" class="mt-3 text-sm text-muted-fg">Este lote no tiene existencias en ubicaciones.</p>
-          <ul v-else class="mt-3 divide-y divide-border/70 rounded-xl border border-border/70 text-sm"><li v-for="row in selected.locations" :key="row.location.id" class="flex items-center justify-between gap-4 px-4 py-3"><span>{{ row.location.warehouse.name }} <span class="text-muted-fg">· {{ row.location.warehouse.branch.name }} · {{ row.location.code }}</span></span><span class="flex items-center gap-3"><strong class="tabular-nums">{{ quantity(row.quantity) }}</strong><button v-if="can('inventory.location.assign') && selected.status !== 'CANCELLED'" type="button" class="inline-flex items-center gap-1 text-xs text-accent hover:underline" :aria-label="`Mover lote desde ${row.location.code}`" @click="moving = { lot: selected, from: row.location, available: Number(row.quantity) }"><MoveRight class="h-3.5 w-3.5" />Mover</button></span></li></ul>
+          <p v-if="selected.status === 'PENDING_PLACEMENT'" class="mt-3 text-sm text-muted-fg">Recibido y etiquetable, pero todavía sin ubicar: no cuenta como existencia hasta confirmar la colocación en Bodega.<RouterLink v-if="can('inventory.view')" to="/inventory/warehouse" class="ml-1 text-accent">Ir a Bodega</RouterLink></p>
+          <p v-else-if="!selected.locations.length" class="mt-3 text-sm text-muted-fg">Este lote no tiene existencias en ubicaciones.</p>
+          <ul v-else class="mt-3 divide-y divide-border/70 rounded-xl border border-border/70 text-sm"><li v-for="row in selected.locations" :key="row.location.id" class="flex items-center justify-between gap-4 px-4 py-3"><span>{{ row.location.warehouse.name }} <span class="text-muted-fg">· {{ row.location.warehouse.branch.name }} · {{ row.location.code }}</span></span><span class="flex items-center gap-3"><strong class="tabular-nums">{{ quantity(row.quantity) }}</strong><button v-if="can('inventory.location.assign') && stored(selected.status)" type="button" class="inline-flex items-center gap-1 text-xs text-accent hover:underline" :aria-label="`Mover lote desde ${row.location.code}`" @click="moving = { lot: selected, from: row.location, available: Number(row.quantity) }"><MoveRight class="h-3.5 w-3.5" />Mover</button></span></li></ul>
         </section>
 
         <section v-if="selected.transferItems.length"><h3 class="text-sm font-semibold">Traslados</h3>

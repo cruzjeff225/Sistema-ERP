@@ -105,7 +105,7 @@ export class LotQueryDto {
   @IsOptional() @IsString() @MaxLength(100) search?: string;
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) productId?: number;
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) warehouseId?: number;
-  @IsOptional() @IsIn(['ACTIVE', 'DEPLETED', 'CANCELLED']) status?: string;
+  @IsOptional() @IsIn(['PENDING_PLACEMENT', 'ACTIVE', 'DEPLETED', 'CANCELLED']) status?: string;
   @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() onlyAvailable?: boolean;
 }
 

@@ -8,10 +8,10 @@ import { inventoryPost } from '../../services/inventory.service';
 import { getApiErrorMessage } from '../../utils/api-error';
 import { printLotLabels, type LotLabel } from '../../utils/inventory-labels';
 
-const props = defineProps<{ lot: { id: number; lotCode: string; productName: string; onHand: number; hasPrints: boolean } }>();
+const props = defineProps<{ lot: { id: number; lotCode: string; productName: string; onHand: number; hasPrints: boolean; defaultCopies?: number } }>();
 const emit = defineEmits<{ close: []; printed: [] }>();
 
-const copies = ref(String(Math.max(1, Math.min(props.lot.onHand || 1, 100))));
+const copies = ref(String(Math.max(1, Math.min(props.lot.defaultCopies ?? (props.lot.onHand || 1), 100))));
 const reason = ref('');
 const busy = ref(false), error = ref('');
 const reprint = computed(() => props.lot.hasPrints);

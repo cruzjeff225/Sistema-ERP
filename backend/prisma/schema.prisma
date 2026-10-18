@@ -798,7 +798,7 @@ model InventoryLot {
   quantityReceived Decimal  @map("quantity_received") @db.Decimal(12, 2)
   unitCost         Decimal  @map("unit_cost") @db.Decimal(14, 4)
   totalCost        Decimal  @map("total_cost") @db.Decimal(14, 2)
-  /// ACTIVE | DEPLETED | CANCELLED
+  /// PENDING_PLACEMENT | ACTIVE | DEPLETED | CANCELLED
   status           String   @default("ACTIVE")
   createdAt        DateTime @default(now()) @map("created_at")
 
