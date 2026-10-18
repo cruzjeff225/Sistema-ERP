@@ -3,7 +3,7 @@ import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../infrastructure/database/prisma/prisma.service";
 import { AuditService } from "../audit/application/services/audit.service";
 import { purchaseTransaction } from "../purchases/application/services/purchase-transaction";
-import { InventoryAdjustmentDto, InventoryQueryDto, KardexQueryDto, LabelPrintDto, LotQueryDto, RelocationDto, ReturnDto, SaleDeliveryDto, SaleReversalDto } from "./inventory.dto";
+import { InventoryAdjustmentDto, InventoryQueryDto, KardexQueryDto, LabelPrintDto, LotQueryDto, RelocationDto, ReturnDto, SaleDeliveryDto, SaleReversalDto, VehicleLocationDto } from "./inventory.dto";
 import { applyEntry, applyExit, applyRevaluation, allocateFifo, lotCodeForAdjustment, lotCodeForReceipt, type CostBalance, type LotSlice } from './inventory-costing';
 import { locationMapState } from './location-map';
 
@@ -11,7 +11,8 @@ type Tx = Prisma.TransactionClient;
 type Reference = { type: string; id?: number | null };
 type PlaceRef = { id: number; warehouseId: number };
 const ZERO = new Prisma.Decimal(0);
-const OPEN_TRANSFER = ['PREPARING', 'IN_TRANSIT', 'PARTIALLY_RECEIVED', 'INCIDENT'];
+// Un traslado en preparación todavía no sacó nada del origen; solo lo despachado está en tránsito.
+const OPEN_TRANSFER = ['IN_TRANSIT', 'PARTIALLY_RECEIVED', 'INCIDENT'];
 
 const stockInclude = {
   product: { select: { id: true, name: true, sku: true, purchaseUnit: { select: { id: true, name: true } } } },
@@ -35,7 +36,7 @@ export class InventoryService {
       where: { id: warehouseId, branch: { companyId } },
       select: { id: true, name: true, isActive: true, deletedAt: true, branch: { select: { id: true, name: true, isActive: true, deletedAt: true } }, locations: {
         orderBy: { code: 'asc' },
-        where: { OR: [{ deletedAt: null }, { stocks: { some: { quantity: { gt: 0 } } } }] },
+        where: { locationType: 'STORAGE', OR: [{ deletedAt: null }, { stocks: { some: { quantity: { gt: 0 } } } }] },
         select: { id: true, code: true, aisle: true, rack: true, level: true, position: true, capacity: true, isActive: true, deletedAt: true,
           stocks: { where: { quantity: { gt: 0 }, product: { companyId } }, select: { productId: true, quantity: true,
             product: { select: { id: true, name: true, sku: true, purchaseUnit: { select: { id: true, name: true } } } } } },
@@ -213,9 +214,10 @@ export class InventoryService {
 
   async catalogs(companyId: number) {
     const products = await this.prisma.product.findMany({ where: { companyId, isActive: true, deletedAt: null }, select: { id: true, name: true, sku: true, purchaseUnit: { select: { name: true } } }, orderBy: { name: 'asc' } });
-    const warehouses = await this.prisma.warehouse.findMany({ where: { isActive: true, deletedAt: null, branch: { companyId, isActive: true, deletedAt: null } }, include: { branch: { select: { id: true, name: true } }, locations: { where: { isActive: true, deletedAt: null }, select: { id: true, code: true, locationType: true } } }, orderBy: { name: 'asc' } });
+    const warehouses = await this.prisma.warehouse.findMany({ where: { isActive: true, deletedAt: null, branch: { companyId, isActive: true, deletedAt: null } }, include: { branch: { select: { id: true, name: true } }, locations: { where: { isActive: true, deletedAt: null, locationType: 'STORAGE' }, select: { id: true, code: true, locationType: true } } }, orderBy: { name: 'asc' } });
+    const vehicleLocations = await this.prisma.location.findMany({ where: { locationType: 'VEHICLE', isActive: true, deletedAt: null, warehouse: { branch: { companyId } } }, select: { id: true, code: true, warehouseId: true, vehicle: { select: { plate: true, brand: true, model: true } } }, orderBy: { code: 'asc' } });
     const config = await this.prisma.erpConfiguration.findFirst({ where: { companyId }, include: { generalWarehouse: { include: { branch: true } } } });
-    return { products, warehouses, generalWarehouse: config?.generalWarehouse ?? null };
+    return { products, warehouses, vehicleLocations, generalWarehouse: config?.generalWarehouse ?? null };
   }
 
   // ---------------------------------------------------------------- etiquetas
@@ -244,6 +246,7 @@ export class InventoryService {
   private async place(tx: Tx, companyId: number, locationId: number, requireActive: boolean): Promise<PlaceRef> {
     const location = await tx.location.findFirst({ where: { id: locationId, warehouse: { branch: { companyId } } }, include: { warehouse: { include: { branch: true } } } });
     if (!location) throw new BadRequestException('Producto y ubicacion deben pertenecer a la empresa activa');
+    if (requireActive && location.locationType !== 'STORAGE') throw new BadRequestException('Un vehículo solo es ubicación de tránsito; elija un espacio del almacén');
     if (requireActive && (!location.isActive || location.deletedAt || !location.warehouse.isActive || location.warehouse.deletedAt || !location.warehouse.branch.isActive || location.warehouse.branch.deletedAt)) throw new BadRequestException('La ubicacion, el almacen y la sucursal deben estar activos');
     return { id: location.id, warehouseId: location.warehouseId };
   }
@@ -446,6 +449,23 @@ export class InventoryService {
     const movement = await this.record(tx, userId, { productId: lot.productId, lotId: lot.id, place, warehouseId: place.warehouseId, type: 'RETURN', quantityIn: quantity, unitCost: lot.unitCost, key, reason: dto.reason, reference: { type: 'return', id: dto.saleId ?? null }, balance });
     await this.audit.record(tx, { controller: 'inventory', action: 'RETURN', recordId: movement.id, originalData: { companyId, quantity: balance.sub(quantity) }, modifiedData: { companyId, lot: lot.lotCode, ...movement }, userId });
     return movement;
+  }
+
+  /** Ubicación de tránsito ligada a un vehículo (se crea el vehículo si la placa es nueva). Nunca recibe mercancía almacenada. */
+  createVehicleLocation(companyId: number, userId: number, dto: VehicleLocationDto) {
+    return purchaseTransaction(this.prisma, companyId, async tx => {
+      const warehouse = await tx.warehouse.findFirst({ where: { id: dto.warehouseId, isActive: true, deletedAt: null, branch: { companyId, isActive: true, deletedAt: null } } });
+      if (!warehouse) throw new BadRequestException('Almacén no disponible');
+      const plate = dto.plate.trim().toUpperCase();
+      const vehicle = await tx.vehicle.findUnique({ where: { plate } }) ?? await tx.vehicle.create({ data: { plate, brand: dto.brand?.trim() || null, model: dto.model?.trim() || null } });
+      if (vehicle.deletedAt || !vehicle.isActive) throw new ConflictException('El vehículo está dado de baja');
+      const code = `VEH-${plate}`.slice(0, 40);
+      const existing = await tx.location.findFirst({ where: { warehouseId: warehouse.id, code } });
+      if (existing) return existing;
+      const created = await tx.location.create({ data: { warehouseId: warehouse.id, code, aisle: 'VEH', rack: 'VEH', level: '1', position: plate.slice(0, 40), capacity: 0, locationType: 'VEHICLE', vehicleId: vehicle.id, notes: 'Ubicación de tránsito' } });
+      await this.audit.record(tx, { controller: 'inventory', action: 'CREATE_VEHICLE_LOCATION', recordId: created.id, modifiedData: { companyId, ...created }, userId });
+      return created;
+    });
   }
 
   /** Existencias disponibles para vender en una sucursal (lo que está en sus ubicaciones; lo que va en tránsito no cuenta). */

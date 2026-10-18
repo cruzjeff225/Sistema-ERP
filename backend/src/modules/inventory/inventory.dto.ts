@@ -79,6 +79,14 @@ export class AvailabilityQueryDto {
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) productId?: number;
 }
 
+export class VehicleLocationDto {
+  @IsInt() @Min(1) warehouseId!: number;
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
+  @IsString() @MinLength(3) @MaxLength(20) plate!: string;
+  @IsOptional() @IsString() @MaxLength(60) brand?: string;
+  @IsOptional() @IsString() @MaxLength(60) model?: string;
+}
+
 export class KardexQueryDto {
   @Type(() => Number) @IsInt() @Min(1) page = 1;
   @Type(() => Number) @IsInt() @Min(1) @Max(500) limit = 100;
