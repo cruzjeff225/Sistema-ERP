@@ -61,6 +61,15 @@ async function main() {
       assert.equal(await tx.inventoryStock.count({ where: { productId: { in: products.map(product => product.id) } } }), 0);
       await tx.location.updateMany({ where: { id: { in: availableSlots.map(location => location.id) } }, data: { isActive: true } });
       console.log('PASS receipt without available spaces: remains pending, no automatic stock or occupied location');
+      const unplacedPayload = { requestId: randomUUID(), supplierInvoiceNumber: key + ' SIN UBICAR', items: [{ orderDetailId: order.details[1]!.id, quantity: 1 }] };
+      await purchases.receiveOrder(order.id, unplacedPayload, actor.id, companyId);
+      const unplaced = await tx.purchase.findUniqueOrThrow({ where: { uuid: unplacedPayload.requestId }, include: { items: true } });
+      const unplacedLot = await tx.inventoryLot.findFirstOrThrow({ where: { purchaseItemId: unplaced.items[0]!.id } });
+      assert.equal(unplacedLot.status, 'PENDING_PLACEMENT'); assert.equal((await tx.inventoryLot.findFirstOrThrow({ where: { purchaseItemId: cancelled.items[0]!.id } })).status, 'PENDING_PLACEMENT');
+      await receipts.transition(unplaced.id, 'cancel', 'QA cancelación sin ubicar', actor.id, companyId);
+      assert.equal((await tx.inventoryLot.findUniqueOrThrow({ where: { id: unplacedLot.id } })).status, 'CANCELLED');
+      assert.equal(await tx.inventoryMovement.count({ where: { lotId: unplacedLot.id } }), 0);
+      console.log('PASS lote pendiente: nace con la recepción y, si se cancela sin ubicar, se cancela sin movimientos');
       await supply.place(cancelled.items[0]!.id, { locationId: slot.id, barcode: products[0]!.internalCode, confirmed: true }, companyId, actor.id);
       await receipts.transition(cancelled.id, 'cancel', 'QA cancelación de recepción parcial', actor.id, companyId);
       assert.equal(Number((await tx.inventoryStock.findUniqueOrThrow({ where: { productId_locationId: { productId: products[0]!.id, locationId: slot.id } } })).quantity), 0);

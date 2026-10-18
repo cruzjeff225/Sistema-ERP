@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
-import JsBarcode from 'jsbarcode';
 import { ArrowLeft, ArrowRight, Check, ChevronDown, Copy, Package, Plus, Printer, ScanLine, Trash2, TriangleAlert, Truck, ReceiptText, RefreshCw } from 'lucide-vue-next';
 import AdminLayout from '../layouts/AdminLayout.vue';
 import AppButton from '../components/base/AppButton.vue';
@@ -15,6 +14,7 @@ import { warehouseContext, placementsForContext, transfersForContext, receiptSta
 import SearchableSelect from '../components/base/SearchableSelect.vue';
 import AppBadge from '../components/base/AppBadge.vue';
 import PreparedTransferDialog from '../components/inventory/PreparedTransferDialog.vue';
+import LabelPrintDialog from '../components/inventory/LabelPrintDialog.vue';
 import { dispatchPlanError, suggestDispatch, type DispatchSpace, type DispatchSuggestion } from '../utils/warehouse-dispatch';
 
 const { can } = usePermissions();
@@ -34,6 +34,7 @@ const dispatchShortages = ref<DispatchSuggestion['shortages']>([]);
 const receiptId = ref(0), expenses = ref<any[]>([]);
 const expense = reactive({ expenseTypeId: 0, plannedExpenseId: 0, reference: '', amount: 0, category: 'expense', capitalizable: true });
 const confirmDispatch = ref(false);
+const labelFor = ref<{ item: any; lot: any } | null>(null);
 const preparedAction = ref<{ mode: 'dispatch' | 'cancel'; transfer: any } | null>(null);
 const headers = () => ({ headers: { 'X-Company-Id': String(activeCompanyId.value) } });
 const general = computed(() => purchaseCatalogs.value.generalWarehouse);
@@ -156,18 +157,6 @@ const spacesLocation = (p: any) => {
     : { path: '/organization/locations' };
 };
 function place(p: any) { void run(async current => { await http.post(`/supply/placements/${p.id}/confirm`, placement[p.id], headers()); if (!current()) return; delete placement[p.id]; await load(); if (current()) success.value = 'Ubicación física confirmada. El mapa y las existencias ya muestran este producto.'; }); }
-function printLabel(p: any) {
-  error.value = '';
-  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  try { JsBarcode(svg, p.product.internalCode, { format: 'CODE128', width: 2, height: 60, displayValue: true, margin: 12 }); } catch { error.value = 'El codigo interno no se puede representar en CODE128. Revise el catalogo del producto.'; return; }
-  const w = window.open('', '_blank', 'width=650,height=420');
-  if (!w) { error.value = 'Permita la ventana de impresion en el navegador.'; return; }
-  w.document.title = `Viñeta ${p.product.internalCode}`;
-  const title = w.document.createElement('h3'); title.textContent = p.product.name;
-  const detail = w.document.createElement('p'); detail.textContent = `${p.product.sku} · ${p.purchase.documentNumber} · ${p.quantity} ${p.unit.name}`;
-  w.document.body.append(title, w.document.importNode(svg, true), detail);
-  w.document.close(); w.focus(); w.print();
-}
 const requestOptions = computed(() => visibleRequests.value.map((r: any) => ({ id: r.id, label: r.code, description: r.branch.name })));
 function pickRequest(id: number) { selectedRequest.value = id; void chooseRequest(); }
 async function chooseRequest() {
@@ -247,7 +236,7 @@ watch([activeCompanyId, () => route.query.purchaseId, () => route.query.requestI
   loadVersion++; stockVersion++; expenseVersion++; destinationVersion++;
   pending.value = []; requests.value = []; transfers.value = []; receipts.value = []; expenses.value = []; stocks.value = [];
   catalogs.value = { warehouses: [], products: [] }; purchaseCatalogs.value = { expenseTypes: [], generalWarehouse: null };
-  preparedAction.value = null; dispatchLines.value = []; selectedRequest.value = 0; receiptId.value = 0; fromWarehouse.value = 0; toWarehouse.value = 0;
+  labelFor.value = null; preparedAction.value = null; dispatchLines.value = []; selectedRequest.value = 0; receiptId.value = 0; fromWarehouse.value = 0; toWarehouse.value = 0;
   destinationSpaces.value = []; dispatchShortages.value = []; destinationLoading.value = false; stockLoading.value = false;
   contextDocument.value = null; contextNotice.value = ''; error.value = ''; success.value = ''; loading.value = false; loadFailed.value = false; confirmDispatch.value = false;
   Object.assign(expense, { expenseTypeId: 0, plannedExpenseId: 0, reference: '', amount: 0, category: 'expense', capitalizable: true });
@@ -311,7 +300,7 @@ onBeforeUnmount(() => { loadVersion++; stockVersion++; expenseVersion++; destina
             <div v-show="isPlacementOpen(p.id)" :id="'placement-' + p.id" class="border-t border-border bg-surface-secondary/50 px-5 py-4 sm:pl-[3.75rem]">
               <div v-if="(p.locationOptions ?? []).length && !usableSlots(p).length" role="alert" class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-[12px] border border-warning/40 bg-warning/10 p-4 text-sm text-fg"><p class="flex min-w-0 flex-1 basis-80 items-start gap-3"><TriangleAlert class="mt-0.5 h-5 w-5 shrink-0 text-warning" aria-hidden="true" /><span>Ningún espacio de este almacén puede recibir este producto ahora: {{ blockedSlots(p).length === 1 ? 'el único espacio está ocupado con otra unidad o sin capacidad' : 'los ' + blockedSlots(p).length + ' espacios están ocupados con otra unidad o sin capacidad' }}. Registre un espacio nuevo o libere uno.</span></p><RouterLink :to="spacesLocation(p)" class="inline-flex h-9 shrink-0 items-center rounded-lg border border-border bg-surface px-4 font-medium transition-colors hover:bg-surface-secondary">Administrar espacios</RouterLink></div>
               <div v-if="!(p.locationOptions ?? []).length" role="alert" class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-[12px] border border-warning/40 bg-warning/10 p-4 text-sm text-fg"><p class="flex min-w-0 flex-1 basis-80 items-start gap-3"><TriangleAlert class="mt-0.5 h-5 w-5 shrink-0 text-warning" aria-hidden="true" /><span>Este almacén aún no tiene espacios definidos.</span></p><RouterLink :to="spacesLocation(p)" class="inline-flex h-9 shrink-0 items-center rounded-lg border border-border bg-surface px-4 font-medium transition-colors hover:bg-surface-secondary">Registrar los espacios físicos</RouterLink></div>
-              <div class="flex flex-wrap items-start justify-between gap-3"><p class="text-sm text-muted-fg">{{ p.purchase.documentNumber }} · {{ p.purchase.warehouse?.name }}</p><AppButton variant="outline" @click="printLabel(p)"><Printer class="h-4 w-4" aria-hidden="true" />Imprimir viñeta de código de barras</AppButton></div>
+              <div class="flex flex-wrap items-start justify-between gap-3"><p class="text-sm text-muted-fg">{{ p.purchase.documentNumber }} · {{ p.purchase.warehouse?.name }}</p><AppButton v-if="p.lots?.[0] && can('inventory.label.print')" variant="outline" @click="labelFor = { item: p, lot: p.lots[0] }"><Printer class="h-4 w-4" aria-hidden="true" />Imprimir etiqueta del lote {{ p.lots[0].lotCode }}</AppButton></div>
               <form v-if="can('inventory.location.assign')" class="mt-3 grid gap-x-4 gap-y-3 sm:grid-cols-2" @submit.prevent="place(p)"><label class="text-sm font-medium">Leer código de barras colocado<input v-model="placement[p.id]!.barcode" required autocomplete="off" class="field-control !h-9 font-normal" /></label><label class="text-sm font-medium">Ubicación física<select v-model.number="placement[p.id]!.locationId" required class="field-control !h-9 font-normal"><option :value="0" disabled>Seleccione espacio</option><optgroup v-if="usableSlots(p).length" label="Espacios disponibles"><option v-for="l in usableSlots(p)" :key="l.id" :value="l.id">{{ slotLabel(l, p) }}</option></optgroup><optgroup v-if="blockedSlots(p).length" label="No disponibles para este producto"><option v-for="l in blockedSlots(p)" :key="l.id" :value="l.id" disabled>{{ slotLabel(l) }}</option></optgroup></select></label><label class="flex items-center gap-2 text-sm sm:col-span-1"><input v-model="placement[p.id]!.confirmed" type="checkbox" required class="h-4 w-4 accent-accent" /> Confirmo que coloqué la viñeta y dejé los productos en este espacio.</label><div class="flex justify-end"><AppButton type="submit" :disabled="busy || !placement[p.id]!.locationId">Confirmar colocación</AppButton></div></form>
               <p v-if="p.recommendedLocationId" class="mt-3 text-xs text-muted-fg">El espacio recomendado no se considera ocupado por estos productos hasta que confirme su colocación.</p>
             </div>
@@ -375,6 +364,7 @@ onBeforeUnmount(() => { loadVersion++; stockVersion++; expenseVersion++; destina
 
       </template>
     </div>
+    <LabelPrintDialog v-if="labelFor" :lot="{ id: labelFor.lot.id, lotCode: labelFor.lot.lotCode, productName: labelFor.item.product.name, onHand: 0, defaultCopies: Number(labelFor.item.quantity), hasPrints: labelFor.lot._count.labelPrints > 0 }" @close="labelFor = null" @printed="load" />
     <PreparedTransferDialog v-if="preparedAction" :mode="preparedAction.mode" :transfer="preparedAction.transfer" :vehicles="catalogs.vehicleLocations ?? []" @close="preparedAction = null" @done="preparedDone" />
     <ConfirmDialog v-if="confirmDispatch" title="Confirmar despacho" description="Los productos saldrán del centro general y quedarán en tránsito, vinculados a la solicitud original." :busy="busy" :error="error" @close="confirmDispatch = false" @confirm="dispatch" />
     <ConfirmDialog v-if="leaving" title="Descartar cambios" description="Hay datos sin guardar en bodega." :busy="false" @close="resolveLeave(false)" @confirm="resolveLeave(true)" />

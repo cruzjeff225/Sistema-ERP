@@ -3,7 +3,7 @@ export const movementLabels: Record<string, string> = {
   TRANSFER_OUT: 'Despacho a sucursal', TRANSFER_IN: 'Recepción de traslado', SALE: 'Venta', RETURN: 'Devolución',
 };
 
-export const lotStatusLabels: Record<string, string> = { ACTIVE: 'Activo', DEPLETED: 'Agotado', CANCELLED: 'Cancelado' };
+export const lotStatusLabels: Record<string, string> = { PENDING_PLACEMENT: 'Pendiente de ubicar', ACTIVE: 'Activo', DEPLETED: 'Agotado', CANCELLED: 'Cancelado' };
 export const transferStatusLabels: Record<string, string> = {
   PREPARING: 'En preparación', IN_TRANSIT: 'En tránsito', PARTIALLY_RECEIVED: 'Recibido parcial', COMPLETED: 'Recibido', INCIDENT: 'Incidencia',
 };
