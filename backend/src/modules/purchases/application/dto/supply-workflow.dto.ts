@@ -55,6 +55,12 @@ export class TransferDto {
   /** Ubicacion de tipo vehiculo que lleva la mercancia en transito. */
   @IsOptional() @IsInt() @Min(1) vehicleLocationId?: number;
   @IsOptional() @IsString() @MaxLength(500) notes?: string;
+  /** Deja el traslado EN PREPARACIÓN: no mueve existencias hasta confirmar el despacho. */
+  @IsOptional() @IsBoolean() prepareOnly?: boolean;
+}
+export class TransferConfirmDto {
+  @IsOptional() @IsInt() @Min(1) vehicleLocationId?: number;
+  @IsOptional() @IsString() @MaxLength(500) notes?: string;
 }
 export class TransferIncidentDto {
   @IsString() @MaxLength(500) reason: string;

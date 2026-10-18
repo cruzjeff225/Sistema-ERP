@@ -44,7 +44,7 @@ async function main() {
   const costs = await api('/inventory/costs?limit=100');
   for (const row of costs.items) {
     const stock = await db.inventoryStock.aggregate({ where: { productId: row.productId }, _sum: { quantity: true } });
-    const transit = await db.transferItem.findMany({ where: { productId: row.productId, transfer: { status: { in: ['PREPARING', 'IN_TRANSIT', 'PARTIALLY_RECEIVED', 'INCIDENT'] } } } });
+    const transit = await db.transferItem.findMany({ where: { productId: row.productId, transfer: { status: { in: ['IN_TRANSIT', 'PARTIALLY_RECEIVED', 'INCIDENT'] } } } });
     const moving = transit.reduce((n, t) => n + num(t.quantity) - num(t.receivedQuantity), 0);
     assert.equal(num(row.quantityOnHand), num(stock._sum.quantity ?? 0) + moving, `cantidad valorizada de ${row.product.name}`);
     assert(Math.abs(num(row.inventoryValue) - num(row.quantityOnHand) * num(row.averageUnitCost)) <= 0.05 + num(row.quantityOnHand) * 0.00005, `valor = cantidad × promedio de ${row.product.name}`);
@@ -152,6 +152,22 @@ async function main() {
   assert.equal((await api('/inventory/sale-deliveries/reversal', 'POST', { requestId: sale.requestId, reason: 'QA lotes: venta anulada' })).length, undone.length);
   assert.equal(await availableIn(), onHandBefore, 'anular dos veces no reingresa dos veces');
   pass('venta entregada: descuenta de la sucursal por lote, todo o nada, idempotente; la anulación compensa sin borrar el historial');
+
+  // Ubicación de tránsito de un vehículo: existe como referencia del traslado, nunca como espacio de almacenaje
+  const plate = 'QA' + Math.floor(Math.random() * 90000 + 10000);
+  const vehicleSpace = await api('/inventory/vehicle-locations', 'POST', { warehouseId: here.warehouseId, plate, brand: 'QA' });
+  try {
+    assert.equal(vehicleSpace.locationType, 'VEHICLE'); assert(vehicleSpace.vehicleId);
+    assert.equal((await api('/inventory/vehicle-locations', 'POST', { warehouseId: here.warehouseId, plate })).id, vehicleSpace.id, 'la misma placa no duplica la ubicación');
+    const catalogs = await api('/inventory/catalogs');
+    assert(catalogs.vehicleLocations.some((l: any) => l.id === vehicleSpace.id && l.vehicle.plate === plate));
+    assert(!catalogs.warehouses.some((w: any) => w.locations.some((l: any) => l.id === vehicleSpace.id)), 'un vehículo no se ofrece como espacio');
+    await api('/inventory/adjustments', 'POST', { productId: slot.lot.productId, locationId: vehicleSpace.id, quantity: 1, reason: 'QA lotes: no debe aceptarse', requestId: randomUUID() }, 400);
+    await api('/inventory/relocations', 'POST', { lotId: slot.lotId, fromLocationId: here.id, toLocationId: vehicleSpace.id, quantity: 1, reason: 'QA lotes: no debe aceptarse', requestId: randomUUID() }, 400);
+    pass('vehículo de tránsito: ubicación propia por placa, fuera de los espacios de almacenaje');
+  } finally {
+    await db.location.deleteMany({ where: { id: vehicleSpace.id } }); await db.vehicle.deleteMany({ where: { id: vehicleSpace.vehicleId } });
+  }
 
   const after = await api('/inventory/reconciliation');
   assert.equal(after.consistent, true, 'La conciliación final debe estar limpia: ' + JSON.stringify(after.issues.slice(0, 3)));
