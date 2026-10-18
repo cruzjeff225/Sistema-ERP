@@ -46,19 +46,19 @@ export class SupplyWorkflowController {
   async awardAndSubmit(@Param('id',ParseIntPipe) id:number,@Body() dto:AwardDto,@CurrentUser() u:AuthenticatedUser,@Headers('x-company-id') h?:string){return{data:await this.service.award(id,{...dto,submitForApproval:true},await this.company(u,h),u)};}
   @Get('placements') @RequirePermissions('purchases.view')
   async pending(@CurrentUser() u: AuthenticatedUser, @Headers('x-company-id') h?: string) { return { data: await this.service.pendingPlacement(await this.company(u,h)) }; }
-  @Post('placements/:id/confirm') @RequirePermissions('inventory.adjust')
+  @Post('placements/:id/confirm') @RequirePermissions('inventory.location.assign')
   async place(@Param('id', ParseIntPipe) id: number, @Body() dto: PlacementDto, @CurrentUser() u: AuthenticatedUser, @Headers('x-company-id') h?: string) { return { data: await this.service.place(id,dto,await this.company(u,h),u.sub) }; }
   @Get('transfers') @RequirePermissions('inventory.view')
   async transfers(@CurrentUser() u: AuthenticatedUser, @Headers('x-company-id') h?: string) { return { data: await this.service.transfers(await this.company(u,h)) }; }
-  @Post('transfers') @RequirePermissions('inventory.adjust', 'purchase_requests.view')
+  @Post('transfers') @RequirePermissions('inventory.transfer', 'purchase_requests.view')
   async dispatch(@Body() dto: TransferDto, @CurrentUser() u: AuthenticatedUser, @Headers('x-company-id') h?: string) { return { data: await this.service.dispatch(dto,await this.company(u,h),u.sub) }; }
-  @Post('transfers/:id/receive') @RequirePermissions('inventory.adjust')
+  @Post('transfers/:id/receive') @RequirePermissions('inventory.transfer')
   async receive(@Param('id', ParseIntPipe) id: number, @Body() dto: TransferReceiptDto, @CurrentUser() u: AuthenticatedUser, @Headers('x-company-id') h?: string) { return { data: await this.service.receiveTransfer(id,dto,await this.company(u,h),u.sub) }; }
-  @Post('transfers/:id/dispatch') @RequirePermissions('inventory.adjust')
+  @Post('transfers/:id/dispatch') @RequirePermissions('inventory.transfer')
   async confirmDispatch(@Param('id', ParseIntPipe) id: number, @Body() dto: TransferConfirmDto, @CurrentUser() u: AuthenticatedUser, @Headers('x-company-id') h?: string) { return { data: await this.service.confirmDispatch(id,dto,await this.company(u,h),u.sub) }; }
-  @Post('transfers/:id/cancel') @RequirePermissions('inventory.adjust')
+  @Post('transfers/:id/cancel') @RequirePermissions('inventory.transfer')
   async cancelPreparation(@Param('id', ParseIntPipe) id: number, @Body() dto: TransferIncidentDto, @CurrentUser() u: AuthenticatedUser, @Headers('x-company-id') h?: string) { return { data: await this.service.cancelPreparation(id,dto,await this.company(u,h),u.sub) }; }
-  @Post('transfers/:id/incident') @RequirePermissions('inventory.adjust')
+  @Post('transfers/:id/incident') @RequirePermissions('inventory.transfer')
   async incident(@Param('id', ParseIntPipe) id: number, @Body() dto: TransferIncidentDto, @CurrentUser() u: AuthenticatedUser, @Headers('x-company-id') h?: string) { return { data: await this.service.reportIncident(id,dto,await this.company(u,h),u.sub) }; }
   @Get('receipts/:id/expenses') @RequirePermissions('purchases.view')
   async expenses(@Param('id', ParseIntPipe) id: number, @CurrentUser() u: AuthenticatedUser, @Headers('x-company-id') h?: string) { return { data: await this.service.actualExpenses(id,await this.company(u,h)) }; }

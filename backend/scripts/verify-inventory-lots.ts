@@ -169,6 +169,12 @@ async function main() {
     await db.location.deleteMany({ where: { id: vehicleSpace.id } }); await db.vehicle.deleteMany({ where: { id: vehicleSpace.vehicleId } });
   }
 
+  // RN-INV-007: el historial no se edita ni se borra, ni siquiera con acceso directo a la base de datos
+  await assert.rejects(db.inventoryMovement.update({ where: { id: exit.id }, data: { reason: 'manipulado' } }), /no se editan ni se eliminan/);
+  await assert.rejects(db.inventoryMovement.delete({ where: { id: exit.id } }), /no se editan ni se eliminan/);
+  assert.equal((await db.inventoryMovement.findUniqueOrThrow({ where: { id: exit.id } })).reason, 'QA lotes: salida de prueba');
+  pass('movimientos inmutables: la base de datos rechaza UPDATE y DELETE');
+
   const after = await api('/inventory/reconciliation');
   assert.equal(after.consistent, true, 'La conciliación final debe estar limpia: ' + JSON.stringify(after.issues.slice(0, 3)));
   pass('conciliación final limpia tras ajustes, Kardex y etiquetas');

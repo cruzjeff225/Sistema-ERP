@@ -271,7 +271,7 @@ watch([() => route.params.id, activeCompanyId], () => { tab.value = route.query.
             </table>
           </div>
         </section>
-          <ReceiveTransferPanel v-if="can('inventory.view') && can('inventory.adjust')" :request-id="request.id" @received="load" />
+          <ReceiveTransferPanel v-if="can('inventory.view') && can('inventory.transfer')" :request-id="request.id" @received="load" />
         </div>
 
         <!-- Información -->

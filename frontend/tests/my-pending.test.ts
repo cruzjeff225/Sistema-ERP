@@ -16,7 +16,7 @@ test('cada usuario actúa por los equipos cuyo trabajo sus permisos le permiten 
   assert.deepEqual(myOwners(has('purchase_quotations.create', 'purchase_requests.create')), ['Sucursal', 'Compras']);
   assert.deepEqual(myOwners(has('purchase_orders.approve')), ['Gerencia']);
   assert.deepEqual(myOwners(has('purchase_orders.receive')), ['Bodega']);
-  assert.deepEqual(myOwners(has('inventory.adjust')), [], 'recibir en la sucursal también exige inventario, no hace a nadie de Bodega');
+  assert.deepEqual(myOwners(has('inventory.transfer')), [], 'recibir en la sucursal también exige inventario, no hace a nadie de Bodega');
   assert.deepEqual(myOwners(has('purchases.view')), []);
 });
 

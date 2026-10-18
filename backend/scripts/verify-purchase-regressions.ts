@@ -1,3 +1,4 @@
+import { allowMovementChanges } from './movement-maintenance';
 import "dotenv/config";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -377,6 +378,7 @@ async function cleanup() {
     ["purchase_order_expense_documents", docs],
   ] as const;
   await db.$transaction(async (tx) => {
+    await allowMovementChanges(tx);
     for (const [controller, records] of models) await tx.log.deleteMany({ where: { controller, recordId: { in: records.map(record => record.id) } } });
     await tx.inventoryMovement.deleteMany({ where: stockWhere });
     await tx.retaceo.deleteMany({ where: { purchase: orderWhere } });

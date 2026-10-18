@@ -19,8 +19,8 @@ for (const [method, permissions] of [
   ['line', ['purchase_quotations.update']], ['rfq', ['purchase_quotations.create']],
   ['award', ['purchase_quotations.select', 'purchase_orders.create']],
   ['awardAndSubmit', ['purchase_quotations.select', 'purchase_orders.create', 'purchase_orders.update']],
-  ['place', ['inventory.adjust']], ['dispatch', ['inventory.adjust', 'purchase_requests.view']],
-  ['receive', ['inventory.adjust']], ['expense', ['purchase_expenses.create']],
+  ['place', ['inventory.location.assign']], ['dispatch', ['inventory.transfer', 'purchase_requests.view']],
+  ['receive', ['inventory.transfer']], ['expense', ['purchase_expenses.create']],
 ] as const) {
   test('compras: ' + method + ' exige permisos de operación y bloquea consulta', () => {
     assert.throws(() => allowed(SupplyWorkflowController, method, ['purchase_requests.view', 'purchase_quotations.view', 'purchase_orders.view', 'purchases.view', 'inventory.view']), (error: any) => error.getStatus() === 403);

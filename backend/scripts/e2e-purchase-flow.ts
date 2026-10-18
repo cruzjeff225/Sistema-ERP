@@ -5,6 +5,7 @@
 // It creates its own temporary master data and removes everything it created, even when an assertion fails.
 // Needs the API running (ERP_TEST_API_URL, default http://localhost:3000/api) and an administrator account
 // (ERP_TEST_EMAIL / ERP_TEST_PASSWORD, or the SEED_ADMIN_* values). Run with: npm run e2e:purchases
+import { allowMovementChanges } from './movement-maintenance';
 import 'dotenv/config';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -173,6 +174,7 @@ async function main() {
 async function cleanup() {
   const c = created;
   await db.$transaction(async tx => {
+    await allowMovementChanges(tx);
     const movementIds = (await tx.inventoryMovement.findMany({ where: { productId: { in: c.products } }, select: { id: true } })).map(m => m.id);
     const expenseIds = (await tx.purchaseActualExpense.findMany({ where: { purchaseId: { in: c.receipts } }, select: { id: true } })).map(e => e.id);
     await tx.log.deleteMany({ where: { OR: [
