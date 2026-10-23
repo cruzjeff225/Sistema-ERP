@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { locationLabel, lotStatusLabels, money, movementLabels, quantity, referenceLabel, transferStatusLabels } from '../src/utils/inventory-format';
+import { locationLabel, lotStatusLabels, money, movementLabels, quantity, referenceLabel, supportDocumentLabel, transferStatusLabels } from '../src/utils/inventory-format';
 import { labelText } from '../src/utils/inventory-labels';
 
 test('el Kardex nombra el documento de origen de cada movimiento', () => {
@@ -30,6 +30,12 @@ test('cantidades y costos se muestran con la precisión que se almacena', () => 
   assert.match(money('35.5', 'USD', 4), /35[.,]50$/);
   assert.match(money('13.3333', 'USD', 4), /13[.,]3333$/);
   assert.match(money('0.125', 'USD', 4), /0[.,]125$/);
+});
+
+test('el documento de respaldo es el del proveedor y, sin él, la recepción interna', () => {
+  assert.match(supportDocumentLabel({ supplierInvoiceNumber: 'CCF-0045', supplierInvoiceDate: '2026-10-03T12:00:00Z', receipt: 'RC-00007' }), /^Doc\. CCF-0045 · .*2026/);
+  assert.equal(supportDocumentLabel({ supplierInvoiceNumber: 'CCF-0045', supplierInvoiceDate: null, receipt: 'RC-00007' }), 'Doc. CCF-0045');
+  assert.equal(supportDocumentLabel({ supplierInvoiceNumber: null, supplierInvoiceDate: null, receipt: 'RC-00007' }), 'Recepción RC-00007');
 });
 
 test('la ubicación se lee como almacén y espacio', () => {
