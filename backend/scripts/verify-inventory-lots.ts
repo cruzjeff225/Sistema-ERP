@@ -84,6 +84,22 @@ async function main() {
   await call(`/inventory/kardex?productId=${slot.lot.productId}&dateFrom=${today}&dateTo=2000-01-01`).then(r => assert.equal(r.status, 400));
   pass(`Kardex de ${kardex.product.name}: ${kardex.items.length} movimientos, saldo corrido y rango de fechas`);
 
+  // Registro de control de inventarios (art. 142-A): encabezado, correlativo, documento, proveedor y saldo monetario
+  const legal = await api(`/inventory/kardex?productId=${slot.lot.productId}&limit=500`);
+  assert(legal.header.company.nit && legal.header.company.nrc && legal.header.company.name, 'El encabezado trae contribuyente, NIT y NRC');
+  assert.equal(legal.header.consolidated, true);
+  legal.items.forEach((row: any, index: number) => assert.equal(row.sequence, index + 1, 'correlativo consecutivo'));
+  assert(legal.items.every((row: any) => !['TRANSFER_OUT', 'TRANSFER_IN'].includes(row.movementType)), 'el consolidado no cuenta traslados internos como entradas o salidas');
+  const purchaseRows = legal.items.filter((row: any) => row.referenceType === 'purchase_detail' && row.lot);
+  assert(purchaseRows.every((row: any) => row.supportDocument?.number && row.supplier?.name && row.supplier?.country), 'las compras traen documento de respaldo, proveedor y país');
+  assert(legal.product.descriptionFull.startsWith(legal.product.name));
+  for (const row of costs.items) {
+    const check = await api(`/inventory/kardex?productId=${row.productId}&limit=500`);
+    assert.equal(num(check.closing), num(row.quantityOnHand), `unidades del Kardex = costo promedio de ${row.product.name}`);
+    assert(Math.abs(num(check.closingValue) - num(row.inventoryValue)) <= 0.05, `saldo monetario del Kardex = valor del inventario de ${row.product.name}`);
+  }
+  pass(`registro 142-A: encabezado con NIT/NRC, correlativo, documento y proveedor, y saldo monetario conciliado con el costo promedio de ${costs.items.length} productos`);
+
   // Etiquetas: la primera impresión se registra; reimprimir exige motivo
   const first = await db.inventoryLabelPrint.count({ where: { lotId: slot.lotId } });
   const printed = await call(`/inventory/lots/${slot.lotId}/labels`, 'POST', { quantity: 3 });

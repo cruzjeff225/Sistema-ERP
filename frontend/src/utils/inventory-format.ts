@@ -15,6 +15,12 @@ export const money = (value: string | number, currency = 'USD', digits = 2) =>
 export const dateTime = (date: string) => new Intl.DateTimeFormat('es-SV', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/El_Salvador' }).format(new Date(date));
 export const day = (date: string) => new Intl.DateTimeFormat('es-SV', { dateStyle: 'medium', timeZone: 'America/El_Salvador' }).format(new Date(date));
 
+/** Documento que respalda una compra: el del proveedor (con su fecha) o, si aún no se registró, la recepción interna. */
+export function supportDocumentLabel(doc: { supplierInvoiceNumber: string | null; supplierInvoiceDate: string | null; receipt: string }) {
+  if (!doc.supplierInvoiceNumber) return `Recepción ${doc.receipt}`;
+  return doc.supplierInvoiceDate ? `Doc. ${doc.supplierInvoiceNumber} · ${day(doc.supplierInvoiceDate)}` : `Doc. ${doc.supplierInvoiceNumber}`;
+}
+
 /** Documento de origen de un movimiento, tal como lo muestra el Kardex. */
 export function referenceLabel(movement: { referenceType: string; referenceId: number | null; reason?: string; lot?: { purchaseItem?: { purchase?: { documentNumber: string } | null } | null } | null }) {
   const receipt = movement.lot?.purchaseItem?.purchase?.documentNumber;
