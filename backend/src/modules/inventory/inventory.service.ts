@@ -156,7 +156,19 @@ export class InventoryService {
     const scoped = !!(q.branchId || q.warehouseId);
     const base = await this.movementWhere(companyId, q);
     const consolidated = !scoped && !q.type;
-    const where: Prisma.InventoryMovementWhereInput = consolidated ? { ...base, movementType: { notIn: ['TRANSFER_OUT', 'TRANSFER_IN'] } } : base;
+    // Lo que ocurre dentro del establecimiento que se reporta no es entrada ni salida suya: en el consolidado, todos los
+    // traslados; en una sucursal o almacén, las reubicaciones y los traslados cuyo origen y destino están dentro de él.
+    let where: Prisma.InventoryMovementWhereInput = base;
+    if (!q.type && !scoped) where = { ...base, movementType: { notIn: ['TRANSFER_OUT', 'TRANSFER_IN'] } };
+    if (!q.type && scoped) {
+      const inside = (await this.warehouseScope(companyId, q.branchId, q.warehouseId)) ?? [];
+      const internal = await this.prisma.transfer.findMany({ where: { fromWarehouseId: { in: inside }, toWarehouseId: { in: inside } }, select: { id: true } });
+      where = { ...base, NOT: [{ referenceType: 'relocation' }, ...(internal.length ? [{ referenceType: 'transfer', referenceId: { in: internal.map(transfer => transfer.id) } }] : [])] };
+    }
+    const [scopeBranch, scopeWarehouse] = await Promise.all([
+      q.branchId ? this.prisma.branch.findFirst({ where: { id: q.branchId, companyId }, select: { id: true, name: true } }) : null,
+      q.warehouseId ? this.prisma.warehouse.findFirst({ where: { id: q.warehouseId, branch: { companyId } }, select: { id: true, name: true, branch: { select: { id: true, name: true } } } }) : null,
+    ]);
     const rangeLow = q.dateFrom ? dayStart(q.dateFrom) : undefined;
     const [qty, outValue, inValue] = rangeLow ? await Promise.all([
       this.prisma.inventoryMovement.aggregate({ where: { ...where, movementDate: { lt: rangeLow } }, _sum: { quantityIn: true, quantityOut: true } }),
@@ -189,7 +201,7 @@ export class InventoryService {
     // Recepciones del registro que todavía no tienen el documento fiscal del proveedor (no basta el documento interno).
     const missingFiscal = new Set(all.filter(row => row.supportDocument?.fiscalDocumentMissing && row.movementType === 'RECEIPT').map(row => row.supportDocument!.receipt));
     return {
-      header: { title: 'Registro de control de inventarios', company, period: { from: q.dateFrom ?? null, to: q.dateTo ?? null }, consolidated, generatedAt: new Date().toISOString() },
+      header: { title: 'Registro de control de inventarios', company, period: { from: q.dateFrom ?? null, to: q.dateTo ?? null }, consolidated, scope: { branch: scopeBranch ?? scopeWarehouse?.branch ?? null, warehouse: scopeWarehouse ? { id: scopeWarehouse.id, name: scopeWarehouse.name } : null }, generatedAt: new Date().toISOString() },
       product: { ...product, descriptionFull: [product.name, product.presentation, product.size, product.dimensions, product.description].filter(Boolean).join(' · ') },
       opening: openingQuantity, openingValue, closing: runningQuantity, closingValue: runningValue, closingAverage: runningAverage,
       missingFiscalDocuments: [...missingFiscal],

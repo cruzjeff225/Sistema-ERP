@@ -137,6 +137,8 @@ async function main() {
     const other = await db.location.findFirst({ where: { warehouseId: { not: here.warehouseId }, isActive: true, deletedAt: null } });
     if (other) await api('/inventory/relocations', 'POST', { ...move, requestId: randomUUID(), toLocationId: other.id }, 400);
     await api('/inventory/relocations', 'POST', { ...move, requestId: randomUUID(), fromLocationId: target.id, toLocationId: here.id });
+    const scopedKardex = await api(`/inventory/kardex?productId=${slot.lot.productId}&warehouseId=${here.warehouseId}&limit=500`);
+    assert(scopedKardex.items.every((row: any) => row.referenceType !== 'relocation'), 'una reubicación dentro del almacén no es entrada ni salida del almacén');
     pass('reubicación: mismo almacén, idempotente, sin cambiar cantidad ni valor; rechaza otro almacén, capacidad y saldo insuficiente');
   } else console.log('SKIP reubicación: no hay un espacio libre en el mismo almacén');
 
