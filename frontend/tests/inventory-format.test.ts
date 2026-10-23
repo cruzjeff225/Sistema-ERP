@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { locationLabel, lotStatusLabels, money, movementLabels, quantity, referenceLabel, supportDocumentLabel, transferStatusLabels } from '../src/utils/inventory-format';
+import { locationLabel, lotStatusLabels, money, movementLabels, quantity, processLabel, referenceLabel, supportDocumentLabel, transferStatusLabels } from '../src/utils/inventory-format';
 import { labelText } from '../src/utils/inventory-labels';
 
 test('el Kardex nombra el documento de origen de cada movimiento', () => {
@@ -36,6 +36,13 @@ test('el documento de respaldo es el del proveedor y, sin él, la recepción int
   assert.match(supportDocumentLabel({ supplierInvoiceNumber: 'CCF-0045', supplierInvoiceDate: '2026-10-03T12:00:00Z', receipt: 'RC-00007' }), /^Doc\. CCF-0045 · .*2026/);
   assert.equal(supportDocumentLabel({ supplierInvoiceNumber: 'CCF-0045', supplierInvoiceDate: null, receipt: 'RC-00007' }), 'Doc. CCF-0045');
   assert.equal(supportDocumentLabel({ supplierInvoiceNumber: null, supplierInvoiceDate: null, receipt: 'RC-00007' }), 'Recepción RC-00007');
+});
+
+test('la cadena de documentos va de la solicitud a la recepción y el retaceo', () => {
+  const full = { requests: [{ code: 'PR-00067' }], quotation: { code: 'PQ-00012' }, order: { code: 'OC-00031' }, receipt: { code: 'RC-00046' }, retaceos: [{ code: 'RT-00009' }] };
+  assert.equal(processLabel(full, 'RC-00046'), 'Solicitud PR-00067 → Cotización PQ-00012 → Orden OC-00031 → Recepción RC-00046 → Retaceo RT-00009');
+  assert.equal(processLabel({ ...full, requests: [{ code: 'PR-00001' }, { code: 'PR-00002' }], quotation: null, retaceos: [] }, 'RC-00046'), 'Solicitudes PR-00001, PR-00002 → Orden OC-00031 → Recepción RC-00046');
+  assert.equal(processLabel(null, 'RC-00046'), 'Recepción RC-00046');
 });
 
 test('la ubicación se lee como almacén y espacio', () => {

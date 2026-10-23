@@ -2,16 +2,18 @@
 import { computed, ref, watch } from 'vue';
 import { ChevronLeft, ChevronRight, ScrollText } from 'lucide-vue-next';
 import AppInput from '../base/AppInput.vue';
+import TrackingLink from '../purchases/TrackingLink.vue';
 import { inventoryGet } from '../../services/inventory.service';
 import { activeCompanyId } from '../../services/company-context';
 import { getApiErrorMessage } from '../../utils/api-error';
-import { day, dateTime, locationLabel, money, movementLabels, quantity, referenceLabel, supportDocumentLabel } from '../../utils/inventory-format';
+import { day, dateTime, locationLabel, money, movementLabels, processLabel, quantity, referenceLabel, supportDocumentLabel } from '../../utils/inventory-format';
 
 type Row = {
   id: number; sequence: number; movementType: string; movementDate: string; quantityIn: string; quantityOut: string; unitCost: string;
   runningQuantity: string; runningValue: string; runningAverage: string; entryCost: string | null; exitCost: string | null; costAdjustment: boolean;
   referenceType: string; referenceId: number | null; reason: string;
-  supportDocument: { number: string; supplierInvoiceNumber: string | null; supplierInvoiceDate: string | null; receipt: string; receiptId: number; fiscalDocumentMissing: boolean } | null;
+  supportDocument: { number: string; supplierInvoiceNumber: string | null; supplierInvoiceDate: string | null; receipt: string; receiptId: number; fiscalDocumentMissing: boolean;
+    process: { requests: { id: number; code: string }[]; consolidation: { code: string } | null; quotation: { code: string } | null; order: { code: string } | null; receipt: { code: string }; retaceos: { code: string }[] } | null } | null;
   supplier: { name: string; code: string; country: string } | null;
   lot: { id: number; lotCode: string; purchaseItem: { purchase: { documentNumber: string } } | null } | null;
   location: { code: string; warehouse: { name: string } } | null; user: { username: string } | null;
@@ -94,7 +96,6 @@ watch(activeCompanyId, () => { productId.value = 0; warehouseId.value = 0; lotId
         </dl>
         <p class="mt-3 text-xs text-muted-fg">{{ scopeLabel }}</p>
       </header>
-      <p v-if="kardex.missingFiscalDocuments.length" role="status" class="border-b border-warning/30 bg-warning/10 px-4 py-3 text-sm sm:px-5">Hay {{ kardex.missingFiscalDocuments.length }} {{ kardex.missingFiscalDocuments.length === 1 ? 'recepción' : 'recepciones' }} sin el documento fiscal del proveedor ({{ kardex.missingFiscalDocuments.join(', ') }}). Mientras no se registre, el registro solo queda respaldado por el documento interno de recepción.</p>
       <dl class="grid grid-cols-2 gap-4 border-b border-border/70 p-4 text-sm lg:grid-cols-4 sm:p-5">
         <div><dt class="text-xs text-muted-fg">Saldo inicial</dt><dd class="mt-1 font-semibold tabular-nums">{{ quantity(kardex.opening) }} u.</dd><dd class="text-xs tabular-nums text-muted-fg">{{ money(kardex.openingValue) }}</dd></div>
         <div><dt class="text-xs text-muted-fg">Entradas del período</dt><dd class="mt-1 font-semibold tabular-nums text-success">+{{ quantity(kardex.totals.quantityIn) }} u.</dd><dd class="text-xs tabular-nums text-muted-fg">{{ money(kardex.totals.entryCost) }}</dd></div>
@@ -113,7 +114,7 @@ watch(activeCompanyId, () => { productId.value = 0; warehouseId.value = 0; lotId
               <tr v-for="row in kardex.items" :key="row.id" class="align-top hover:bg-surface-secondary/40">
                 <td class="px-3 py-3 text-xs tabular-nums text-muted-fg">{{ row.sequence }}</td>
                 <td class="whitespace-nowrap px-3 py-3 text-xs text-muted-fg">{{ dateTime(row.movementDate) }}</td>
-                <td class="px-3 py-3"><template v-if="row.supportDocument"><p v-if="row.supportDocument.fiscalDocumentMissing" class="inline-flex items-center rounded-full border border-warning/30 bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning">Sin documento fiscal</p><p v-else class="font-medium">{{ supportDocumentLabel(row.supportDocument) }}</p><p class="mt-0.5 text-xs text-muted-fg">Recepción {{ row.supportDocument.receipt }}</p></template><p v-else class="text-sm">{{ referenceLabel(row) }}</p></td>
+                <td class="px-3 py-3"><template v-if="row.supportDocument"><p class="font-medium">{{ processLabel(row.supportDocument.process, row.supportDocument.receipt) }}</p><p class="mt-0.5 text-xs" :class="row.supportDocument.fiscalDocumentMissing ? 'text-muted-fg' : ''">{{ row.supportDocument.fiscalDocumentMissing ? 'Documento del proveedor: no registrado' : supportDocumentLabel(row.supportDocument) }}</p><TrackingLink type="receipt" :id="row.supportDocument.receiptId" /></template><p v-else class="text-sm">{{ referenceLabel(row) }}</p></td>
                 <td class="px-3 py-3"><template v-if="row.supplier"><p>{{ row.supplier.name }}</p><p class="mt-0.5 text-xs text-muted-fg">{{ row.supplier.code }} · {{ row.supplier.country }}</p></template><span v-else class="text-muted-fg">—</span></td>
                 <td class="px-3 py-3"><p class="font-medium">{{ row.costAdjustment ? 'Ajuste de costo' : (movementLabels[row.movementType] ?? row.movementType) }}</p><p class="mt-0.5 text-xs text-muted-fg">{{ row.lot?.lotCode ?? 'Sin lote (histórico)' }} · {{ locationLabel(row.location) }} · {{ row.user?.username ?? 'Apertura del sistema' }}</p><p v-if="row.costAdjustment" class="mt-0.5 text-xs text-muted-fg">{{ row.reason }}</p></td>
                 <td class="border-l border-border/60 px-3 py-3 text-right tabular-nums text-success">{{ Number(row.quantityIn) ? '+' + quantity(row.quantityIn) : '' }}</td>
@@ -131,7 +132,7 @@ watch(activeCompanyId, () => { productId.value = 0; warehouseId.value = 0; lotId
         <div class="divide-y divide-border/70 md:hidden">
           <article v-for="row in kardex.items" :key="row.id" class="p-4">
             <div class="flex items-start justify-between gap-3"><div><p class="text-xs text-muted-fg">N.° {{ row.sequence }} · {{ dateTime(row.movementDate) }}</p><p class="mt-1 text-sm font-medium">{{ row.costAdjustment ? 'Ajuste de costo' : (movementLabels[row.movementType] ?? row.movementType) }}</p></div><p class="font-semibold tabular-nums" :class="Number(row.quantityOut) ? 'text-danger' : 'text-success'">{{ Number(row.quantityOut) ? '−' + quantity(row.quantityOut) : '+' + quantity(row.quantityIn) }}</p></div>
-            <p class="mt-2 text-xs text-muted-fg">{{ row.supportDocument ? supportDocumentLabel(row.supportDocument) : referenceLabel(row) }}<template v-if="row.supplier"> · {{ row.supplier.name }} ({{ row.supplier.country }})</template></p>
+            <p class="mt-2 text-xs text-muted-fg">{{ row.supportDocument ? processLabel(row.supportDocument.process, row.supportDocument.receipt) + (row.supportDocument.fiscalDocumentMissing ? '' : ' · ' + supportDocumentLabel(row.supportDocument)) : referenceLabel(row) }}<template v-if="row.supplier"> · {{ row.supplier.name }} ({{ row.supplier.country }})</template></p>
             <p class="mt-1 text-xs text-muted-fg">{{ row.lot?.lotCode ?? 'Sin lote' }} · {{ locationLabel(row.location) }}</p>
             <dl class="mt-2 grid grid-cols-2 gap-2 text-xs"><div><dt class="text-muted-fg">Costo unit. aplicado</dt><dd class="font-medium tabular-nums">{{ row.costAdjustment ? '—' : money(row.unitCost, 'USD', 4) }}</dd></div><div><dt class="text-muted-fg">Promedio resultante</dt><dd class="font-medium tabular-nums">{{ money(row.runningAverage, 'USD', 4) }}</dd></div></dl>
             <dl class="mt-2 grid grid-cols-3 gap-2 text-xs"><div><dt class="text-muted-fg">Saldo u.</dt><dd class="font-medium tabular-nums">{{ quantity(row.runningQuantity) }}</dd></div><div><dt class="text-muted-fg">{{ row.exitCost ? 'Costo salida' : 'Costo entrada' }}</dt><dd class="font-medium tabular-nums">{{ money(row.exitCost ?? row.entryCost ?? 0) }}</dd></div><div><dt class="text-muted-fg">Saldo $</dt><dd class="font-medium tabular-nums">{{ money(row.runningValue) }}</dd></div></dl>

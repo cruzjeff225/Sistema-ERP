@@ -21,6 +21,19 @@ export function supportDocumentLabel(doc: { supplierInvoiceNumber: string | null
   return doc.supplierInvoiceDate ? `Doc. ${doc.supplierInvoiceNumber} · ${day(doc.supplierInvoiceDate)}` : `Doc. ${doc.supplierInvoiceNumber}`;
 }
 
+/** Documentos internos que respaldan una compra, del primero al último: solicitud, cotización, orden, recepción y retaceo. */
+export function processLabel(process: { requests: { code: string }[]; consolidation?: { code: string } | null; quotation?: { code: string } | null; order?: { code: string } | null; receipt: { code: string }; retaceos: { code: string }[] } | null, receipt: string) {
+  if (!process) return `Recepción ${receipt}`;
+  const requests = process.requests.map(request => request.code);
+  return [
+    requests.length ? `${requests.length === 1 ? 'Solicitud' : 'Solicitudes'} ${requests.join(', ')}` : '',
+    process.quotation ? `Cotización ${process.quotation.code}` : '',
+    process.order ? `Orden ${process.order.code}` : '',
+    `Recepción ${process.receipt.code}`,
+    process.retaceos.length ? `Retaceo ${process.retaceos.map(retaceo => retaceo.code).join(', ')}` : '',
+  ].filter(Boolean).join(' → ');
+}
+
 /** Documento de origen de un movimiento, tal como lo muestra el Kardex. */
 export function referenceLabel(movement: { referenceType: string; referenceId: number | null; reason?: string; lot?: { purchaseItem?: { purchase?: { documentNumber: string } | null } | null } | null }) {
   const receipt = movement.lot?.purchaseItem?.purchase?.documentNumber;
