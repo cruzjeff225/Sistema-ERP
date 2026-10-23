@@ -114,7 +114,7 @@ export class InventoryService {
   private kardexInclude = {
     product: { select: { id: true, name: true, sku: true, internalCode: true } },
     lot: { select: { id: true, lotCode: true, purchaseItem: { select: { purchase: { select: { id: true, documentNumber: true, supplierInvoiceNumber: true, supplierInvoiceDate: true, currency: true,
-      supplier: { select: { id: true, name: true, country: { select: { name: true } } } } } } } } } },
+      supplier: { select: { id: true, code: true, name: true, country: { select: { name: true } } } } } } } } } },
     location: { select: locationSelect },
     user: { select: { username: true } },
   } satisfies Prisma.InventoryMovementInclude;
@@ -145,24 +145,30 @@ export class InventoryService {
     const openingValue = (inValue?._sum.totalCost ?? ZERO).sub(outValue?._sum.totalCost ?? ZERO);
     const rows = await this.prisma.inventoryMovement.findMany({ where, include: this.kardexInclude, orderBy: [{ movementDate: 'asc' }, { id: 'asc' }] });
     let runningQuantity = openingQuantity, runningValue = openingValue;
+    let runningAverage = openingQuantity.gt(0) ? openingValue.div(openingQuantity).toDecimalPlaces(4) : ZERO;
     const all = rows.map((row, index) => {
       // Entradas (y ajustes de costo sin unidades) suman al saldo monetario; las salidas restan.
       const exit = row.quantityOut.gt(0);
       runningQuantity = runningQuantity.add(row.quantityIn).sub(row.quantityOut);
       runningValue = exit ? runningValue.sub(row.totalCost) : runningValue.add(row.totalCost);
+      // Costo promedio resultante de la operación; sin existencias conserva el último.
+      if (runningQuantity.gt(0)) runningAverage = runningValue.div(runningQuantity).toDecimalPlaces(4);
       const purchase = row.lot?.purchaseItem?.purchase ?? null;
-      return { ...row, sequence: index + 1, runningQuantity, runningValue,
+      return { ...row, sequence: index + 1, runningQuantity, runningValue, runningAverage,
         entryCost: exit ? null : row.totalCost, exitCost: exit ? row.totalCost : null,
         costAdjustment: row.quantityIn.isZero() && row.quantityOut.isZero(),
-        supportDocument: row.referenceType === 'purchase_detail' && purchase ? { number: purchase.supplierInvoiceNumber ?? purchase.documentNumber, supplierInvoiceNumber: purchase.supplierInvoiceNumber, supplierInvoiceDate: purchase.supplierInvoiceDate, receipt: purchase.documentNumber } : null,
-        supplier: row.referenceType === 'purchase_detail' && purchase ? { name: purchase.supplier.name, country: purchase.supplier.country.name } : null };
+        supportDocument: row.referenceType === 'purchase_detail' && purchase ? { number: purchase.supplierInvoiceNumber ?? purchase.documentNumber, supplierInvoiceNumber: purchase.supplierInvoiceNumber, supplierInvoiceDate: purchase.supplierInvoiceDate, receipt: purchase.documentNumber, receiptId: purchase.id, fiscalDocumentMissing: !purchase.supplierInvoiceNumber?.trim() } : null,
+        supplier: row.referenceType === 'purchase_detail' && purchase ? { name: purchase.supplier.name, code: purchase.supplier.code, country: purchase.supplier.country.name } : null };
     });
     const items = all.slice((q.page - 1) * q.limit, q.page * q.limit);
     const entries = rows.filter(r => !r.quantityOut.gt(0)), exits = rows.filter(r => r.quantityOut.gt(0));
+    // Recepciones del registro que todavía no tienen el documento fiscal del proveedor (no basta el documento interno).
+    const missingFiscal = new Set(all.filter(row => row.supportDocument?.fiscalDocumentMissing && row.movementType === 'RECEIPT').map(row => row.supportDocument!.receipt));
     return {
       header: { title: 'Registro de control de inventarios', company, period: { from: q.dateFrom ?? null, to: q.dateTo ?? null }, consolidated, generatedAt: new Date().toISOString() },
       product: { ...product, descriptionFull: [product.name, product.presentation, product.size, product.dimensions, product.description].filter(Boolean).join(' · ') },
-      opening: openingQuantity, openingValue, closing: runningQuantity, closingValue: runningValue,
+      opening: openingQuantity, openingValue, closing: runningQuantity, closingValue: runningValue, closingAverage: runningAverage,
+      missingFiscalDocuments: [...missingFiscal],
       totals: { quantityIn: sum(rows.map(r => r.quantityIn)), quantityOut: sum(rows.map(r => r.quantityOut)), entryCost: sum(entries.map(r => r.totalCost)), exitCost: sum(exits.map(r => r.totalCost)) },
       items, total: all.length, page: q.page, totalPages: Math.max(1, Math.ceil(all.length / q.limit)),
     };

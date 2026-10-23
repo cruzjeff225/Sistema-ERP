@@ -93,8 +93,11 @@ async function main() {
   const purchaseRows = legal.items.filter((row: any) => row.referenceType === 'purchase_detail' && row.lot);
   assert(purchaseRows.every((row: any) => row.supportDocument?.number && row.supplier?.name && row.supplier?.country), 'las compras traen documento de respaldo, proveedor y país');
   assert(legal.product.descriptionFull.startsWith(legal.product.name));
+  assert(legal.items.every((row: any) => row.unitCost !== undefined && row.runningAverage !== undefined), 'cada operación trae su costo unitario y el promedio resultante');
+  assert(Array.isArray(legal.missingFiscalDocuments));
   for (const row of costs.items) {
     const check = await api(`/inventory/kardex?productId=${row.productId}&limit=500`);
+    assert(Math.abs(num(check.closingAverage) - num(row.averageUnitCost)) <= 0.01, `promedio resultante del Kardex = costo promedio de ${row.product.name}`);
     assert.equal(num(check.closing), num(row.quantityOnHand), `unidades del Kardex = costo promedio de ${row.product.name}`);
     assert(Math.abs(num(check.closingValue) - num(row.inventoryValue)) <= 0.05, `saldo monetario del Kardex = valor del inventario de ${row.product.name}`);
   }

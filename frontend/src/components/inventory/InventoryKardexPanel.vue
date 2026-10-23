@@ -9,17 +9,17 @@ import { day, dateTime, locationLabel, money, movementLabels, quantity, referenc
 
 type Row = {
   id: number; sequence: number; movementType: string; movementDate: string; quantityIn: string; quantityOut: string; unitCost: string;
-  runningQuantity: string; runningValue: string; entryCost: string | null; exitCost: string | null; costAdjustment: boolean;
+  runningQuantity: string; runningValue: string; runningAverage: string; entryCost: string | null; exitCost: string | null; costAdjustment: boolean;
   referenceType: string; referenceId: number | null; reason: string;
-  supportDocument: { number: string; supplierInvoiceNumber: string | null; supplierInvoiceDate: string | null; receipt: string } | null;
-  supplier: { name: string; country: string } | null;
+  supportDocument: { number: string; supplierInvoiceNumber: string | null; supplierInvoiceDate: string | null; receipt: string; receiptId: number; fiscalDocumentMissing: boolean } | null;
+  supplier: { name: string; code: string; country: string } | null;
   lot: { id: number; lotCode: string; purchaseItem: { purchase: { documentNumber: string } } | null } | null;
   location: { code: string; warehouse: { name: string } } | null; user: { username: string } | null;
 };
 type Kardex = {
   header: { title: string; company: { name: string; commercialName: string; nit: string; nrc: string }; period: { from: string | null; to: string | null }; consolidated: boolean };
   product: { id: number; name: string; sku: string; internalCode: string; descriptionFull: string; purchaseUnit: { name: string }; category: { name: string }; subcategory: { name: string } };
-  opening: string; openingValue: string; closing: string; closingValue: string;
+  opening: string; openingValue: string; closing: string; closingValue: string; closingAverage: string; missingFiscalDocuments: string[];
   totals: { quantityIn: string; quantityOut: string; entryCost: string; exitCost: string };
   items: Row[]; total: number; totalPages: number;
 };
@@ -94,26 +94,27 @@ watch(activeCompanyId, () => { productId.value = 0; warehouseId.value = 0; lotId
         </dl>
         <p class="mt-3 text-xs text-muted-fg">{{ scopeLabel }}</p>
       </header>
+      <p v-if="kardex.missingFiscalDocuments.length" role="status" class="border-b border-warning/30 bg-warning/10 px-4 py-3 text-sm sm:px-5">Hay {{ kardex.missingFiscalDocuments.length }} {{ kardex.missingFiscalDocuments.length === 1 ? 'recepción' : 'recepciones' }} sin el documento fiscal del proveedor ({{ kardex.missingFiscalDocuments.join(', ') }}). Mientras no se registre, el registro solo queda respaldado por el documento interno de recepción.</p>
       <dl class="grid grid-cols-2 gap-4 border-b border-border/70 p-4 text-sm lg:grid-cols-4 sm:p-5">
         <div><dt class="text-xs text-muted-fg">Saldo inicial</dt><dd class="mt-1 font-semibold tabular-nums">{{ quantity(kardex.opening) }} u.</dd><dd class="text-xs tabular-nums text-muted-fg">{{ money(kardex.openingValue) }}</dd></div>
         <div><dt class="text-xs text-muted-fg">Entradas del período</dt><dd class="mt-1 font-semibold tabular-nums text-success">+{{ quantity(kardex.totals.quantityIn) }} u.</dd><dd class="text-xs tabular-nums text-muted-fg">{{ money(kardex.totals.entryCost) }}</dd></div>
         <div><dt class="text-xs text-muted-fg">Salidas del período</dt><dd class="mt-1 font-semibold tabular-nums text-danger">−{{ quantity(kardex.totals.quantityOut) }} u.</dd><dd class="text-xs tabular-nums text-muted-fg">{{ money(kardex.totals.exitCost) }}</dd></div>
-        <div><dt class="text-xs text-muted-fg">Saldo final</dt><dd class="mt-1 font-semibold tabular-nums">{{ quantity(kardex.closing) }} u.</dd><dd class="text-xs tabular-nums text-muted-fg">{{ money(kardex.closingValue) }}</dd></div>
+        <div><dt class="text-xs text-muted-fg">Saldo final</dt><dd class="mt-1 font-semibold tabular-nums">{{ quantity(kardex.closing) }} u.</dd><dd class="text-xs tabular-nums text-muted-fg">{{ money(kardex.closingValue) }} · promedio {{ money(kardex.closingAverage, 'USD', 4) }}</dd></div>
       </dl>
       <div v-if="!kardex.items.length" class="px-6 py-12 text-center text-sm text-muted-fg">No hay movimientos con estos filtros.</div>
       <template v-else>
         <div class="hidden max-w-full overflow-x-auto md:block">
-          <table class="w-full min-w-[1180px] text-left text-sm">
+          <table class="w-full min-w-[1380px] text-left text-sm">
             <thead class="data-thead">
-              <tr><th rowspan="2" class="px-3 py-2 font-medium">N.°</th><th rowspan="2" class="px-3 py-2 font-medium">Fecha</th><th rowspan="2" class="px-3 py-2 font-medium">Documento de respaldo</th><th rowspan="2" class="px-3 py-2 font-medium">Proveedor</th><th rowspan="2" class="px-3 py-2 font-medium">Operación</th><th colspan="3" class="border-l border-border/60 px-3 py-2 text-center font-medium">Unidades</th><th colspan="3" class="border-l border-border/60 px-3 py-2 text-center font-medium">Costo</th></tr>
-              <tr><th class="border-l border-border/60 px-3 py-2 text-right font-medium">Entran</th><th class="px-3 py-2 text-right font-medium">Salen</th><th class="px-3 py-2 text-right font-medium">Saldo</th><th class="border-l border-border/60 px-3 py-2 text-right font-medium">Entradas</th><th class="px-3 py-2 text-right font-medium">Salidas</th><th class="px-3 py-2 text-right font-medium">Saldo</th></tr>
+              <tr><th rowspan="2" class="px-3 py-2 font-medium">N.°</th><th rowspan="2" class="px-3 py-2 font-medium">Fecha</th><th rowspan="2" class="px-3 py-2 font-medium">Documento de respaldo</th><th rowspan="2" class="px-3 py-2 font-medium">Proveedor</th><th rowspan="2" class="px-3 py-2 font-medium">Operación</th><th colspan="3" class="border-l border-border/60 px-3 py-2 text-center font-medium">Unidades</th><th colspan="5" class="border-l border-border/60 px-3 py-2 text-center font-medium">Costo</th></tr>
+              <tr><th class="border-l border-border/60 px-3 py-2 text-right font-medium">Entran</th><th class="px-3 py-2 text-right font-medium">Salen</th><th class="px-3 py-2 text-right font-medium">Saldo</th><th class="border-l border-border/60 px-3 py-2 text-right font-medium">Entradas</th><th class="px-3 py-2 text-right font-medium">Salidas</th><th class="px-3 py-2 text-right font-medium">Saldo</th><th class="border-l border-border/60 px-3 py-2 text-right font-medium">Costo unit. aplicado</th><th class="px-3 py-2 text-right font-medium">Promedio resultante</th></tr>
             </thead>
             <tbody class="divide-y divide-border/70">
               <tr v-for="row in kardex.items" :key="row.id" class="align-top hover:bg-surface-secondary/40">
                 <td class="px-3 py-3 text-xs tabular-nums text-muted-fg">{{ row.sequence }}</td>
                 <td class="whitespace-nowrap px-3 py-3 text-xs text-muted-fg">{{ dateTime(row.movementDate) }}</td>
-                <td class="px-3 py-3"><template v-if="row.supportDocument"><p class="font-medium">{{ supportDocumentLabel(row.supportDocument) }}</p><p v-if="row.supportDocument.supplierInvoiceNumber" class="mt-0.5 text-xs text-muted-fg">Recepción {{ row.supportDocument.receipt }}</p></template><p v-else class="text-sm">{{ referenceLabel(row) }}</p></td>
-                <td class="px-3 py-3"><template v-if="row.supplier"><p>{{ row.supplier.name }}</p><p class="mt-0.5 text-xs text-muted-fg">{{ row.supplier.country }}</p></template><span v-else class="text-muted-fg">—</span></td>
+                <td class="px-3 py-3"><template v-if="row.supportDocument"><p v-if="row.supportDocument.fiscalDocumentMissing" class="inline-flex items-center rounded-full border border-warning/30 bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning">Sin documento fiscal</p><p v-else class="font-medium">{{ supportDocumentLabel(row.supportDocument) }}</p><p class="mt-0.5 text-xs text-muted-fg">Recepción {{ row.supportDocument.receipt }}</p></template><p v-else class="text-sm">{{ referenceLabel(row) }}</p></td>
+                <td class="px-3 py-3"><template v-if="row.supplier"><p>{{ row.supplier.name }}</p><p class="mt-0.5 text-xs text-muted-fg">{{ row.supplier.code }} · {{ row.supplier.country }}</p></template><span v-else class="text-muted-fg">—</span></td>
                 <td class="px-3 py-3"><p class="font-medium">{{ row.costAdjustment ? 'Ajuste de costo' : (movementLabels[row.movementType] ?? row.movementType) }}</p><p class="mt-0.5 text-xs text-muted-fg">{{ row.lot?.lotCode ?? 'Sin lote (histórico)' }} · {{ locationLabel(row.location) }} · {{ row.user?.username ?? 'Apertura del sistema' }}</p><p v-if="row.costAdjustment" class="mt-0.5 text-xs text-muted-fg">{{ row.reason }}</p></td>
                 <td class="border-l border-border/60 px-3 py-3 text-right tabular-nums text-success">{{ Number(row.quantityIn) ? '+' + quantity(row.quantityIn) : '' }}</td>
                 <td class="px-3 py-3 text-right tabular-nums text-danger">{{ Number(row.quantityOut) ? '−' + quantity(row.quantityOut) : '' }}</td>
@@ -121,6 +122,8 @@ watch(activeCompanyId, () => { productId.value = 0; warehouseId.value = 0; lotId
                 <td class="border-l border-border/60 px-3 py-3 text-right tabular-nums">{{ empty(row.entryCost) }}</td>
                 <td class="px-3 py-3 text-right tabular-nums">{{ empty(row.exitCost) }}</td>
                 <td class="px-3 py-3 text-right font-medium tabular-nums">{{ money(row.runningValue) }}</td>
+                <td class="border-l border-border/60 px-3 py-3 text-right tabular-nums">{{ row.costAdjustment ? '' : money(row.unitCost, 'USD', 4) }}</td>
+                <td class="px-3 py-3 text-right tabular-nums">{{ money(row.runningAverage, 'USD', 4) }}</td>
               </tr>
             </tbody>
           </table>
@@ -130,6 +133,7 @@ watch(activeCompanyId, () => { productId.value = 0; warehouseId.value = 0; lotId
             <div class="flex items-start justify-between gap-3"><div><p class="text-xs text-muted-fg">N.° {{ row.sequence }} · {{ dateTime(row.movementDate) }}</p><p class="mt-1 text-sm font-medium">{{ row.costAdjustment ? 'Ajuste de costo' : (movementLabels[row.movementType] ?? row.movementType) }}</p></div><p class="font-semibold tabular-nums" :class="Number(row.quantityOut) ? 'text-danger' : 'text-success'">{{ Number(row.quantityOut) ? '−' + quantity(row.quantityOut) : '+' + quantity(row.quantityIn) }}</p></div>
             <p class="mt-2 text-xs text-muted-fg">{{ row.supportDocument ? supportDocumentLabel(row.supportDocument) : referenceLabel(row) }}<template v-if="row.supplier"> · {{ row.supplier.name }} ({{ row.supplier.country }})</template></p>
             <p class="mt-1 text-xs text-muted-fg">{{ row.lot?.lotCode ?? 'Sin lote' }} · {{ locationLabel(row.location) }}</p>
+            <dl class="mt-2 grid grid-cols-2 gap-2 text-xs"><div><dt class="text-muted-fg">Costo unit. aplicado</dt><dd class="font-medium tabular-nums">{{ row.costAdjustment ? '—' : money(row.unitCost, 'USD', 4) }}</dd></div><div><dt class="text-muted-fg">Promedio resultante</dt><dd class="font-medium tabular-nums">{{ money(row.runningAverage, 'USD', 4) }}</dd></div></dl>
             <dl class="mt-2 grid grid-cols-3 gap-2 text-xs"><div><dt class="text-muted-fg">Saldo u.</dt><dd class="font-medium tabular-nums">{{ quantity(row.runningQuantity) }}</dd></div><div><dt class="text-muted-fg">{{ row.exitCost ? 'Costo salida' : 'Costo entrada' }}</dt><dd class="font-medium tabular-nums">{{ money(row.exitCost ?? row.entryCost ?? 0) }}</dd></div><div><dt class="text-muted-fg">Saldo $</dt><dd class="font-medium tabular-nums">{{ money(row.runningValue) }}</dd></div></dl>
           </article>
         </div>
