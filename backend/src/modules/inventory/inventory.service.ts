@@ -119,6 +119,28 @@ export class InventoryService {
     user: { select: { username: true } },
   } satisfies Prisma.InventoryMovementInclude;
 
+  /** Documentos que genera el proceso de compra hasta la recepción: solicitudes, cotización, orden, recepción y retaceo. */
+  private async purchaseProcesses(purchaseIds: number[]) {
+    const map = new Map<number, { requests: { id: number; code: string }[]; consolidation: { id: number; code: string } | null; quotation: { id: number; code: string } | null; order: { id: number; code: string } | null; receipt: { id: number; code: string }; retaceos: { id: number; code: string; status: string }[] }>();
+    if (!purchaseIds.length) return map;
+    const purchases = await this.prisma.purchase.findMany({ where: { id: { in: purchaseIds } }, select: { id: true, documentNumber: true,
+      retaceos: { where: { deletedAt: null, status: { not: 'cancelled' } }, select: { id: true, code: true, status: true }, orderBy: { id: 'asc' } },
+      purchaseOrder: { select: { id: true, code: true,
+        quotation: { select: { id: true, code: true, requestLinks: { select: { request: { select: { id: true, code: true } } } } } },
+        consolidation: { select: { id: true, code: true, lines: { select: { sources: { select: { requestDetail: { select: { request: { select: { id: true, code: true } } } } } } } } } } } } } });
+    for (const purchase of purchases) {
+      const requests = new Map<number, { id: number; code: string }>();
+      for (const link of purchase.purchaseOrder?.quotation?.requestLinks ?? []) requests.set(link.request.id, link.request);
+      for (const line of purchase.purchaseOrder?.consolidation?.lines ?? []) for (const source of line.sources) requests.set(source.requestDetail.request.id, source.requestDetail.request);
+      const order = purchase.purchaseOrder;
+      map.set(purchase.id, { requests: [...requests.values()].sort((a, b) => a.code.localeCompare(b.code)),
+        consolidation: order?.consolidation ? { id: order.consolidation.id, code: order.consolidation.code } : null,
+        quotation: order?.quotation ? { id: order.quotation.id, code: order.quotation.code } : null,
+        order: order ? { id: order.id, code: order.code } : null, receipt: { id: purchase.id, code: purchase.documentNumber }, retaceos: purchase.retaceos });
+    }
+    return map;
+  }
+
   /**
    * Registro de control de inventarios (Código Tributario, art. 142-A) de un producto: se construye siempre desde los
    * movimientos, con unidades y costo de entradas, salidas y saldo. Sin filtro de almacén es el consolidado de la empresa y
@@ -160,7 +182,9 @@ export class InventoryService {
         supportDocument: row.referenceType === 'purchase_detail' && purchase ? { number: purchase.supplierInvoiceNumber ?? purchase.documentNumber, supplierInvoiceNumber: purchase.supplierInvoiceNumber, supplierInvoiceDate: purchase.supplierInvoiceDate, receipt: purchase.documentNumber, receiptId: purchase.id, fiscalDocumentMissing: !purchase.supplierInvoiceNumber?.trim() } : null,
         supplier: row.referenceType === 'purchase_detail' && purchase ? { name: purchase.supplier.name, code: purchase.supplier.code, country: purchase.supplier.country.name } : null };
     });
-    const items = all.slice((q.page - 1) * q.limit, q.page * q.limit);
+    const page = all.slice((q.page - 1) * q.limit, q.page * q.limit);
+    const process = await this.purchaseProcesses([...new Set(page.flatMap(row => row.supportDocument ? [row.supportDocument.receiptId] : []))]);
+    const items = page.map(row => row.supportDocument ? { ...row, supportDocument: { ...row.supportDocument, process: process.get(row.supportDocument.receiptId) ?? null } } : row);
     const entries = rows.filter(r => !r.quantityOut.gt(0)), exits = rows.filter(r => r.quantityOut.gt(0));
     // Recepciones del registro que todavía no tienen el documento fiscal del proveedor (no basta el documento interno).
     const missingFiscal = new Set(all.filter(row => row.supportDocument?.fiscalDocumentMissing && row.movementType === 'RECEIPT').map(row => row.supportDocument!.receipt));
