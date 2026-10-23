@@ -6,7 +6,7 @@ import TrackingLink from '../purchases/TrackingLink.vue';
 import { inventoryGet } from '../../services/inventory.service';
 import { activeCompanyId } from '../../services/company-context';
 import { getApiErrorMessage } from '../../utils/api-error';
-import { day, dateTime, locationLabel, money, movementLabels, processLabel, quantity, referenceLabel, supportDocumentLabel } from '../../utils/inventory-format';
+import { day, dateTime, locationLabel, money, movementFilterLabels, movementLabels, processLabel, quantity, referenceLabel, supportDocumentLabel } from '../../utils/inventory-format';
 
 type Row = {
   id: number; sequence: number; movementType: string; movementDate: string; quantityIn: string; quantityOut: string; unitCost: string;
@@ -92,7 +92,7 @@ watch(activeCompanyId, () => { productId.value = 0; branchId.value = 0; warehous
       </div>
       <div class="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <label class="text-xs font-medium text-muted-fg">Lote<select v-model.number="lotId" class="field-control" :disabled="!productId" @change="filter"><option :value="0">Todos los lotes</option><option v-for="l in lotOptions" :key="l.id" :value="l.id">{{ l.lotCode }}</option></select></label>
-        <label class="text-xs font-medium text-muted-fg">Tipo<select v-model="type" class="field-control" :disabled="!productId" @change="filter"><option value="">Todos los movimientos</option><option v-for="(label, value) in movementLabels" :key="value" :value="value">{{ label }}</option></select></label>
+        <label class="text-xs font-medium text-muted-fg">Tipo<select v-model="type" class="field-control" :disabled="!productId" @change="filter"><option value="">Todos los movimientos</option><option v-for="(label, value) in movementFilterLabels" :key="value" :value="value">{{ label }}</option></select></label>
         <AppInput v-model="dateFrom" type="date" label="Desde" :max="dateTo || undefined" :disabled="!productId" @change="filter" />
         <AppInput v-model="dateTo" type="date" label="Hasta" :min="dateFrom || undefined" :disabled="!productId" @change="filter" />
       </div>

@@ -3,6 +3,16 @@ export const movementLabels: Record<string, string> = {
   TRANSFER_OUT: 'Despacho a sucursal', TRANSFER_IN: 'Recepción de traslado', SALE: 'Venta', RETURN: 'Devolución',
 };
 
+/**
+ * Ventas y devoluciones de clientes dependen del módulo de Ventas (RN-021: toda devolución se asocia a una venta previa),
+ * que todavía no existe. Mientras tanto no se ofrece registrarlas ni filtrarlas; los movimientos ya registrados siguen
+ * mostrándose con su etiqueta. Al habilitar Ventas basta cambiar este valor.
+ */
+export const salesModuleEnabled = false;
+const salesOnly = ['SALE', 'RETURN'];
+/** Tipos que se ofrecen como filtro: sin el módulo de Ventas no hay ventas ni devoluciones que buscar. */
+export const movementFilterLabels: Record<string, string> = Object.fromEntries(Object.entries(movementLabels).filter(([type]) => salesModuleEnabled || !salesOnly.includes(type)));
+
 export const lotStatusLabels: Record<string, string> = { PENDING_PLACEMENT: 'Pendiente de ubicar', ACTIVE: 'Activo', DEPLETED: 'Agotado', CANCELLED: 'Cancelado' };
 export const transferStatusLabels: Record<string, string> = {
   PREPARING: 'En preparación', IN_TRANSIT: 'En tránsito', PARTIALLY_RECEIVED: 'Recibido parcial', COMPLETED: 'Recibido', INCIDENT: 'Incidencia',
