@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import { ChevronLeft, ChevronRight, ScrollText } from 'lucide-vue-next';
+import { ChevronDown, ChevronLeft, ChevronRight, ScrollText } from 'lucide-vue-next';
 import AppInput from '../base/AppInput.vue';
 import TrackingLink from '../purchases/TrackingLink.vue';
 import { inventoryGet } from '../../services/inventory.service';
@@ -20,7 +20,7 @@ type Row = {
 };
 type Kardex = {
   header: { title: string; company: { name: string; commercialName: string; nit: string; nrc: string }; period: { from: string | null; to: string | null }; consolidated: boolean };
-  product: { id: number; name: string; sku: string; internalCode: string; descriptionFull: string; purchaseUnit: { name: string }; category: { name: string }; subcategory: { name: string } };
+  product: { id: number; name: string; sku: string; internalCode: string; presentation: string | null; description: string | null; purchaseUnit: { name: string }; category: { name: string }; subcategory: { name: string } };
   opening: string; openingValue: string; closing: string; closingValue: string; closingAverage: string; missingFiscalDocuments: string[];
   totals: { quantityIn: string; quantityOut: string; entryCost: string; exitCost: string };
   items: Row[]; total: number; totalPages: number;
@@ -30,8 +30,17 @@ const props = defineProps<{ products: { id: number; name: string; sku: string }[
 const productId = ref(0), warehouseId = ref(0), lotId = ref(0), type = ref(''), dateFrom = ref(''), dateTo = ref('');
 const lotOptions = ref<{ id: number; lotCode: string }[]>([]);
 const kardex = ref<Kardex | null>(null), loading = ref(false), error = ref('');
-const page = ref(1);
+const page = ref(1), expanded = ref<Set<number>>(new Set());
 let version = 0;
+
+const zone = 'America/El_Salvador';
+const dayKey = (date: string) => new Intl.DateTimeFormat('en-CA', { timeZone: zone }).format(new Date(date));
+const timeOnly = (date: string) => new Intl.DateTimeFormat('es-SV', { timeStyle: 'short', timeZone: zone }).format(new Date(date));
+/** La fecha completa solo cuando cambia el día; el resto de las operaciones del mismo día muestra la hora. */
+const whenLabel = (row: Row, index: number) => index === 0 || dayKey(kardex.value!.items[index - 1]!.movementDate) !== dayKey(row.movementDate) ? dateTime(row.movementDate) : timeOnly(row.movementDate);
+const title = (row: Row) => row.costAdjustment ? 'Ajuste de costo' : (movementLabels[row.movementType] ?? row.movementType);
+const subtitle = (row: Row) => [row.lot?.lotCode ?? 'Sin lote (histórico)', locationLabel(row.location), row.user?.username ?? 'Apertura del sistema'].join(' · ');
+const toggle = (id: number) => { const next = new Set(expanded.value); if (next.has(id)) next.delete(id); else next.add(id); expanded.value = next; };
 
 const scopeLabel = computed(() => {
   if (!kardex.value) return '';
@@ -45,7 +54,6 @@ const periodLabel = computed(() => {
   const format = (value: string) => day(`${value}T12:00:00-06:00`);
   return period.from && period.to ? `Del ${format(period.from)} al ${format(period.to)}` : period.from ? `Desde el ${format(period.from)}` : period.to ? `Hasta el ${format(period.to)}` : 'Todo el historial';
 });
-const empty = (value: string | null) => value === null ? '' : money(value);
 
 async function loadLots() {
   lotId.value = 0; lotOptions.value = [];
@@ -54,7 +62,7 @@ async function loadLots() {
 }
 async function load() {
   const request = ++version;
-  kardex.value = null; error.value = '';
+  kardex.value = null; error.value = ''; expanded.value = new Set();
   if (!productId.value || !activeCompanyId.value) return;
   loading.value = true;
   try {
@@ -69,77 +77,100 @@ watch(activeCompanyId, () => { productId.value = 0; warehouseId.value = 0; lotId
 </script>
 
 <template>
-  <section class="surface-panel overflow-hidden">
-    <form class="border-b border-border/70 p-4 sm:p-5" @submit.prevent="filter">
-      <div class="grid items-end gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <label class="text-xs font-medium text-muted-fg sm:col-span-2">Producto<select v-model.number="productId" class="field-control" @change="pickProduct"><option :value="0">Seleccione un producto</option><option v-for="p in props.products" :key="p.id" :value="p.id">{{ p.sku }} · {{ p.name }}</option></select></label>
+  <section class="space-y-4">
+    <form class="surface-panel p-4 sm:p-5" @submit.prevent="filter">
+      <div class="grid gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)]">
+        <label class="text-xs font-medium text-muted-fg">Producto<select v-model.number="productId" class="field-control" @change="pickProduct"><option :value="0">Seleccione un producto</option><option v-for="p in props.products" :key="p.id" :value="p.id">{{ p.sku }} · {{ p.name }}</option></select></label>
         <label class="text-xs font-medium text-muted-fg">Almacén<select v-model.number="warehouseId" class="field-control" :disabled="!productId" @change="filter"><option :value="0">Consolidado de la empresa</option><option v-for="w in props.warehouses" :key="w.id" :value="w.id">{{ w.name }} · {{ w.branch.name }}</option></select></label>
         <label class="text-xs font-medium text-muted-fg">Lote<select v-model.number="lotId" class="field-control" :disabled="!productId" @change="filter"><option :value="0">Todos los lotes</option><option v-for="l in lotOptions" :key="l.id" :value="l.id">{{ l.lotCode }}</option></select></label>
+      </div>
+      <div class="mt-3 grid gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)]">
         <label class="text-xs font-medium text-muted-fg">Tipo<select v-model="type" class="field-control" :disabled="!productId" @change="filter"><option value="">Todos los movimientos</option><option v-for="(label, value) in movementLabels" :key="value" :value="value">{{ label }}</option></select></label>
         <AppInput v-model="dateFrom" type="date" label="Desde" :max="dateTo || undefined" :disabled="!productId" @change="filter" />
         <AppInput v-model="dateTo" type="date" label="Hasta" :min="dateFrom || undefined" :disabled="!productId" @change="filter" />
       </div>
     </form>
-    <p v-if="error" role="alert" class="m-4 rounded-xl border border-danger/20 bg-danger/5 px-4 py-3 text-sm text-danger sm:m-5">{{ error }}</p>
-    <div v-if="!productId" class="px-6 py-14 text-center"><ScrollText class="mx-auto mb-3 h-7 w-7 text-muted-fg" /><p class="text-sm font-medium">Elija un producto para ver su registro de control de inventarios</p><p class="mt-1 text-xs text-muted-fg">Se construye con los movimientos confirmados e incluye unidades y costo de entradas, salidas y saldo.</p></div>
-    <p v-else-if="loading" role="status" class="px-5 py-12 text-center text-sm text-muted-fg">Consultando Kardex…</p>
+    <p v-if="error" role="alert" class="rounded-xl border border-danger/20 bg-danger/5 px-4 py-3 text-sm text-danger">{{ error }}</p>
+    <div v-if="!productId" class="surface-panel px-6 py-14 text-center"><ScrollText class="mx-auto mb-3 h-7 w-7 text-muted-fg" /><p class="text-sm font-medium">Elija un producto para ver su registro de control de inventarios</p><p class="mt-1 text-xs text-muted-fg">Se construye con los movimientos confirmados e incluye unidades y costo de entradas, salidas y saldo.</p></div>
+    <p v-else-if="loading" role="status" class="surface-panel px-5 py-12 text-center text-sm text-muted-fg">Consultando Kardex…</p>
     <template v-else-if="kardex">
-      <header class="border-b border-border/70 p-4 sm:p-5">
+      <header class="surface-panel p-4 sm:p-5">
         <p class="text-xs font-medium uppercase tracking-wide text-muted-fg">{{ kardex.header.title }} · Art. 142-A del Código Tributario</p>
-        <dl class="mt-3 grid gap-x-8 gap-y-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
-          <div class="sm:col-span-2"><dt class="text-xs text-muted-fg">Contribuyente</dt><dd class="mt-0.5 font-medium">{{ kardex.header.company.name }}</dd></div>
-          <div><dt class="text-xs text-muted-fg">NIT</dt><dd class="mt-0.5 font-medium tabular-nums">{{ kardex.header.company.nit }}</dd></div>
-          <div><dt class="text-xs text-muted-fg">NRC</dt><dd class="mt-0.5 font-medium tabular-nums">{{ kardex.header.company.nrc }}</dd></div>
-          <div class="sm:col-span-2"><dt class="text-xs text-muted-fg">Producto</dt><dd class="mt-0.5 font-medium">{{ kardex.product.descriptionFull }}</dd><dd class="mt-0.5 text-xs text-muted-fg">{{ kardex.product.category.name }} › {{ kardex.product.subcategory.name }}</dd></div>
-          <div><dt class="text-xs text-muted-fg">Código · Unidad</dt><dd class="mt-0.5 font-medium">{{ kardex.product.sku }} · {{ kardex.product.internalCode }}</dd><dd class="mt-0.5 text-xs text-muted-fg">{{ kardex.product.purchaseUnit.name }}</dd></div>
-          <div><dt class="text-xs text-muted-fg">Período</dt><dd class="mt-0.5 font-medium">{{ periodLabel }}</dd></div>
+        <dl class="mt-3 grid gap-x-8 gap-y-4 text-sm lg:grid-cols-[minmax(0,2fr)_minmax(0,1.2fr)_minmax(0,1fr)]">
+          <div><dt class="text-xs text-muted-fg">Contribuyente</dt><dd class="mt-0.5 font-semibold">{{ kardex.header.company.name }}</dd></div>
+          <div><dt class="text-xs text-muted-fg">NIT</dt><dd class="mt-0.5 font-semibold tabular-nums">{{ kardex.header.company.nit }}</dd></div>
+          <div><dt class="text-xs text-muted-fg">NRC</dt><dd class="mt-0.5 font-semibold tabular-nums">{{ kardex.header.company.nrc }}</dd></div>
+          <div><dt class="text-xs text-muted-fg">Producto</dt><dd class="mt-0.5 font-semibold">{{ [kardex.product.name, kardex.product.presentation].filter(Boolean).join(' · ') }}</dd><dd v-if="kardex.product.description" class="mt-0.5 text-muted-fg">{{ kardex.product.description }}</dd></div>
+          <div><dt class="text-xs text-muted-fg">Código · Unidad</dt><dd class="mt-0.5 font-semibold">{{ kardex.product.sku }} · {{ kardex.product.internalCode }}</dd><dd class="mt-0.5 text-muted-fg">{{ kardex.product.purchaseUnit.name }}</dd></div>
+          <div><dt class="text-xs text-muted-fg">Período</dt><dd class="mt-0.5 font-semibold">{{ periodLabel }}</dd></div>
+          <div class="lg:col-span-3"><dt class="text-xs text-muted-fg">Categoría</dt><dd class="mt-0.5">{{ kardex.product.category.name }} › {{ kardex.product.subcategory.name }}</dd><dd class="mt-1 text-xs text-muted-fg">{{ scopeLabel }}</dd></div>
         </dl>
-        <p class="mt-3 text-xs text-muted-fg">{{ scopeLabel }}</p>
       </header>
-      <dl class="grid grid-cols-2 gap-4 border-b border-border/70 p-4 text-sm lg:grid-cols-4 sm:p-5">
-        <div><dt class="text-xs text-muted-fg">Saldo inicial</dt><dd class="mt-1 font-semibold tabular-nums">{{ quantity(kardex.opening) }} u.</dd><dd class="text-xs tabular-nums text-muted-fg">{{ money(kardex.openingValue) }}</dd></div>
-        <div><dt class="text-xs text-muted-fg">Entradas del período</dt><dd class="mt-1 font-semibold tabular-nums text-success">+{{ quantity(kardex.totals.quantityIn) }} u.</dd><dd class="text-xs tabular-nums text-muted-fg">{{ money(kardex.totals.entryCost) }}</dd></div>
-        <div><dt class="text-xs text-muted-fg">Salidas del período</dt><dd class="mt-1 font-semibold tabular-nums text-danger">−{{ quantity(kardex.totals.quantityOut) }} u.</dd><dd class="text-xs tabular-nums text-muted-fg">{{ money(kardex.totals.exitCost) }}</dd></div>
-        <div><dt class="text-xs text-muted-fg">Saldo final</dt><dd class="mt-1 font-semibold tabular-nums">{{ quantity(kardex.closing) }} u.</dd><dd class="text-xs tabular-nums text-muted-fg">{{ money(kardex.closingValue) }} · promedio {{ money(kardex.closingAverage, 'USD', 4) }}</dd></div>
+
+      <dl class="surface-panel grid grid-cols-2 divide-border/70 text-sm lg:grid-cols-4 lg:divide-x">
+        <div class="p-4 sm:px-5"><dt class="text-xs text-muted-fg">Saldo inicial</dt><dd class="mt-1 font-semibold tabular-nums">{{ quantity(kardex.opening) }} u.</dd><dd class="text-xs tabular-nums text-muted-fg">{{ money(kardex.openingValue) }}</dd></div>
+        <div class="p-4 sm:px-5"><dt class="text-xs text-muted-fg">Entradas del período</dt><dd class="mt-1 font-semibold tabular-nums text-success">+{{ quantity(kardex.totals.quantityIn) }} u.</dd><dd class="text-xs tabular-nums text-muted-fg">{{ money(kardex.totals.entryCost) }}</dd></div>
+        <div class="p-4 sm:px-5"><dt class="text-xs text-muted-fg">Salidas del período</dt><dd class="mt-1 font-semibold tabular-nums text-danger">−{{ quantity(kardex.totals.quantityOut) }} u.</dd><dd class="text-xs tabular-nums text-muted-fg">{{ money(kardex.totals.exitCost) }}</dd></div>
+        <div class="p-4 sm:px-5"><dt class="text-xs text-muted-fg">Saldo final</dt><dd class="mt-1 font-semibold tabular-nums">{{ quantity(kardex.closing) }} u.</dd><dd class="text-xs tabular-nums text-muted-fg">{{ money(kardex.closingValue) }} · promedio {{ money(kardex.closingAverage, 'USD', 4) }}</dd></div>
       </dl>
-      <div v-if="!kardex.items.length" class="px-6 py-12 text-center text-sm text-muted-fg">No hay movimientos con estos filtros.</div>
-      <template v-else>
-        <div class="hidden max-w-full overflow-x-auto md:block">
-          <table class="w-full min-w-[1380px] text-left text-sm">
-            <thead class="data-thead">
-              <tr><th rowspan="2" class="px-3 py-2 font-medium">N.°</th><th rowspan="2" class="px-3 py-2 font-medium">Fecha</th><th rowspan="2" class="px-3 py-2 font-medium">Documento de respaldo</th><th rowspan="2" class="px-3 py-2 font-medium">Proveedor</th><th rowspan="2" class="px-3 py-2 font-medium">Operación</th><th colspan="3" class="border-l border-border/60 px-3 py-2 text-center font-medium">Unidades</th><th colspan="5" class="border-l border-border/60 px-3 py-2 text-center font-medium">Costo</th></tr>
-              <tr><th class="border-l border-border/60 px-3 py-2 text-right font-medium">Entran</th><th class="px-3 py-2 text-right font-medium">Salen</th><th class="px-3 py-2 text-right font-medium">Saldo</th><th class="border-l border-border/60 px-3 py-2 text-right font-medium">Entradas</th><th class="px-3 py-2 text-right font-medium">Salidas</th><th class="px-3 py-2 text-right font-medium">Saldo</th><th class="border-l border-border/60 px-3 py-2 text-right font-medium">Costo unit. aplicado</th><th class="px-3 py-2 text-right font-medium">Promedio resultante</th></tr>
-            </thead>
+
+      <div class="surface-panel overflow-hidden">
+        <p class="border-b border-border/70 px-4 py-2.5 text-xs text-muted-fg sm:px-5">Cantidades en {{ kardex.product.purchaseUnit.name }} · Importes en dólares</p>
+        <div v-if="!kardex.items.length" class="px-6 py-12 text-center text-sm text-muted-fg">No hay movimientos con estos filtros.</div>
+        <template v-else>
+          <table class="hidden w-full table-fixed text-left text-sm md:table">
+            <colgroup><col /><col class="w-[88px]" /><col class="w-[88px]" /><col class="w-[96px]" /><col class="w-[96px]" /><col class="w-[96px]" /></colgroup>
+            <thead class="data-thead"><tr><th class="px-4 py-2.5 font-medium">Movimiento y respaldo</th><th class="px-2 py-2.5 text-right font-medium">Entrada</th><th class="px-2 py-2.5 text-right font-medium">Salida</th><th class="px-2 py-2.5 text-right font-medium">Saldo</th><th class="px-2 py-2.5 text-right font-medium leading-tight">Costo unit. aplicado</th><th class="px-3 py-2.5 text-right font-medium leading-tight">Promedio resultante</th></tr></thead>
             <tbody class="divide-y divide-border/70">
-              <tr v-for="row in kardex.items" :key="row.id" class="align-top hover:bg-surface-secondary/40">
-                <td class="px-3 py-3 text-xs tabular-nums text-muted-fg">{{ row.sequence }}</td>
-                <td class="whitespace-nowrap px-3 py-3 text-xs text-muted-fg">{{ dateTime(row.movementDate) }}</td>
-                <td class="px-3 py-3"><template v-if="row.supportDocument"><p class="font-medium">{{ processLabel(row.supportDocument.process, row.supportDocument.receipt) }}</p><p class="mt-0.5 text-xs" :class="row.supportDocument.fiscalDocumentMissing ? 'text-muted-fg' : ''">{{ row.supportDocument.fiscalDocumentMissing ? 'Documento del proveedor: no registrado' : supportDocumentLabel(row.supportDocument) }}</p><TrackingLink type="receipt" :id="row.supportDocument.receiptId" /></template><p v-else class="text-sm">{{ referenceLabel(row) }}</p></td>
-                <td class="px-3 py-3"><template v-if="row.supplier"><p>{{ row.supplier.name }}</p><p class="mt-0.5 text-xs text-muted-fg">{{ row.supplier.code }} · {{ row.supplier.country }}</p></template><span v-else class="text-muted-fg">—</span></td>
-                <td class="px-3 py-3"><p class="font-medium">{{ row.costAdjustment ? 'Ajuste de costo' : (movementLabels[row.movementType] ?? row.movementType) }}</p><p class="mt-0.5 text-xs text-muted-fg">{{ row.lot?.lotCode ?? 'Sin lote (histórico)' }} · {{ locationLabel(row.location) }} · {{ row.user?.username ?? 'Apertura del sistema' }}</p><p v-if="row.costAdjustment" class="mt-0.5 text-xs text-muted-fg">{{ row.reason }}</p></td>
-                <td class="border-l border-border/60 px-3 py-3 text-right tabular-nums text-success">{{ Number(row.quantityIn) ? '+' + quantity(row.quantityIn) : '' }}</td>
-                <td class="px-3 py-3 text-right tabular-nums text-danger">{{ Number(row.quantityOut) ? '−' + quantity(row.quantityOut) : '' }}</td>
-                <td class="px-3 py-3 text-right font-medium tabular-nums">{{ quantity(row.runningQuantity) }}</td>
-                <td class="border-l border-border/60 px-3 py-3 text-right tabular-nums">{{ empty(row.entryCost) }}</td>
-                <td class="px-3 py-3 text-right tabular-nums">{{ empty(row.exitCost) }}</td>
-                <td class="px-3 py-3 text-right font-medium tabular-nums">{{ money(row.runningValue) }}</td>
-                <td class="border-l border-border/60 px-3 py-3 text-right tabular-nums">{{ row.costAdjustment ? '' : money(row.unitCost, 'USD', 4) }}</td>
-                <td class="px-3 py-3 text-right tabular-nums">{{ money(row.runningAverage, 'USD', 4) }}</td>
-              </tr>
+              <template v-for="(row, index) in kardex.items" :key="row.id">
+                <tr class="align-top hover:bg-surface-secondary/40">
+                  <td class="px-4 py-3">
+                    <div class="flex items-start gap-2">
+                      <span class="w-5 shrink-0 pt-0.5 text-xs tabular-nums text-muted-fg">{{ row.sequence }}</span>
+                      <button type="button" class="icon-button -my-1 shrink-0" :aria-expanded="expanded.has(row.id)" :aria-label="`${expanded.has(row.id) ? 'Ocultar' : 'Ver'} el detalle de la operación ${row.sequence}`" @click="toggle(row.id)"><ChevronDown class="h-4 w-4 transition-transform" :class="expanded.has(row.id) ? '' : '-rotate-90'" /></button>
+                      <span class="w-[5.5rem] shrink-0 pt-0.5 text-xs leading-tight text-muted-fg">{{ whenLabel(row, index) }}</span>
+                      <div class="min-w-0"><p class="font-medium">{{ title(row) }}</p><p class="mt-0.5 truncate text-xs text-muted-fg" :title="subtitle(row)">{{ subtitle(row) }}</p></div>
+                    </div>
+                  </td>
+                  <td class="px-2 py-3 text-right tabular-nums"><template v-if="Number(row.quantityIn)"><p class="font-medium text-success">+{{ quantity(row.quantityIn) }} u.</p><p class="text-xs text-muted-fg">{{ money(row.entryCost ?? 0) }}</p></template><template v-else-if="row.costAdjustment"><p class="text-xs text-muted-fg">{{ money(row.entryCost ?? 0) }}</p></template><span v-else class="text-muted-fg">—</span></td>
+                  <td class="px-2 py-3 text-right tabular-nums"><template v-if="Number(row.quantityOut)"><p class="font-medium text-danger">−{{ quantity(row.quantityOut) }} u.</p><p class="text-xs text-muted-fg">{{ money(row.exitCost ?? 0) }}</p></template><span v-else class="text-muted-fg">—</span></td>
+                  <td class="px-2 py-3 text-right tabular-nums"><p class="font-semibold">{{ quantity(row.runningQuantity) }} u.</p><p class="text-xs text-muted-fg">{{ money(row.runningValue) }}</p></td>
+                  <td class="px-2 py-3 text-right tabular-nums">{{ row.costAdjustment ? '—' : money(row.unitCost, 'USD', 4) }}</td>
+                  <td class="px-3 py-3 text-right tabular-nums">{{ money(row.runningAverage, 'USD', 4) }}</td>
+                </tr>
+                <tr v-if="expanded.has(row.id)" class="bg-surface-secondary/50">
+                  <td colspan="6" class="px-4 py-4 sm:pl-[4.5rem]">
+                    <dl class="grid gap-x-8 gap-y-3 text-sm lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)]">
+                      <div><dt class="text-xs text-muted-fg">{{ row.supportDocument ? 'Cadena de documentos' : 'Documento de origen' }}</dt>
+                        <dd v-if="row.supportDocument" class="mt-0.5 font-medium">{{ processLabel(row.supportDocument.process, row.supportDocument.receipt) }}</dd><dd v-else class="mt-0.5 font-medium">{{ referenceLabel(row) }}</dd>
+                        <dd v-if="row.supportDocument" class="mt-0.5 text-xs text-muted-fg">{{ row.supportDocument.fiscalDocumentMissing ? 'Documento del proveedor: no registrado' : supportDocumentLabel(row.supportDocument) }}</dd>
+                        <dd v-else class="mt-0.5 text-xs text-muted-fg">{{ row.reason }}</dd>
+                        <dd v-if="row.supportDocument" class="mt-1"><TrackingLink type="receipt" :id="row.supportDocument.receiptId" /></dd></div>
+                      <div v-if="row.supplier"><dt class="text-xs text-muted-fg">Proveedor</dt><dd class="mt-0.5 font-medium">{{ row.supplier.name }}</dd><dd class="mt-0.5 text-xs text-muted-fg">{{ row.supplier.code }} · {{ row.supplier.country }}</dd></div>
+                      <div><dt class="text-xs text-muted-fg">Almacén · ubicación · registró</dt><dd class="mt-0.5 font-medium">{{ locationLabel(row.location) }}</dd><dd class="mt-0.5 text-xs text-muted-fg">{{ row.lot?.lotCode ?? 'Sin lote (histórico)' }} · {{ row.user?.username ?? 'Apertura del sistema' }}</dd></div>
+                    </dl>
+                  </td>
+                </tr>
+              </template>
             </tbody>
           </table>
-        </div>
-        <div class="divide-y divide-border/70 md:hidden">
-          <article v-for="row in kardex.items" :key="row.id" class="p-4">
-            <div class="flex items-start justify-between gap-3"><div><p class="text-xs text-muted-fg">N.° {{ row.sequence }} · {{ dateTime(row.movementDate) }}</p><p class="mt-1 text-sm font-medium">{{ row.costAdjustment ? 'Ajuste de costo' : (movementLabels[row.movementType] ?? row.movementType) }}</p></div><p class="font-semibold tabular-nums" :class="Number(row.quantityOut) ? 'text-danger' : 'text-success'">{{ Number(row.quantityOut) ? '−' + quantity(row.quantityOut) : '+' + quantity(row.quantityIn) }}</p></div>
-            <p class="mt-2 text-xs text-muted-fg">{{ row.supportDocument ? processLabel(row.supportDocument.process, row.supportDocument.receipt) + (row.supportDocument.fiscalDocumentMissing ? '' : ' · ' + supportDocumentLabel(row.supportDocument)) : referenceLabel(row) }}<template v-if="row.supplier"> · {{ row.supplier.name }} ({{ row.supplier.country }})</template></p>
-            <p class="mt-1 text-xs text-muted-fg">{{ row.lot?.lotCode ?? 'Sin lote' }} · {{ locationLabel(row.location) }}</p>
-            <dl class="mt-2 grid grid-cols-2 gap-2 text-xs"><div><dt class="text-muted-fg">Costo unit. aplicado</dt><dd class="font-medium tabular-nums">{{ row.costAdjustment ? '—' : money(row.unitCost, 'USD', 4) }}</dd></div><div><dt class="text-muted-fg">Promedio resultante</dt><dd class="font-medium tabular-nums">{{ money(row.runningAverage, 'USD', 4) }}</dd></div></dl>
-            <dl class="mt-2 grid grid-cols-3 gap-2 text-xs"><div><dt class="text-muted-fg">Saldo u.</dt><dd class="font-medium tabular-nums">{{ quantity(row.runningQuantity) }}</dd></div><div><dt class="text-muted-fg">{{ row.exitCost ? 'Costo salida' : 'Costo entrada' }}</dt><dd class="font-medium tabular-nums">{{ money(row.exitCost ?? row.entryCost ?? 0) }}</dd></div><div><dt class="text-muted-fg">Saldo $</dt><dd class="font-medium tabular-nums">{{ money(row.runningValue) }}</dd></div></dl>
-          </article>
-        </div>
-        <footer class="flex items-center justify-between gap-3 border-t border-border/70 px-4 py-3 sm:px-5"><span class="text-xs text-muted-fg">{{ kardex.total }} operaciones · página {{ page }} de {{ kardex.totalPages }}</span><div class="flex items-center gap-1"><button type="button" class="icon-button" aria-label="Página anterior" :disabled="loading || page <= 1" @click="page--; load()"><ChevronLeft class="h-4 w-4" /></button><button type="button" class="icon-button" aria-label="Página siguiente" :disabled="loading || page >= kardex.totalPages" @click="page++; load()"><ChevronRight class="h-4 w-4" /></button></div></footer>
-      </template>
+
+          <div class="divide-y divide-border/70 md:hidden">
+            <article v-for="(row, index) in kardex.items" :key="row.id" class="p-4">
+              <div class="flex items-start justify-between gap-3"><div class="min-w-0"><p class="text-xs text-muted-fg">N.° {{ row.sequence }} · {{ whenLabel(row, index) }}</p><p class="mt-1 text-sm font-medium">{{ title(row) }}</p><p class="mt-0.5 text-xs text-muted-fg">{{ subtitle(row) }}</p></div><p class="shrink-0 font-semibold tabular-nums" :class="Number(row.quantityOut) ? 'text-danger' : 'text-success'">{{ Number(row.quantityOut) ? '−' + quantity(row.quantityOut) : '+' + quantity(row.quantityIn) }} u.</p></div>
+              <dl class="mt-3 grid grid-cols-3 gap-2 text-xs"><div><dt class="text-muted-fg">Saldo</dt><dd class="font-medium tabular-nums">{{ quantity(row.runningQuantity) }} u.</dd><dd class="tabular-nums text-muted-fg">{{ money(row.runningValue) }}</dd></div><div><dt class="text-muted-fg">Costo unit.</dt><dd class="font-medium tabular-nums">{{ row.costAdjustment ? '—' : money(row.unitCost, 'USD', 4) }}</dd></div><div><dt class="text-muted-fg">Promedio</dt><dd class="font-medium tabular-nums">{{ money(row.runningAverage, 'USD', 4) }}</dd></div></dl>
+              <button type="button" class="mt-3 inline-flex items-center gap-1 text-xs text-accent" :aria-expanded="expanded.has(row.id)" @click="toggle(row.id)"><ChevronDown class="h-3.5 w-3.5 transition-transform" :class="expanded.has(row.id) ? '' : '-rotate-90'" />{{ expanded.has(row.id) ? 'Ocultar respaldo' : 'Ver respaldo' }}</button>
+              <div v-if="expanded.has(row.id)" class="mt-2 space-y-1 rounded-lg bg-surface-secondary/60 p-3 text-xs">
+                <p class="font-medium">{{ row.supportDocument ? processLabel(row.supportDocument.process, row.supportDocument.receipt) : referenceLabel(row) }}</p>
+                <p v-if="row.supportDocument" class="text-muted-fg">{{ row.supportDocument.fiscalDocumentMissing ? 'Documento del proveedor: no registrado' : supportDocumentLabel(row.supportDocument) }}</p>
+                <p v-if="row.supplier" class="text-muted-fg">{{ row.supplier.name }} · {{ row.supplier.code }} · {{ row.supplier.country }}</p>
+                <TrackingLink v-if="row.supportDocument" type="receipt" :id="row.supportDocument.receiptId" />
+              </div>
+            </article>
+          </div>
+          <footer class="flex items-center justify-between gap-3 border-t border-border/70 px-4 py-3 sm:px-5"><span class="text-xs text-muted-fg">{{ kardex.total }} {{ kardex.total === 1 ? 'operación' : 'operaciones' }} · página {{ page }} de {{ kardex.totalPages }}</span><div class="flex items-center gap-1"><button type="button" class="icon-button" aria-label="Página anterior" :disabled="loading || page <= 1" @click="page--; load()"><ChevronLeft class="h-4 w-4" /></button><button type="button" class="icon-button" aria-label="Página siguiente" :disabled="loading || page >= kardex.totalPages" @click="page++; load()"><ChevronRight class="h-4 w-4" /></button></div></footer>
+        </template>
+      </div>
     </template>
   </section>
 </template>
