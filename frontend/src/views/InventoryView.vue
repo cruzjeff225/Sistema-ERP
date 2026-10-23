@@ -11,7 +11,7 @@ import InventoryProductDetail from '../components/InventoryProductDetail.vue';
 import InventoryLotsPanel from '../components/inventory/InventoryLotsPanel.vue';
 import InventoryKardexPanel from '../components/inventory/InventoryKardexPanel.vue';
 import InventoryCostsPanel from '../components/inventory/InventoryCostsPanel.vue';
-import { locationLabel, money, movementLabels } from '../utils/inventory-format';
+import { locationLabel, money, movementFilterLabels, movementLabels } from '../utils/inventory-format';
 import { http } from '../services/http.service';
 import { activeCompanyId } from '../services/company-context';
 import { usePermissions } from '../composables/usePermissions';
@@ -46,7 +46,7 @@ const form = reactive({ productId: 0, warehouseId: 0, locationId: 0, direction: 
 let initialForm = '', version = 0, balanceVersion = 0;
 const dirty = () => editor.value && JSON.stringify(form) !== initialForm;
 const { leaving, resolveLeave } = useUnsavedChanges(dirty, () => busy.value);
-const labels = movementLabels;
+const labels = movementLabels, filterLabels = movementFilterLabels;
 const number = (n: string | number) => new Intl.NumberFormat('es-SV', { maximumFractionDigits: 2 }).format(Number(n));
 const dateTime = (date: string) => new Intl.DateTimeFormat('es-SV', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/El_Salvador' }).format(new Date(date));
 const locations = computed(() => warehouses.value.find(w => w.id === form.warehouseId)?.locations ?? []);
@@ -192,7 +192,7 @@ async function save() {
             <button v-if="tab === 'movements'" type="button" class="inline-flex items-center gap-1.5 text-xs text-muted-fg hover:text-fg" :aria-expanded="advancedFilters" @click="advancedFilters = !advancedFilters"><SlidersHorizontal class="h-3.5 w-3.5" />{{ advancedFilters ? 'Ocultar filtros' : 'Más filtros' }}<span v-if="extraFilterCount" class="rounded bg-surface-secondary px-1.5 py-0.5">{{ extraFilterCount }}</span></button>
             <button v-if="hasFilters" type="button" class="text-xs text-accent hover:underline" @click="clearFilters">Limpiar filtros</button>
           </div>
-          <div v-if="tab === 'movements' && advancedFilters" class="mt-4 grid gap-3 border-t border-border/70 pt-4 sm:grid-cols-3"><label class="text-xs font-medium text-muted-fg">Tipo de movimiento<select v-model="movementType" class="field-control"><option value="">Todos los movimientos</option><option v-for="(label, value) in labels" :key="value" :value="value">{{ label }}</option></select></label><AppInput v-model="dateFrom" type="date" label="Desde" :max="dateTo || undefined" /><AppInput v-model="dateTo" type="date" label="Hasta" :min="dateFrom || undefined" /></div>
+          <div v-if="tab === 'movements' && advancedFilters" class="mt-4 grid gap-3 border-t border-border/70 pt-4 sm:grid-cols-3"><label class="text-xs font-medium text-muted-fg">Tipo de movimiento<select v-model="movementType" class="field-control"><option value="">Todos los movimientos</option><option v-for="(label, value) in filterLabels" :key="value" :value="value">{{ label }}</option></select></label><AppInput v-model="dateFrom" type="date" label="Desde" :max="dateTo || undefined" /><AppInput v-model="dateTo" type="date" label="Hasta" :min="dateFrom || undefined" /></div>
         </form>
         <div v-if="locationContext" class="mx-4 mt-4 flex items-center gap-3 rounded-lg bg-surface-secondary px-3 py-2.5 text-sm"><MapPin class="h-4 w-4 shrink-0 text-accent" /><div class="min-w-0 flex-1"><strong class="block truncate">{{ locationContext.productName }}</strong><span class="text-xs text-muted-fg">Espacio {{ locationContext.locationCode }}</span></div><button type="button" class="icon-button" aria-label="Quitar filtro del espacio" @click="clearLocation"><X class="h-4 w-4" /></button></div>
         <div class="flex items-center justify-between gap-3 px-4 py-4 sm:px-5"><h2 class="text-sm font-semibold">{{ tab === 'stocks' ? 'Existencias por ubicación' : 'Historial de movimientos' }}</h2><span class="text-xs tabular-nums text-muted-fg">{{ total }} registros</span></div>

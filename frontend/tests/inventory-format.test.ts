@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { locationLabel, lotStatusLabels, money, movementLabels, quantity, processLabel, referenceLabel, supportDocumentLabel, transferStatusLabels } from '../src/utils/inventory-format';
+import { locationLabel, movementFilterLabels, salesModuleEnabled, lotStatusLabels, money, movementLabels, quantity, processLabel, referenceLabel, supportDocumentLabel, transferStatusLabels } from '../src/utils/inventory-format';
 import { labelText } from '../src/utils/inventory-labels';
 
 test('el Kardex nombra el documento de origen de cada movimiento', () => {
@@ -18,6 +18,13 @@ test('todos los tipos de movimiento, estados de lote y de traslado tienen etique
   for (const status of ['ACTIVE', 'DEPLETED', 'CANCELLED']) assert.ok(lotStatusLabels[status], status);
   // ERS 6.9.19: en preparación, en tránsito, recibido e incidencia
   for (const status of ['PREPARING', 'IN_TRANSIT', 'COMPLETED', 'INCIDENT']) assert.ok(transferStatusLabels[status], status);
+});
+
+test('sin el módulo de Ventas no se ofrecen filtros de venta ni devolución, pero sus movimientos siguen con etiqueta', () => {
+  assert.equal(salesModuleEnabled, false);
+  assert.equal('SALE' in movementFilterLabels, false); assert.equal('RETURN' in movementFilterLabels, false);
+  for (const type of ['RECEIPT', 'ADJUSTMENT', 'TRANSFER_OUT', 'TRANSFER_IN', 'REVERSAL', 'OPENING']) assert.ok(movementFilterLabels[type], type);
+  assert.ok(movementLabels.SALE && movementLabels.RETURN, 'lo ya registrado se sigue mostrando');
 });
 
 test('cantidades y costos se muestran con la precisión que se almacena', () => {

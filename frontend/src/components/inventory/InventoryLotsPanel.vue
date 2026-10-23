@@ -12,7 +12,7 @@ import { inventoryGet } from '../../services/inventory.service';
 import { activeCompanyId } from '../../services/company-context';
 import { usePermissions } from '../../composables/usePermissions';
 import { getApiErrorMessage } from '../../utils/api-error';
-import { day, dateTime, locationLabel, lotStatusLabels, money, movementLabels, quantity, referenceLabel, transferStatusLabels } from '../../utils/inventory-format';
+import { day, dateTime, locationLabel, lotStatusLabels, money, movementLabels, quantity, referenceLabel, salesModuleEnabled, transferStatusLabels } from '../../utils/inventory-format';
 
 type Loc = { id: number; code: string; warehouse: { id: number; name: string; branch: { id: number; name: string } } };
 type Lot = {
@@ -125,7 +125,7 @@ watch(activeCompanyId, () => { selected.value = null; printing.value = null; mov
           <p class="mt-3 break-words text-lg font-semibold leading-snug text-fg">{{ selected.product.name }}</p>
           <p class="mt-1 text-sm text-muted-fg">{{ selected.product.sku }} · código interno {{ selected.product.internalCode }}</p>
         </div>
-        <div class="flex shrink-0 flex-wrap items-center justify-end gap-2"><AppButton v-if="can('inventory.receive') && stored(selected.status) && returnable(selected) > 0" variant="outline" @click="returning = selected"><Undo2 class="h-4 w-4" aria-hidden="true" />Devolución</AppButton><AppButton v-if="can('inventory.label.print') && selected.status !== 'CANCELLED'" variant="outline" @click="printing = selected"><Printer class="h-4 w-4" aria-hidden="true" />Etiquetas</AppButton><button type="button" class="icon-button" aria-label="Cerrar detalle" @click="selected = null"><X class="h-5 w-5" /></button></div>
+        <div class="flex shrink-0 flex-wrap items-center justify-end gap-2"><AppButton v-if="salesModuleEnabled && can('inventory.receive') && stored(selected.status) && returnable(selected) > 0" variant="outline" @click="returning = selected"><Undo2 class="h-4 w-4" aria-hidden="true" />Devolución</AppButton><AppButton v-if="can('inventory.label.print') && selected.status !== 'CANCELLED'" variant="outline" @click="printing = selected"><Printer class="h-4 w-4" aria-hidden="true" />Etiquetas</AppButton><button type="button" class="icon-button" aria-label="Cerrar detalle" @click="selected = null"><X class="h-5 w-5" /></button></div>
       </header>
       <div class="min-h-0 flex-1 overflow-y-auto">
         <dl class="grid grid-cols-2 gap-px border-b border-border bg-border sm:grid-cols-4">
