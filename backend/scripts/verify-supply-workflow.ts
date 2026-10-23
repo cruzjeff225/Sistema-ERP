@@ -237,6 +237,13 @@ async function main() {
   const cancelledPreparation=await api(`/supply/transfers/${second.id}/cancel`,'POST',{reason:'Cambio de plan del bodeguero'});
   assert.equal(cancelledPreparation.status,'CANCELLED');assert.equal(await db.transferItem.count({where:{transferId:second.id}}),0,'Cancelar libera lo reservado en la solicitud');assert.equal(await outMoves(),outBefore+1);
   await api(`/supply/transfers/${second.id}/dispatch`,'POST',{},409);
+  const kd=(qs:string)=>api(`/inventory/kardex?productId=${productIds[0]}&limit=500${qs}`);
+  const consolidatedKardex=await kd('');assert(consolidatedKardex.header.scope.branch===null);assert(consolidatedKardex.items.every((m:any)=>!m.movementType.startsWith('TRANSFER')),'El consolidado no cuenta traslados como entradas ni salidas');
+  const destinationKardex=await kd(`&branchId=${branchIds[0]}`);assert.equal(destinationKardex.header.scope.branch.id,branchIds[0]);
+  assert(destinationKardex.items.some((m:any)=>m.movementType==='TRANSFER_IN')&&Number(destinationKardex.totals.quantityIn)>=80,'El traslado es entrada en la sucursal que recibe');
+  const originKardex=await kd(`&warehouseId=${general.id}`);assert.equal(originKardex.header.scope.warehouse.id,general.id);
+  assert(originKardex.items.some((m:any)=>m.movementType==='TRANSFER_OUT')&&Number(originKardex.totals.quantityOut)>=80,'El traslado es salida en el almacén que despacha');
+  console.log('PASS Kardex por sucursal: el traslado es salida en el origen y entrada en el destino; el consolidado no lo cuenta');
   console.log('PASS preparación: no mueve existencias, confirmar despacha una sola vez, cancelar libera, y solo lo despachado se recibe');
   console.log('PASS traslado vinculado, salida en transito, recepcion parcial 30+50, pendiente original 20 y reintentos sin duplicacion');
   const adjustment={requestId:randomUUID(),productId:productIds[1],locationId:slot.id,quantity:1,reason:'QA reintento de ajuste UUID'};

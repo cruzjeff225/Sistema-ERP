@@ -19,7 +19,7 @@ type Row = {
   location: { code: string; warehouse: { name: string } } | null; user: { username: string } | null;
 };
 type Kardex = {
-  header: { title: string; company: { name: string; commercialName: string; nit: string; nrc: string }; period: { from: string | null; to: string | null }; consolidated: boolean };
+  header: { title: string; company: { name: string; commercialName: string; nit: string; nrc: string }; period: { from: string | null; to: string | null }; consolidated: boolean; scope: { branch: { id: number; name: string } | null; warehouse: { id: number; name: string } | null } };
   product: { id: number; name: string; sku: string; internalCode: string; presentation: string | null; description: string | null; purchaseUnit: { name: string }; category: { name: string }; subcategory: { name: string } };
   opening: string; openingValue: string; closing: string; closingValue: string; closingAverage: string; missingFiscalDocuments: string[];
   totals: { quantityIn: string; quantityOut: string; entryCost: string; exitCost: string };
@@ -27,7 +27,7 @@ type Kardex = {
 };
 
 const props = defineProps<{ products: { id: number; name: string; sku: string }[]; warehouses: { id: number; name: string; branch: { id: number; name: string } }[] }>();
-const productId = ref(0), warehouseId = ref(0), lotId = ref(0), type = ref(''), dateFrom = ref(''), dateTo = ref('');
+const productId = ref(0), branchId = ref(0), warehouseId = ref(0), lotId = ref(0), type = ref(''), dateFrom = ref(''), dateTo = ref('');
 const lotOptions = ref<{ id: number; lotCode: string }[]>([]);
 const kardex = ref<Kardex | null>(null), loading = ref(false), error = ref('');
 const page = ref(1), expanded = ref<Set<number>>(new Set());
@@ -42,11 +42,16 @@ const title = (row: Row) => row.costAdjustment ? 'Ajuste de costo' : (movementLa
 const subtitle = (row: Row) => [row.lot?.lotCode ?? 'Sin lote (histórico)', locationLabel(row.location), row.user?.username ?? 'Apertura del sistema'].join(' · ');
 const toggle = (id: number) => { const next = new Set(expanded.value); if (next.has(id)) next.delete(id); else next.add(id); expanded.value = next; };
 
+const branches = computed(() => [...new Map(props.warehouses.map(w => [w.branch.id, w.branch])).values()].sort((a, b) => a.name.localeCompare(b.name, 'es')));
+const warehouseOptions = computed(() => branchId.value ? props.warehouses.filter(w => w.branch.id === branchId.value) : props.warehouses);
 const scopeLabel = computed(() => {
   if (!kardex.value) return '';
+  const { branch, warehouse } = kardex.value.header.scope;
+  const extras = `${lotId.value ? ' · un lote' : ''}${type.value ? ' · ' + (movementLabels[type.value] ?? type.value) : ''}`;
   if (kardex.value.header.consolidated) return 'Consolidado de la empresa; los traslados entre almacenes no se cuentan como entradas ni salidas.';
-  const warehouse = props.warehouses.find(w => w.id === warehouseId.value);
-  return `Filtrado${warehouse ? ' · ' + warehouse.branch.name + ' · ' + warehouse.name : ''}${lotId.value ? ' · un lote' : ''}${type.value ? ' · ' + (movementLabels[type.value] ?? type.value) : ''}; incluye los traslados entre almacenes.`;
+  if (warehouse) return `Almacén ${warehouse.name}${branch ? ' · ' + branch.name : ''}${extras}; el traslado hacia otro almacén es una salida y el que llega, una entrada.`;
+  if (branch) return `Sucursal ${branch.name}${extras}; el traslado hacia otra sucursal es una salida y el que llega, una entrada. Los traslados entre sus propios almacenes no se cuentan.`;
+  return `Filtrado${extras}; incluye los traslados entre almacenes.`;
 });
 const periodLabel = computed(() => {
   const period = kardex.value?.header.period;
@@ -66,14 +71,15 @@ async function load() {
   if (!productId.value || !activeCompanyId.value) return;
   loading.value = true;
   try {
-    const result = await inventoryGet<Kardex>('kardex', { productId: productId.value, warehouseId: warehouseId.value, lotId: lotId.value, type: type.value, dateFrom: dateFrom.value, dateTo: dateTo.value, page: page.value, limit: 100 });
+    const result = await inventoryGet<Kardex>('kardex', { productId: productId.value, branchId: branchId.value, warehouseId: warehouseId.value, lotId: lotId.value, type: type.value, dateFrom: dateFrom.value, dateTo: dateTo.value, page: page.value, limit: 100 });
     if (request === version && result.company === activeCompanyId.value) kardex.value = result.data;
   } catch (caught) { if (request === version) error.value = getApiErrorMessage(caught, 'No se pudo cargar el Kardex'); }
   finally { if (request === version) loading.value = false; }
 }
 function filter() { page.value = 1; void load(); }
+function pickBranch() { if (warehouseId.value && !warehouseOptions.value.some(w => w.id === warehouseId.value)) warehouseId.value = 0; filter(); }
 function pickProduct() { void loadLots(); filter(); }
-watch(activeCompanyId, () => { productId.value = 0; warehouseId.value = 0; lotId.value = 0; type.value = ''; dateFrom.value = ''; dateTo.value = ''; lotOptions.value = []; kardex.value = null; page.value = 1; });
+watch(activeCompanyId, () => { productId.value = 0; branchId.value = 0; warehouseId.value = 0; lotId.value = 0; type.value = ''; dateFrom.value = ''; dateTo.value = ''; lotOptions.value = []; kardex.value = null; page.value = 1; });
 </script>
 
 <template>
@@ -81,10 +87,11 @@ watch(activeCompanyId, () => { productId.value = 0; warehouseId.value = 0; lotId
     <form class="surface-panel p-4 sm:p-5" @submit.prevent="filter">
       <div class="grid gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)]">
         <label class="text-xs font-medium text-muted-fg">Producto<select v-model.number="productId" class="field-control" @change="pickProduct"><option :value="0">Seleccione un producto</option><option v-for="p in props.products" :key="p.id" :value="p.id">{{ p.sku }} · {{ p.name }}</option></select></label>
-        <label class="text-xs font-medium text-muted-fg">Almacén<select v-model.number="warehouseId" class="field-control" :disabled="!productId" @change="filter"><option :value="0">Consolidado de la empresa</option><option v-for="w in props.warehouses" :key="w.id" :value="w.id">{{ w.name }} · {{ w.branch.name }}</option></select></label>
-        <label class="text-xs font-medium text-muted-fg">Lote<select v-model.number="lotId" class="field-control" :disabled="!productId" @change="filter"><option :value="0">Todos los lotes</option><option v-for="l in lotOptions" :key="l.id" :value="l.id">{{ l.lotCode }}</option></select></label>
+        <label class="text-xs font-medium text-muted-fg">Sucursal<select v-model.number="branchId" class="field-control" :disabled="!productId" @change="pickBranch"><option :value="0">Consolidado de la empresa</option><option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option></select></label>
+        <label class="text-xs font-medium text-muted-fg">Almacén<select v-model.number="warehouseId" class="field-control" :disabled="!productId" @change="filter"><option :value="0">{{ branchId ? 'Todos los almacenes de la sucursal' : 'Todos los almacenes' }}</option><option v-for="w in warehouseOptions" :key="w.id" :value="w.id">{{ w.name }}{{ branchId ? '' : ' · ' + w.branch.name }}</option></select></label>
       </div>
-      <div class="mt-3 grid gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)]">
+      <div class="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <label class="text-xs font-medium text-muted-fg">Lote<select v-model.number="lotId" class="field-control" :disabled="!productId" @change="filter"><option :value="0">Todos los lotes</option><option v-for="l in lotOptions" :key="l.id" :value="l.id">{{ l.lotCode }}</option></select></label>
         <label class="text-xs font-medium text-muted-fg">Tipo<select v-model="type" class="field-control" :disabled="!productId" @change="filter"><option value="">Todos los movimientos</option><option v-for="(label, value) in movementLabels" :key="value" :value="value">{{ label }}</option></select></label>
         <AppInput v-model="dateFrom" type="date" label="Desde" :max="dateTo || undefined" :disabled="!productId" @change="filter" />
         <AppInput v-model="dateTo" type="date" label="Hasta" :min="dateFrom || undefined" :disabled="!productId" @change="filter" />
@@ -97,7 +104,7 @@ watch(activeCompanyId, () => { productId.value = 0; warehouseId.value = 0; lotId
       <header class="surface-panel p-4 sm:p-5">
         <p class="text-xs font-medium uppercase tracking-wide text-muted-fg">{{ kardex.header.title }} · Art. 142-A del Código Tributario</p>
         <dl class="mt-3 grid gap-x-8 gap-y-4 text-sm lg:grid-cols-[minmax(0,2fr)_minmax(0,1.2fr)_minmax(0,1fr)]">
-          <div><dt class="text-xs text-muted-fg">Contribuyente</dt><dd class="mt-0.5 font-semibold">{{ kardex.header.company.name }}</dd></div>
+          <div><dt class="text-xs text-muted-fg">Contribuyente</dt><dd class="mt-0.5 font-semibold">{{ kardex.header.company.name }}</dd><dd v-if="kardex.header.scope.branch" class="mt-0.5 text-muted-fg">Establecimiento: {{ kardex.header.scope.branch.name }}{{ kardex.header.scope.warehouse ? ' · ' + kardex.header.scope.warehouse.name : '' }}</dd></div>
           <div><dt class="text-xs text-muted-fg">NIT</dt><dd class="mt-0.5 font-semibold tabular-nums">{{ kardex.header.company.nit }}</dd></div>
           <div><dt class="text-xs text-muted-fg">NRC</dt><dd class="mt-0.5 font-semibold tabular-nums">{{ kardex.header.company.nrc }}</dd></div>
           <div><dt class="text-xs text-muted-fg">Producto</dt><dd class="mt-0.5 font-semibold">{{ [kardex.product.name, kardex.product.presentation].filter(Boolean).join(' · ') }}</dd><dd v-if="kardex.product.description" class="mt-0.5 text-muted-fg">{{ kardex.product.description }}</dd></div>
