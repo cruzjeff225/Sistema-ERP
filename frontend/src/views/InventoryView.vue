@@ -9,6 +9,7 @@ import ConfirmDialog from '../components/base/ConfirmDialog.vue';
 import WarehouseMap from '../components/WarehouseMap.vue';
 import InventoryProductDetail from '../components/InventoryProductDetail.vue';
 import InventoryLotsPanel from '../components/inventory/InventoryLotsPanel.vue';
+import OpeningBalanceDialog from '../components/inventory/OpeningBalanceDialog.vue';
 import InventoryKardexPanel from '../components/inventory/InventoryKardexPanel.vue';
 import InventoryCostsPanel from '../components/inventory/InventoryCostsPanel.vue';
 import { locationLabel, money, movementFilterLabels, movementLabels } from '../utils/inventory-format';
@@ -129,6 +130,9 @@ function openMovements(context: LocationContext) {
   detailStock.value = null; locationContext.value = context; tab.value = 'movements'; search.value = ''; movementType.value = ''; dateFrom.value = ''; dateTo.value = ''; page.value = 1;
   void load();
 }
+const openingDialog = ref(false);
+function openOpening() { if (optionsMenu.value) optionsMenu.value.open = false; error.value = ''; success.value = ''; openingDialog.value = true; }
+async function openingSaved(message: string) { success.value = message; page.value = 1; await load(true); }
 function openAdjustment() {
   if (optionsMenu.value) optionsMenu.value.open = false;
   const selected = warehouses.value.find(w => w.id === warehouseId.value);
@@ -170,6 +174,7 @@ async function save() {
           <AppButton variant="outline" :disabled="loading || busy" @click="load(true)"><RefreshCw class="h-4 w-4" :class="loading && 'animate-spin'" /><span class="hidden sm:inline">Actualizar</span></AppButton>
           <details ref="optionsMenu" class="relative"><summary class="grid h-9 w-9 cursor-pointer list-none place-items-center rounded-lg border border-border bg-surface text-muted-fg hover:text-fg" aria-label="Opciones de inventario"><MoreHorizontal class="h-5 w-5" /></summary><div class="absolute right-0 z-20 mt-2 w-60 rounded-xl border border-border bg-surface p-1.5 shadow-subtle">
             <button v-if="can('inventory.adjust')" type="button" class="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm hover:bg-surface-secondary" :disabled="loading || busy" @click="openAdjustment"><Plus class="h-4 w-4" />Ajustar existencias</button>
+            <button v-if="can('inventory.adjust')" type="button" class="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm hover:bg-surface-secondary" :disabled="loading || busy" @click="openOpening"><Plus class="h-4 w-4" />Registrar saldo inicial</button>
             <RouterLink to="/inventory/warehouse" class="flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm hover:bg-surface-secondary"><WarehouseIcon class="h-4 w-4" />Ubicar y distribuir</RouterLink>
             <RouterLink v-if="can('locations.view')" :to="{ path: '/organization/locations', query: warehouseId ? { warehouse: String(warehouseId) } : branchId ? { branch: String(branchId) } : {} }" class="flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm hover:bg-surface-secondary"><MapPin class="h-4 w-4" />Gestionar espacios</RouterLink>
           </div></details>
@@ -215,6 +220,7 @@ async function save() {
       <InventoryCostsPanel v-else-if="tab === 'costs'" />
       <section v-else class="min-w-0"><WarehouseMap panel :warehouses="warehouses" :initial-warehouse="warehouseId" :refresh="mapRefresh" @warehouse-change="selectMapWarehouse" @movements="openMovements" /></section>
     </div>
+    <OpeningBalanceDialog v-if="openingDialog" :products="products" :warehouses="warehouses" @close="openingDialog = false" @saved="openingSaved" />
     <InventoryProductDetail v-if="detailStock" :key="detailStock.id" :stock="detailStock" :warehouses="warehouses" :show-map="detailMap" @close="detailStock = null" @movements="openMovements" />
     <Teleport to="body">
       <dialog v-if="editor" ref="adjustmentDialog" aria-labelledby="adjustment-title" class="fixed inset-y-0 left-auto right-0 m-0 h-dvh max-h-none w-full max-w-xl border border-border bg-surface p-0 text-fg shadow-[var(--shadow-float)] backdrop:bg-black/40" @cancel.prevent="closeEditor()">

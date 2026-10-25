@@ -2,6 +2,7 @@ import 'dotenv/config';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../src/infrastructure/database/prisma/prisma.service';
+import { withMovementChanges } from './movement-maintenance';
 
 // Verificación del módulo de Inventario por lotes (ERS 6.9) contra la API. Trabaja sobre las existencias que haya:
 // cada ajuste de prueba queda compensado, de modo que el saldo final es el inicial (los movimientos son inmutables).
@@ -190,6 +191,40 @@ async function main() {
     pass('vehículo de tránsito: ubicación propia por placa, fuera de los espacios de almacenaje');
   } finally {
     await db.location.deleteMany({ where: { id: vehicleSpace.id } }); await db.vehicle.deleteMany({ where: { id: vehicleSpace.vehicleId } });
+  }
+
+  // Saldo inicial: primer movimiento de un producto, con su costo; después de operar solo se corrige con ajustes
+  const template = await db.product.findFirstOrThrow({ where: { companyId } });
+  const qaKey = 'QAINI' + Math.floor(Math.random() * 90000 + 10000);
+  const qaProduct = await db.product.create({ data: { companyId, categoryId: template.categoryId, subcategoryId: template.subcategoryId, purchaseUnitId: template.purchaseUnitId, saleUnitId: template.saleUnitId, sku: qaKey, internalCode: qaKey, name: qaKey + ' saldo inicial' } });
+  try {
+    const freeSpace = await db.location.findFirst({ where: { isActive: true, deletedAt: null, locationType: 'STORAGE', capacity: { gte: 20 }, warehouse: { isActive: true, deletedAt: null, branch: { companyId, isActive: true, deletedAt: null } }, stocks: { none: { quantity: { gt: 0 } } } } });
+    assert(freeSpace, 'Se necesita un espacio libre');
+    const opening = { productId: qaProduct.id, locationId: freeSpace.id, quantity: 5, unitCost: 12.5, reason: 'QA saldo inicial de prueba', requestId: randomUUID() };
+    const first = await api('/inventory/opening-balances', 'POST', opening);
+    assert.equal(first.movementType, 'OPENING'); assert.equal(num(first.quantityIn), 5); assert.equal(num(first.unitCost), 12.5); assert.equal(num(first.totalCost), 62.5); assert.equal(first.referenceType, 'opening');
+    assert.match((await db.inventoryLot.findUniqueOrThrow({ where: { id: first.lotId! } })).lotCode, /^LT-INI-\d{6}$/);
+    assert.equal((await api('/inventory/opening-balances', 'POST', opening)).id, first.id, 'el reintento no duplica el saldo inicial');
+    await api('/inventory/opening-balances', 'POST', { ...opening, quantity: 6 }, 409);
+    const startCost = await db.inventoryCostAverage.findUniqueOrThrow({ where: { companyId_productId: { companyId, productId: qaProduct.id } } });
+    assert.equal(num(startCost.quantityOnHand), 5); assert.equal(num(startCost.inventoryValue), 62.5); assert.equal(num(startCost.averageUnitCost), 12.5);
+    await api('/inventory/opening-balances', 'POST', { ...opening, requestId: randomUUID(), unitCost: 0.00001 }, 400);
+    await api('/inventory/opening-balances', 'POST', { ...opening, requestId: randomUUID(), quantity: 1.5 }, 400);
+    const asKardex = await api(`/inventory/kardex?productId=${qaProduct.id}&limit=50`);
+    assert.equal(asKardex.items[0].movementType, 'OPENING'); assert.equal(num(asKardex.closing), 5); assert.equal(num(asKardex.closingValue), 62.5);
+    // al primer movimiento distinto, el saldo inicial deja de admitirse
+    await api('/inventory/adjustments', 'POST', { productId: qaProduct.id, locationId: freeSpace.id, quantity: -1, reason: 'QA primer movimiento posterior', requestId: randomUUID() });
+    await api('/inventory/opening-balances', 'POST', { ...opening, requestId: randomUUID() }, 409);
+    pass('saldo inicial: primer movimiento con costo, idempotente, valoriza el promedio y no se admite después de operar');
+  } finally {
+    await withMovementChanges(db, async tx => {
+      await tx.inventoryMovement.deleteMany({ where: { productId: qaProduct.id } });
+      await tx.inventoryLocationDetail.deleteMany({ where: { lot: { productId: qaProduct.id } } });
+      await tx.inventoryLot.deleteMany({ where: { productId: qaProduct.id } });
+      await tx.inventoryCostAverage.deleteMany({ where: { productId: qaProduct.id } });
+      await tx.inventoryStock.deleteMany({ where: { productId: qaProduct.id } });
+      await tx.product.deleteMany({ where: { id: qaProduct.id } });
+    });
   }
 
   // RN-INV-007: el historial no se edita ni se borra, ni siquiera con acceso directo a la base de datos

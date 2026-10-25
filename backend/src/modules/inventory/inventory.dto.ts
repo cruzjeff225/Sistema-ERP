@@ -1,5 +1,5 @@
 import { Type, Transform } from "class-transformer";
-import { ArrayMinSize, ArrayUnique, IsArray, ValidateNested, IsBoolean, IsDateString, IsIn, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength, NotEquals } from "class-validator";
+import { ArrayMinSize, ArrayUnique, IsArray, IsNumber, ValidateNested, IsBoolean, IsDateString, IsIn, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength, NotEquals } from "class-validator";
 
 export const MOVEMENT_TYPES = ['OPENING', 'RECEIPT', 'REVERSAL', 'ADJUSTMENT', 'TRANSFER_OUT', 'TRANSFER_IN', 'SALE', 'RETURN'];
 
@@ -39,6 +39,15 @@ export class RelocationDto {
   @IsInt({ message: "La cantidad de productos debe ser un número entero" }) @Min(1) @Max(9999999999) quantity!: number;
   @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
   @IsString() @MinLength(5) @MaxLength(500) reason!: string;
+  @IsUUID() requestId!: string;
+}
+
+export class OpeningBalanceDto {
+  @IsInt() @Min(1) productId!: number;
+  @IsInt() @Min(1) locationId!: number;
+  @IsInt({ message: "La cantidad de productos debe ser un número entero" }) @Min(1) @Max(9999999999) quantity!: number;
+  @Type(() => Number) @IsNumber({ maxDecimalPlaces: 4 }) @Min(0) @Max(9999999999) unitCost!: number;
+  @IsOptional() @Transform(({ value }) => typeof value === 'string' ? value.trim() : value) @IsString() @MinLength(5) @MaxLength(500) reason?: string;
   @IsUUID() requestId!: string;
 }
 

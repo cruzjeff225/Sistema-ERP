@@ -2,7 +2,7 @@ import { Body, Controller, Get, Headers, Param, ParseIntPipe, Post, Query } from
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
 import { CompanyScopeService } from '../../common/services/company-scope.service';
 import { AuthenticatedUser, CurrentUser } from '../auth/presentation/decorators/current-user.decorator';
-import { AvailabilityQueryDto, VehicleLocationDto, SaleDeliveryDto, SaleReversalDto, InventoryAdjustmentDto, InventoryQueryDto, KardexQueryDto, LabelPrintDto, LotQueryDto, RelocationDto, ReturnDto, WarehouseMapQueryDto } from './inventory.dto';
+import { AvailabilityQueryDto, OpeningBalanceDto, VehicleLocationDto, SaleDeliveryDto, SaleReversalDto, InventoryAdjustmentDto, InventoryQueryDto, KardexQueryDto, LabelPrintDto, LotQueryDto, RelocationDto, ReturnDto, WarehouseMapQueryDto } from './inventory.dto';
 import { InventoryService } from './inventory.service';
 
 @Controller('inventory')
@@ -40,6 +40,8 @@ export class InventoryController {
   async reverseSale(@Body() dto: SaleReversalDto, @CurrentUser() user: AuthenticatedUser, @Headers('x-company-id') header?: string) { return { data: await this.service.reverseSale(await this.scope.resolve(user, header), user.sub, dto) }; }
   @Post('vehicle-locations') @RequirePermissions('inventory.transfer')
   async vehicleLocation(@Body() dto: VehicleLocationDto, @CurrentUser() user: AuthenticatedUser, @Headers('x-company-id') header?: string) { return { data: await this.service.createVehicleLocation(await this.scope.resolve(user, header), user.sub, dto) }; }
+  @Post('opening-balances') @RequirePermissions('inventory.adjust')
+  async openingBalance(@Body() dto: OpeningBalanceDto, @CurrentUser() user: AuthenticatedUser, @Headers('x-company-id') header?: string) { return { data: await this.service.registerOpeningBalance(await this.scope.resolve(user, header), user.sub, dto) }; }
   @Post('adjustments') @RequirePermissions('inventory.adjust')
   async adjust(@Body() dto: InventoryAdjustmentDto, @CurrentUser() user: AuthenticatedUser, @Headers('x-company-id') header?: string) { return { data: await this.service.adjust(await this.scope.resolve(user, header), user.sub, dto) }; }
 }
