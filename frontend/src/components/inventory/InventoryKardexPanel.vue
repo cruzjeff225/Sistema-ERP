@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import { ChevronDown, ChevronLeft, ChevronRight, ScrollText } from 'lucide-vue-next';
+import { ChevronDown, ChevronLeft, ChevronRight, Download, ScrollText } from 'lucide-vue-next';
 import AppInput from '../base/AppInput.vue';
 import TrackingLink from '../purchases/TrackingLink.vue';
-import { inventoryGet } from '../../services/inventory.service';
+import { downloadError, inventoryDownload, inventoryGet } from '../../services/inventory.service';
 import { activeCompanyId } from '../../services/company-context';
 import { getApiErrorMessage } from '../../utils/api-error';
-import { day, dateTime, locationLabel, money, movementFilterLabels, movementLabels, processLabel, quantity, referenceLabel, supportDocumentLabel } from '../../utils/inventory-format';
+import { day, dateTime, kardexFileName, locationLabel, money, movementFilterLabels, movementLabels, processLabel, quantity, referenceLabel, supportDocumentLabel } from '../../utils/inventory-format';
 
 type Row = {
   id: number; sequence: number; movementType: string; movementDate: string; quantityIn: string; quantityOut: string; unitCost: string;
@@ -31,6 +31,7 @@ const productId = ref(0), branchId = ref(0), warehouseId = ref(0), lotId = ref(0
 const lotOptions = ref<{ id: number; lotCode: string }[]>([]);
 const kardex = ref<Kardex | null>(null), loading = ref(false), error = ref('');
 const page = ref(1), expanded = ref<Set<number>>(new Set());
+const exporting = ref(''), exportMenu = ref<HTMLDetailsElement>();
 let version = 0;
 
 const zone = 'America/El_Salvador';
@@ -76,6 +77,20 @@ async function load() {
   } catch (caught) { if (request === version) error.value = getApiErrorMessage(caught, 'No se pudo cargar el Kardex'); }
   finally { if (request === version) loading.value = false; }
 }
+/** Excel o PDF con los filtros de la pantalla; de todos los productos o solo del elegido (y su lote, si hay uno). */
+async function exportKardex(format: 'xlsx' | 'pdf', all: boolean) {
+  if (exporting.value) return;
+  if (exportMenu.value) exportMenu.value.open = false;
+  exporting.value = `${format}-${all ? 'all' : 'one'}`; error.value = '';
+  try {
+    const result = await inventoryDownload('kardex/export', { format, ...(all ? {} : { productId: productId.value, lotId: lotId.value }), branchId: branchId.value, warehouseId: warehouseId.value, type: type.value, dateFrom: dateFrom.value, dateTo: dateTo.value });
+    if (result.company !== activeCompanyId.value) return;
+    const sku = props.products.find(p => p.id === productId.value)?.sku ?? '';
+    const url = URL.createObjectURL(result.blob), link = document.createElement('a');
+    link.href = url; link.download = kardexFileName(format, all ? 'todos' : sku); link.click(); URL.revokeObjectURL(url);
+  } catch (caught) { error.value = await downloadError(caught, 'No se pudo exportar el Kardex'); }
+  finally { exporting.value = ''; }
+}
 function filter() { page.value = 1; void load(); }
 function pickBranch() { if (warehouseId.value && !warehouseOptions.value.some(w => w.id === warehouseId.value)) warehouseId.value = 0; filter(); }
 function pickProduct() { void loadLots(); filter(); }
@@ -87,14 +102,28 @@ watch(activeCompanyId, () => { productId.value = 0; branchId.value = 0; warehous
     <form class="surface-panel p-4 sm:p-5" @submit.prevent="filter">
       <div class="grid gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)]">
         <label class="text-xs font-medium text-muted-fg">Producto<select v-model.number="productId" class="field-control" @change="pickProduct"><option :value="0">Seleccione un producto</option><option v-for="p in props.products" :key="p.id" :value="p.id">{{ p.sku }} · {{ p.name }}</option></select></label>
-        <label class="text-xs font-medium text-muted-fg">Sucursal<select v-model.number="branchId" class="field-control" :disabled="!productId" @change="pickBranch"><option :value="0">Consolidado de la empresa</option><option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option></select></label>
-        <label class="text-xs font-medium text-muted-fg">Almacén<select v-model.number="warehouseId" class="field-control" :disabled="!productId" @change="filter"><option :value="0">{{ branchId ? 'Todos los almacenes de la sucursal' : 'Todos los almacenes' }}</option><option v-for="w in warehouseOptions" :key="w.id" :value="w.id">{{ w.name }}{{ branchId ? '' : ' · ' + w.branch.name }}</option></select></label>
+        <label class="text-xs font-medium text-muted-fg">Sucursal<select v-model.number="branchId" class="field-control" @change="pickBranch"><option :value="0">Consolidado de la empresa</option><option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option></select></label>
+        <label class="text-xs font-medium text-muted-fg">Almacén<select v-model.number="warehouseId" class="field-control" @change="filter"><option :value="0">{{ branchId ? 'Todos los almacenes de la sucursal' : 'Todos los almacenes' }}</option><option v-for="w in warehouseOptions" :key="w.id" :value="w.id">{{ w.name }}{{ branchId ? '' : ' · ' + w.branch.name }}</option></select></label>
       </div>
       <div class="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <label class="text-xs font-medium text-muted-fg">Lote<select v-model.number="lotId" class="field-control" :disabled="!productId" @change="filter"><option :value="0">Todos los lotes</option><option v-for="l in lotOptions" :key="l.id" :value="l.id">{{ l.lotCode }}</option></select></label>
-        <label class="text-xs font-medium text-muted-fg">Tipo<select v-model="type" class="field-control" :disabled="!productId" @change="filter"><option value="">Todos los movimientos</option><option v-for="(label, value) in movementFilterLabels" :key="value" :value="value">{{ label }}</option></select></label>
-        <AppInput v-model="dateFrom" type="date" label="Desde" :max="dateTo || undefined" :disabled="!productId" @change="filter" />
-        <AppInput v-model="dateTo" type="date" label="Hasta" :min="dateFrom || undefined" :disabled="!productId" @change="filter" />
+        <label class="text-xs font-medium text-muted-fg">Tipo<select v-model="type" class="field-control" @change="filter"><option value="">Todos los movimientos</option><option v-for="(label, value) in movementFilterLabels" :key="value" :value="value">{{ label }}</option></select></label>
+        <AppInput v-model="dateFrom" type="date" label="Desde" :max="dateTo || undefined" @change="filter" />
+        <AppInput v-model="dateTo" type="date" label="Hasta" :min="dateFrom || undefined" @change="filter" />
+      </div>
+      <div class="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border/70 pt-3">
+        <p class="text-xs text-muted-fg">La exportación usa la sucursal, el almacén, el tipo y las fechas elegidos. «Todos los productos» genera una hoja (Excel) o una sección (PDF) por producto.</p>
+        <details ref="exportMenu" class="relative">
+          <summary class="inline-flex min-h-9 cursor-pointer list-none items-center gap-2 rounded-lg border border-border bg-surface px-3 text-sm font-medium hover:bg-surface-secondary" :class="exporting && 'pointer-events-none opacity-60'"><Download class="h-4 w-4" />{{ exporting ? 'Generando…' : 'Exportar' }}<ChevronDown class="h-4 w-4" /></summary>
+          <div class="absolute right-0 z-20 mt-2 w-64 rounded-xl border border-border bg-surface p-1.5 shadow-subtle">
+            <p class="px-3 pb-1 pt-1.5 text-xs font-medium text-muted-fg">Todos los productos</p>
+            <button type="button" class="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-secondary" @click="exportKardex('xlsx', true)">Excel (.xlsx)</button>
+            <button type="button" class="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-secondary" @click="exportKardex('pdf', true)">PDF</button>
+            <p class="mt-1 border-t border-border/70 px-3 pb-1 pt-2.5 text-xs font-medium text-muted-fg">Solo el producto elegido</p>
+            <button type="button" class="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-secondary disabled:opacity-50" :disabled="!productId" @click="exportKardex('xlsx', false)">Excel (.xlsx)</button>
+            <button type="button" class="flex w-full items-center rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-secondary disabled:opacity-50" :disabled="!productId" @click="exportKardex('pdf', false)">PDF</button>
+          </div>
+        </details>
       </div>
     </form>
     <p v-if="error" role="alert" class="rounded-xl border border-danger/20 bg-danger/5 px-4 py-3 text-sm text-danger">{{ error }}</p>

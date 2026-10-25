@@ -108,6 +108,18 @@ export class KardexQueryDto {
   @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) @IsDateString({ strict: true }) dateTo?: string;
 }
 
+export class KardexExportQueryDto {
+  /** Sin producto, se exportan todos los que tengan movimientos o saldo en el alcance elegido. */
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) productId?: number;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) lotId?: number;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) branchId?: number;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) warehouseId?: number;
+  @IsOptional() @IsIn(MOVEMENT_TYPES) type?: string;
+  @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) @IsDateString({ strict: true }) dateFrom?: string;
+  @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) @IsDateString({ strict: true }) dateTo?: string;
+  @IsIn(['xlsx', 'pdf']) format: 'xlsx' | 'pdf' = 'xlsx';
+}
+
 export class LotQueryDto {
   @Type(() => Number) @IsInt() @Min(1) page = 1;
   @Type(() => Number) @IsInt() @Min(1) @Max(100) limit = 20;

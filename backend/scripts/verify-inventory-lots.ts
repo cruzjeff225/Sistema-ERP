@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
+import ExcelJS from 'exceljs';
 import { PrismaService } from '../src/infrastructure/database/prisma/prisma.service';
 import { withMovementChanges } from './movement-maintenance';
 
@@ -105,6 +106,27 @@ async function main() {
     assert(Math.abs(num(check.closingValue) - num(row.inventoryValue)) <= 0.05, `saldo monetario del Kardex = valor del inventario de ${row.product.name}`);
   }
   pass(`registro 142-A: encabezado con NIT/NRC, correlativo, documento y proveedor, y saldo monetario conciliado con el costo promedio de ${costs.items.length} productos`);
+
+  // Exportación del registro: Excel y PDF de todos los productos o de uno, con el mismo alcance que la pantalla
+  const download = async (path: string) => {
+    const response = await fetch(base + path, { headers: { Authorization: `Bearer ${token}`, 'X-Company-Id': String(companyId) } });
+    return { status: response.status, type: response.headers.get('content-type') ?? '', disposition: response.headers.get('content-disposition') ?? '', bytes: Buffer.from(await response.arrayBuffer()) };
+  };
+  const allXlsx = await download('/inventory/kardex/export?format=xlsx');
+  assert.equal(allXlsx.status, 200); assert.match(allXlsx.type, /spreadsheetml/); assert.match(allXlsx.disposition, /attachment; filename="kardex-todos-\d{4}-\d{2}-\d{2}\.xlsx"/); assert.equal(allXlsx.bytes.subarray(0, 2).toString(), 'PK');
+  const book = new ExcelJS.Workbook(); await book.xlsx.load(allXlsx.bytes as any);
+  const summarySheet = book.getWorksheet('Resumen')!;
+  let totalValue = 0, productRows = 0;
+  summarySheet.eachRow(r => { if (String(r.getCell(2).value) === 'Totales') totalValue = Number(r.getCell(11).value); else if (r.getCell(1).value && typeof r.getCell(4).value === 'number') productRows++; });
+  assert(productRows > 0 && book.worksheets.length === productRows + 1, 'una hoja por producto más el resumen');
+  assert(Math.abs(totalValue - num(costs.totals.inventoryValue)) <= 0.1, 'el total del resumen coincide con el valor del inventario');
+  const onePdf = await download(`/inventory/kardex/export?format=pdf&productId=${slot.lot.productId}`);
+  assert.equal(onePdf.status, 200); assert.match(onePdf.type, /application\/pdf/); assert.match(onePdf.disposition, new RegExp(`producto-${slot.lot.productId}-`)); assert.equal(onePdf.bytes.subarray(0, 5).toString(), '%PDF-');
+  const allPdf = await download('/inventory/kardex/export?format=pdf'); assert.equal(allPdf.status, 200); assert(allPdf.bytes.length > onePdf.bytes.length);
+  assert.equal((await download('/inventory/kardex/export?format=xlsx&branchId=' + (await db.location.findUniqueOrThrow({ where: { id: slot.locationId }, include: { warehouse: true } })).warehouse.branchId)).status, 200);
+  assert.equal((await download('/inventory/kardex/export?format=csv')).status, 400);
+  assert.equal((await download(`/inventory/kardex/export?format=xlsx&dateFrom=${today}&dateTo=2000-01-01`)).status, 400);
+  pass(`exportación: ${productRows} productos en Excel (una hoja cada uno, total ${totalValue.toFixed(2)} = valor del inventario) y PDF de uno y de todos`);
 
   // Etiquetas: la primera impresión se registra; reimprimir exige motivo
   const first = await db.inventoryLabelPrint.count({ where: { lotId: slot.lotId } });

@@ -22,6 +22,13 @@ export const money = (value: string | number, currency = 'USD', digits = 2) =>
 export const dateTime = (date: string) => new Intl.DateTimeFormat('es-SV', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/El_Salvador' }).format(new Date(date));
 export const day = (date: string) => new Intl.DateTimeFormat('es-SV', { dateStyle: 'medium', timeZone: 'America/El_Salvador' }).format(new Date(date));
 
+/** Nombre del archivo exportado: kardex-<producto o todos>-<fecha de hoy en El Salvador>.<formato>. */
+export function kardexFileName(format: 'xlsx' | 'pdf', label: string, today = new Date()) {
+  const date = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/El_Salvador' }).format(today);
+  const slug = label.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'producto';
+  return `kardex-${slug}-${date}.${format}`;
+}
+
 /** Documento que respalda una compra: el del proveedor (con su fecha) o, si aún no se registró, la recepción interna. */
 export function supportDocumentLabel(doc: { supplierInvoiceNumber: string | null; supplierInvoiceDate: string | null; receipt: string }) {
   if (!doc.supplierInvoiceNumber) return `Recepción ${doc.receipt}`;

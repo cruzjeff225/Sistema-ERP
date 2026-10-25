@@ -3,7 +3,7 @@ import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../infrastructure/database/prisma/prisma.service";
 import { AuditService } from "../audit/application/services/audit.service";
 import { purchaseTransaction } from "../purchases/application/services/purchase-transaction";
-import { InventoryAdjustmentDto, InventoryQueryDto, KardexQueryDto, LabelPrintDto, LotQueryDto, OpeningBalanceDto, RelocationDto, ReturnDto, SaleDeliveryDto, SaleReversalDto, VehicleLocationDto } from "./inventory.dto";
+import { InventoryAdjustmentDto, InventoryQueryDto, KardexExportQueryDto, KardexQueryDto, LabelPrintDto, LotQueryDto, OpeningBalanceDto, RelocationDto, ReturnDto, SaleDeliveryDto, SaleReversalDto, VehicleLocationDto } from "./inventory.dto";
 import { applyEntry, applyExit, applyRevaluation, allocateFifo, lotCodeForAdjustment, lotCodeForOpening, lotCodeForReceipt, type CostBalance, type LotSlice } from './inventory-costing';
 import { locationMapState } from './location-map';
 
@@ -196,7 +196,7 @@ export class InventoryService {
     });
     const page = all.slice((q.page - 1) * q.limit, q.page * q.limit);
     const process = await this.purchaseProcesses([...new Set(page.flatMap(row => row.supportDocument ? [row.supportDocument.receiptId] : []))]);
-    const items = page.map(row => row.supportDocument ? { ...row, supportDocument: { ...row.supportDocument, process: process.get(row.supportDocument.receiptId) ?? null } } : row);
+    const items = page.map(row => ({ ...row, supportDocument: row.supportDocument ? { ...row.supportDocument, process: process.get(row.supportDocument.receiptId) ?? null } : null }));
     const entries = rows.filter(r => !r.quantityOut.gt(0)), exits = rows.filter(r => r.quantityOut.gt(0));
     // Recepciones del registro que todavía no tienen el documento fiscal del proveedor (no basta el documento interno).
     const missingFiscal = new Set(all.filter(row => row.supportDocument?.fiscalDocumentMissing && row.movementType === 'RECEIPT').map(row => row.supportDocument!.receipt));
@@ -208,6 +208,43 @@ export class InventoryService {
       totals: { quantityIn: sum(rows.map(r => r.quantityIn)), quantityOut: sum(rows.map(r => r.quantityOut)), entryCost: sum(entries.map(r => r.totalCost)), exitCost: sum(exits.map(r => r.totalCost)) },
       items, total: all.length, page: q.page, totalPages: Math.max(1, Math.ceil(all.length / q.limit)),
     };
+  }
+
+  /** Qué cuenta el Kardex según el alcance elegido; se imprime en las exportaciones. */
+  private async scopeText(companyId: number, q: { branchId?: number; warehouseId?: number; lotId?: number; type?: string }) {
+    const [branch, warehouse] = await Promise.all([
+      q.branchId ? this.prisma.branch.findFirst({ where: { id: q.branchId, companyId }, select: { name: true } }) : null,
+      q.warehouseId ? this.prisma.warehouse.findFirst({ where: { id: q.warehouseId, branch: { companyId } }, select: { name: true, branch: { select: { name: true } } } }) : null,
+    ]);
+    const extras = `${q.lotId ? ' · un lote' : ''}${q.type ? ' · tipo ' + q.type : ''}`;
+    if (!q.branchId && !q.warehouseId && !q.type) return 'Consolidado de la empresa; los traslados entre almacenes no se cuentan como entradas ni salidas.';
+    if (warehouse) return `Almacén ${warehouse.name} · ${warehouse.branch.name}${extras}; el traslado hacia otro almacén es una salida y el que llega, una entrada.`;
+    if (branch) return `Sucursal ${branch.name}${extras}; el traslado hacia otra sucursal es una salida y el que llega, una entrada. Los traslados entre sus propios almacenes no se cuentan.`;
+    return `Filtrado${extras}; incluye los traslados entre almacenes.`;
+  }
+
+  /** Todos los productos con movimientos o saldo (o el elegido), cada uno con su registro completo: sin paginar. */
+  async kardexExport(companyId: number, q: KardexExportQueryDto) {
+    const company = await this.prisma.company.findUnique({ where: { id: companyId }, select: { name: true, commercialName: true, nit: true, nrc: true } });
+    if (!company) throw new NotFoundException('Empresa no disponible');
+    if (q.dateFrom && q.dateTo && q.dateFrom > q.dateTo) throw new BadRequestException('La fecha inicial no puede ser posterior a la final');
+    const limit = 300;
+    let ids: number[];
+    if (q.productId) ids = [q.productId];
+    else {
+      // Un producto puede tener saldo aunque no se haya movido en el período: se consideran sus movimientos hasta la fecha final.
+      const where = await this.movementWhere(companyId, { ...q, productId: undefined, lotId: undefined, dateFrom: undefined });
+      const moved = await this.prisma.inventoryMovement.groupBy({ by: ['productId'], where });
+      ids = (await this.prisma.product.findMany({ where: { id: { in: moved.map(row => row.productId) }, companyId }, select: { id: true }, orderBy: [{ name: 'asc' }, { id: 'asc' }] })).map(product => product.id);
+    }
+    const truncated = ids.length > limit;
+    const books = [];
+    for (const productId of ids.slice(0, limit)) {
+      const book = await this.kardex(companyId, { ...q, productId, page: 1, limit: 1_000_000 } as KardexQueryDto);
+      if (!q.productId && !book.items.length && book.opening.isZero() && book.closing.isZero()) continue;
+      books.push(book);
+    }
+    return { header: { company, period: { from: q.dateFrom ?? null, to: q.dateTo ?? null }, generatedAt: new Date().toISOString() }, scope: await this.scopeText(companyId, q), truncated, books };
   }
 
   private async openTransit(db: Tx | PrismaService, lotIds: number[]) {

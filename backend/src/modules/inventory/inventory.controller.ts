@@ -1,9 +1,11 @@
-import { Body, Controller, Get, Headers, Param, ParseIntPipe, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Param, ParseIntPipe, Post, Query, Res } from '@nestjs/common';
+import type { Response } from 'express';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
 import { CompanyScopeService } from '../../common/services/company-scope.service';
 import { AuthenticatedUser, CurrentUser } from '../auth/presentation/decorators/current-user.decorator';
-import { AvailabilityQueryDto, OpeningBalanceDto, VehicleLocationDto, SaleDeliveryDto, SaleReversalDto, InventoryAdjustmentDto, InventoryQueryDto, KardexQueryDto, LabelPrintDto, LotQueryDto, RelocationDto, ReturnDto, WarehouseMapQueryDto } from './inventory.dto';
+import { AvailabilityQueryDto, KardexExportQueryDto, OpeningBalanceDto, VehicleLocationDto, SaleDeliveryDto, SaleReversalDto, InventoryAdjustmentDto, InventoryQueryDto, KardexQueryDto, LabelPrintDto, LotQueryDto, RelocationDto, ReturnDto, WarehouseMapQueryDto } from './inventory.dto';
 import { InventoryService } from './inventory.service';
+import { kardexPdf, kardexWorkbook } from './kardex-export';
 
 @Controller('inventory')
 export class InventoryController {
@@ -16,6 +18,16 @@ export class InventoryController {
   async movements(@Query() q: InventoryQueryDto, @CurrentUser() user: AuthenticatedUser, @Headers('x-company-id') header?: string) { return { data: await this.service.movements(await this.scope.resolve(user, header), q) }; }
   @Get('kardex') @RequirePermissions('inventory.kardex.view')
   async kardex(@Query() q: KardexQueryDto, @CurrentUser() user: AuthenticatedUser, @Headers('x-company-id') header?: string) { return { data: await this.service.kardex(await this.scope.resolve(user, header), q) }; }
+  @Get('kardex/export') @RequirePermissions('inventory.kardex.view')
+  async kardexExport(@Query() q: KardexExportQueryDto, @CurrentUser() user: AuthenticatedUser, @Res() res: Response, @Headers('x-company-id') header?: string) {
+    const report = await this.service.kardexExport(await this.scope.resolve(user, header), q);
+    const pdf = q.format === 'pdf';
+    const bytes = pdf ? await kardexPdf(report) : await kardexWorkbook(report);
+    res.setHeader('Content-Type', pdf ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="kardex-${q.productId ? `producto-${q.productId}` : 'todos'}-${new Date().toISOString().slice(0, 10)}.${q.format}"`);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.send(bytes);
+  }
   @Get('lots') @RequirePermissions('inventory.lots.view')
   async lots(@Query() q: LotQueryDto, @CurrentUser() user: AuthenticatedUser, @Headers('x-company-id') header?: string) { return { data: await this.service.lots(await this.scope.resolve(user, header), q) }; }
   @Get('lots/:id') @RequirePermissions('inventory.lots.view')
