@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { locationLabel, movementFilterLabels, returnsEnabled, salesModuleEnabled, lotStatusLabels, money, movementLabels, quantity, processLabel, referenceLabel, supportDocumentLabel, transferStatusLabels } from '../src/utils/inventory-format';
+import { kardexFileName, locationLabel, movementFilterLabels, returnsEnabled, salesModuleEnabled, lotStatusLabels, money, movementLabels, quantity, processLabel, referenceLabel, supportDocumentLabel, transferStatusLabels } from '../src/utils/inventory-format';
 import { labelText } from '../src/utils/inventory-labels';
 
 test('el Kardex nombra el documento de origen de cada movimiento', () => {
@@ -51,6 +51,14 @@ test('la cadena de documentos va de la solicitud a la recepción y el retaceo', 
   assert.equal(processLabel(full, 'RC-00046'), 'Solicitud PR-00067 → Cotización PQ-00012 → Orden OC-00031 → Recepción RC-00046 → Retaceo RT-00009');
   assert.equal(processLabel({ ...full, requests: [{ code: 'PR-00001' }, { code: 'PR-00002' }], quotation: null, retaceos: [] }, 'RC-00046'), 'Solicitudes PR-00001, PR-00002 → Orden OC-00031 → Recepción RC-00046');
   assert.equal(processLabel(null, 'RC-00046'), 'Recepción RC-00046');
+});
+
+test('el archivo exportado lleva el producto o «todos» y la fecha de hoy en El Salvador', () => {
+  const noche = new Date('2026-10-25T03:30:00Z'); // 24/10 21:30 en El Salvador
+  assert.equal(kardexFileName('xlsx', 'todos', noche), 'kardex-todos-2026-10-24.xlsx');
+  assert.equal(kardexFileName('pdf', 'DEMO-AT-CUM/01', noche), 'kardex-DEMO-AT-CUM-01-2026-10-24.pdf');
+  assert.equal(kardexFileName('pdf', 'Cañería ñandú', noche), 'kardex-Caneria-nandu-2026-10-24.pdf');
+  assert.equal(kardexFileName('xlsx', '', noche), 'kardex-producto-2026-10-24.xlsx');
 });
 
 test('la ubicación se lee como almacén y espacio', () => {
