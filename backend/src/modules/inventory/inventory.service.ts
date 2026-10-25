@@ -3,8 +3,8 @@ import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../infrastructure/database/prisma/prisma.service";
 import { AuditService } from "../audit/application/services/audit.service";
 import { purchaseTransaction } from "../purchases/application/services/purchase-transaction";
-import { InventoryAdjustmentDto, InventoryQueryDto, KardexQueryDto, LabelPrintDto, LotQueryDto, RelocationDto, ReturnDto, SaleDeliveryDto, SaleReversalDto, VehicleLocationDto } from "./inventory.dto";
-import { applyEntry, applyExit, applyRevaluation, allocateFifo, lotCodeForAdjustment, lotCodeForReceipt, type CostBalance, type LotSlice } from './inventory-costing';
+import { InventoryAdjustmentDto, InventoryQueryDto, KardexQueryDto, LabelPrintDto, LotQueryDto, OpeningBalanceDto, RelocationDto, ReturnDto, SaleDeliveryDto, SaleReversalDto, VehicleLocationDto } from "./inventory.dto";
+import { applyEntry, applyExit, applyRevaluation, allocateFifo, lotCodeForAdjustment, lotCodeForOpening, lotCodeForReceipt, type CostBalance, type LotSlice } from './inventory-costing';
 import { locationMapState } from './location-map';
 
 type Tx = Prisma.TransactionClient;
@@ -533,6 +533,37 @@ export class InventoryService {
   /** RN-INV-009: mover entre ubicaciones del mismo almacén cambia dónde está el lote, no cuánto hay ni cuánto vale. */
   relocate(companyId: number, userId: number, dto: RelocationDto) {
     return purchaseTransaction(this.prisma, companyId, tx => this.relocateIn(tx, companyId, userId, dto));
+  }
+
+  /**
+   * Saldo inicial: las existencias con las que un producto empieza en el sistema, con su costo unitario. Es lo primero que
+   * aparece en su Kardex, así que solo se registra antes de cualquier otro movimiento; después se corrige con un ajuste.
+   */
+  registerOpeningBalance(companyId: number, userId: number, dto: OpeningBalanceDto) {
+    return purchaseTransaction(this.prisma, companyId, tx => this.openingIn(tx, companyId, userId, dto));
+  }
+
+  private async openingIn(tx: Tx, companyId: number, userId: number, dto: OpeningBalanceDto) {
+    const key = `opening:${companyId}:${dto.requestId.toLowerCase()}`;
+    const quantity = new Prisma.Decimal(dto.quantity), unitCost = new Prisma.Decimal(dto.unitCost);
+    this.integer(quantity, false);
+    const prior = await tx.inventoryMovement.findUnique({ where: { key } });
+    if (prior) {
+      if (prior.productId !== dto.productId || prior.locationId !== dto.locationId || !prior.quantityIn.eq(quantity) || !prior.unitCost.eq(unitCost)) throw new ConflictException('La referencia ya fue usada para otro movimiento');
+      return prior;
+    }
+    const product = await tx.product.findFirst({ where: { id: dto.productId, companyId, isActive: true, deletedAt: null } });
+    if (!product) throw new BadRequestException('Producto y ubicacion deben pertenecer a la empresa activa');
+    if (await tx.inventoryMovement.count({ where: { productId: product.id, movementType: { not: 'OPENING' } } })) throw new ConflictException('El producto ya tiene movimientos; el saldo inicial solo se registra antes de operar. Use un ajuste para corregir existencias.');
+    const place = await this.place(tx, companyId, dto.locationId, true);
+    await this.assertFits(tx, place.id, product.id, quantity);
+    const created = await tx.inventoryLot.create({ data: { lotCode: `TMP-${key}`.slice(0, 60), productId: product.id, receivedAt: new Date(), quantityReceived: quantity, unitCost, totalCost: quantity.mul(unitCost).toDecimalPlaces(2) } });
+    const lot = await tx.inventoryLot.update({ where: { id: created.id }, data: { lotCode: lotCodeForOpening(created.id) } });
+    const balance = await this.moveStock(tx, product.id, lot.id, place.id, quantity);
+    await this.saveCost(tx, companyId, product.id, applyEntry(await this.costOf(tx, companyId, product.id), quantity, unitCost));
+    const movement = await this.record(tx, userId, { productId: product.id, lotId: lot.id, place, warehouseId: place.warehouseId, type: 'OPENING', quantityIn: quantity, unitCost, key, reason: dto.reason?.trim() || 'Saldo inicial del inventario', reference: { type: 'opening' }, balance });
+    await this.audit.record(tx, { controller: 'inventory', action: 'OPENING', recordId: movement.id, originalData: { companyId }, modifiedData: { companyId, lot: lot.lotCode, ...movement }, userId });
+    return movement;
   }
 
   /**
