@@ -12,6 +12,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { RequirePermissions } from "../../../../common/decorators/permissions.decorator";
 import { MODULE_PERMISSIONS } from "../../../../common/constants/permission-permissions.constant";
 import { ModulesService } from "../../application/services/modules.service";
+import { CurrentUser, AuthenticatedUser } from "../../../auth/presentation/decorators/current-user.decorator";
 import { CreateModuleDto } from "../../application/dto/create-module.dto";
 
 // Agrupa los endpoints relacionados con la gestión de módulos
@@ -71,8 +72,8 @@ export class ModulesController {
   @RequirePermissions(MODULE_PERMISSIONS.DELETE)
   @Delete(":id")
   @ApiOperation({ summary: "Eliminar módulo (soft delete)" })
-  async remove(@Param("id", ParseIntPipe) id: number) {
-    await this.modulesService.remove(id);
+  async remove(@Param("id", ParseIntPipe) id: number, @CurrentUser() user: AuthenticatedUser) {
+    await this.modulesService.remove(id, user.sub);
 
     return {
       success: true,

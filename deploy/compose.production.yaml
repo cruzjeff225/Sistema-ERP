@@ -1,0 +1,71 @@
+name: apex-erp
+services:
+  database:
+    image: postgres:18-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: erp_db
+      POSTGRES_USER: erp_owner
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Configure POSTGRES_PASSWORD}
+      APP_DATABASE_PASSWORD: ${APP_DATABASE_PASSWORD:?Configure APP_DATABASE_PASSWORD}
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+    volumes:
+      - postgres_data:/var/lib/postgresql
+      - ./database-init.sh:/docker-entrypoint-initdb.d/01-app-role.sh:ro
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U erp_owner -d erp_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    networks: [database_network]
+  migrate:
+    image: apex-erp-backend:${ERP_RELEASE:-local}
+    build: ../backend
+    restart: "no"
+    command: [./node_modules/.bin/prisma, migrate, deploy]
+    environment:
+      DATABASE_URL: postgresql://erp_owner:${POSTGRES_PASSWORD:?Configure POSTGRES_PASSWORD}@database:5432/erp_db
+    depends_on:
+      database: {condition: service_healthy}
+    networks: [database_network]
+  backend:
+    image: apex-erp-backend:${ERP_RELEASE:-local}
+    build: ../backend
+    restart: unless-stopped
+    init: true
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      FRONTEND_URL: ${FRONTEND_URL:?Configure el dominio HTTPS real}
+      TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-2}
+      DATABASE_URL: postgresql://erp_app:${APP_DATABASE_PASSWORD:?Configure APP_DATABASE_PASSWORD}@database:5432/erp_db
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?Configure JWT_ACCESS_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?Configure JWT_REFRESH_SECRET}
+      JWT_ACCESS_EXPIRES_IN: 15m
+      JWT_REFRESH_EXPIRES_IN: 7d
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    volumes: [uploads:/app/uploads]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    networks: [database_network,web_network]
+  frontend:
+    image: apex-erp-frontend:${ERP_RELEASE:-local}
+    build: ../frontend
+    restart: unless-stopped
+    depends_on:
+      backend: {condition: service_healthy}
+    ports: ["127.0.0.1:${ERP_HTTP_PORT:-8080}:8080"]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    networks: [web_network]
+volumes:
+  postgres_data:
+  uploads:
+networks:
+  database_network: {internal: true}
+  web_network:

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Headers, Param, ParseIntPipe, Patch, Post } from "@nestjs/common";
+import { Body, Controller, Get, Headers, Param, ParseIntPipe, Patch, Post, Query } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { CUSTOMER_PERMISSIONS } from "../../../../common/constants/customer-permissions.constant";
 import { RequirePermissions, RequireStatusPermissions } from "../../../../common/decorators/permissions.decorator";
@@ -8,6 +8,7 @@ import { CreateCustomerDto } from "../../application/dto/create-customer.dto";
 import { UpdateCustomerDto } from "../../application/dto/update-customer.dto";
 import { UpdateCustomerStatusDto } from "../../application/dto/update-customer-status.dto";
 import { CustomersService } from "../../application/services/customers.service";
+import { QueryCustomersDto } from '../../application/dto/query-customers.dto';
 
 @ApiTags("customers")
 @ApiBearerAuth()
@@ -18,8 +19,8 @@ export class CustomersController {
   @RequirePermissions(CUSTOMER_PERMISSIONS.VIEW)
   @Get()
   @ApiOperation({ summary: "Consultar clientes" })
-  async findAll(@CurrentUser() user: AuthenticatedUser, @Headers("x-company-id") companyHeader?: string) {
-    const data = await this.customersService.customers(await this.companyScope.resolve(user, companyHeader));
+  async findAll(@Query() query: QueryCustomersDto, @CurrentUser() user: AuthenticatedUser, @Headers("x-company-id") companyHeader?: string) {
+    const data = await this.customersService.customers(await this.companyScope.resolve(user, companyHeader), query);
     return { success: true, message: "Clientes obtenidos correctamente", data };
   }
 

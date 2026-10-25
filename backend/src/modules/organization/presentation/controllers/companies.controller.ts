@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post } from "@nestjs/common";
+import { Body, ConflictException, Controller, Get, Param, ParseIntPipe, Patch, Post } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { RequirePermissions, RequireStatusPermissions } from "../../../../common/decorators/permissions.decorator";
 import { COMPANY_PERMISSIONS } from "../../../../common/constants/organization-permissions.constant";
@@ -22,7 +22,8 @@ export class CompaniesController {
   @Get()
   @ApiOperation({ summary: "Listar empresas" })
   async findAll(@CurrentUser() user: AuthenticatedUser) {
-    const data = await this.organizationService.companies(user);
+    const companyId = await this.companyScope.resolve(user, undefined, true);
+    const data = [await this.organizationService.company(companyId)];
     return { success: true, message: "Empresas obtenidas correctamente", data };
   }
 
@@ -39,8 +40,7 @@ export class CompaniesController {
   @Post()
   @ApiOperation({ summary: "Registrar empresa" })
   async create(@Body() dto: CreateCompanyDto, @CurrentUser() user: AuthenticatedUser) {
-    const data = await this.organizationService.createCompany(dto, user.sub);
-    return { success: true, message: "Empresa registrada correctamente", data };
+    throw new ConflictException("El ERP ya tiene una empresa configurada; edite sus datos en Organizacion");
   }
 
   @RequirePermissions(COMPANY_PERMISSIONS.UPDATE)
@@ -65,6 +65,7 @@ export class CompaniesController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     await this.companyScope.resolve(user, String(id), true);
+    if (!dto.isActive) throw new ConflictException("No se puede desactivar la unica empresa operativa del ERP");
     const data = await this.organizationService.updateCompanyStatus(id, dto.isActive, user.sub);
     return { success: true, message: "Estado de empresa actualizado correctamente", data };
   }

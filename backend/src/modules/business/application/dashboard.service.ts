@@ -41,7 +41,7 @@ export class DashboardService {
       this.prisma.log.findMany({ take: 8, orderBy: { createdAt: "desc" }, include: { user: { select: { username: true } } } }),
     ]);
 
-    const stockUnits = inventoryRows.reduce((sum, row) => sum + row.quantity, 0);
+    const stockUnits = inventoryRows.reduce((sum, row) => sum + Number(row.quantity), 0);
 
     return {
       counts: { companies, branches, warehouses, locations, customers, suppliers, products },

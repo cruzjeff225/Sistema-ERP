@@ -1,20 +1,25 @@
+import { Transform } from "class-transformer";
 import { IsEmail, IsInt, IsNotEmpty, IsOptional, IsString, IsUrl, Matches, MaxLength } from "class-validator";
 
 export class CreateCompanyDto {
   @IsString()
   @IsNotEmpty()
+  @Transform(({ value }) => typeof value === "string" ? value.trim() : value)
   name: string;
 
   @IsString()
   @IsNotEmpty()
+  @Transform(({ value }) => typeof value === "string" ? value.trim() : value)
   commercialName: string;
 
   @IsString()
   @IsNotEmpty()
+  @Transform(({ value }) => typeof value === "string" ? value.trim() : value)
   nit: string;
 
   @IsString()
   @IsNotEmpty()
+  @Transform(({ value }) => typeof value === "string" ? value.trim() : value)
   nrc: string;
 
   @IsOptional()
@@ -31,6 +36,7 @@ export class CreateCompanyDto {
 
   @IsString()
   @IsNotEmpty()
+  @Transform(({ value }) => typeof value === "string" ? value.trim() : value)
   address: string;
 
   @IsInt()

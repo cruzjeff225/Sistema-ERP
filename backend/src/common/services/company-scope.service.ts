@@ -7,18 +7,25 @@ type CompanyUser = { sub: number; roles: string[] };
 export class CompanyScopeService {
   constructor(private readonly prisma: PrismaService) {}
 
+  async primaryCompanyId() {
+    const config = await this.prisma.erpConfiguration.findUnique({ where: { id: 1 } });
+    if (!config) throw new ForbiddenException("La empresa del ERP no esta configurada");
+    return config.companyId;
+  }
+
   async accessibleCompanies(user: CompanyUser, includeInactive = false) {
+    const id = await this.primaryCompanyId();
     const activeFilter = includeInactive ? {} : { isActive: true };
     if (user.roles.includes("superadmin")) {
       return this.prisma.company.findMany({
-        where: { deletedAt: null, ...activeFilter },
+        where: { id, deletedAt: null, ...activeFilter },
         select: { id: true, name: true, commercialName: true },
         orderBy: { commercialName: "asc" },
       });
     }
 
     return this.prisma.company.findMany({
-      where: { deletedAt: null, ...activeFilter, userCompanies: { some: { userId: user.sub } } },
+      where: { id, deletedAt: null, ...activeFilter, userCompanies: { some: { userId: user.sub } } },
       select: { id: true, name: true, commercialName: true },
       orderBy: { commercialName: "asc" },
     });
@@ -44,8 +51,10 @@ export class CompanyScopeService {
     return company.id;
   }
 
-  async assertCompanyIds(companyIds: number[]) {
-    const uniqueIds = [...new Set(companyIds)];
+  async assertCompanyIds(companyIds?: number[]) {
+    const primary = await this.primaryCompanyId();
+    if (companyIds?.some(id => id !== primary)) throw new BadRequestException("El ERP opera exclusivamente para su empresa configurada");
+    const uniqueIds = [primary];
     if (!uniqueIds.length) throw new BadRequestException("Seleccione al menos una empresa para el usuario");
     const count = await this.prisma.company.count({ where: { id: { in: uniqueIds }, deletedAt: null, isActive: true } });
     if (count !== uniqueIds.length) throw new BadRequestException("Una o más empresas no existen o están inactivas");

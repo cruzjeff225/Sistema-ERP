@@ -122,6 +122,10 @@ export class AuditService {
   }
 
   private toJson(value: unknown) {
-    return JSON.parse(JSON.stringify(value));
+    return JSON.parse(JSON.stringify(value, (key, entry: unknown) => {
+      const normalized = key.replace(/[^a-z0-9]/gi, "").toLowerCase();
+      if (/(password|passwd|token|secret|authorization|cookie|apikey|privatekey)/.test(normalized)) return undefined;
+      return entry;
+    }));
   }
 }

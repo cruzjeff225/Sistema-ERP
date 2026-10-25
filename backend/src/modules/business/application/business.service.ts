@@ -1,6 +1,8 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../../infrastructure/database/prisma/prisma.service";
+import { companyTransaction } from "../../../common/services/company-transaction";
+import { InventoryService } from "../../inventory/inventory.service";
 
 type DocumentItem = {
   productId: number;
@@ -14,7 +16,7 @@ type DocumentItem = {
 
 @Injectable()
 export class BusinessService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly stockService: InventoryService) {}
 
   customers() {
     return this.prisma.customer.findMany({ where: { deletedAt: null }, orderBy: { createdAt: "desc" } });
@@ -197,49 +199,12 @@ export class BusinessService {
     return data;
   }
 
-  async adjustInventory(dto: any, userId?: number) {
-    this.assertPositive(dto.quantity, "La cantidad debe ser mayor o igual a cero");
-    const data = await this.prisma.inventoryStock.upsert({
-      where: { productId_locationId: { productId: Number(dto.productId), locationId: Number(dto.locationId) } },
-      update: { quantity: Number(dto.quantity), minStock: Number(dto.minStock ?? 0) },
-      create: { productId: Number(dto.productId), locationId: Number(dto.locationId), quantity: Number(dto.quantity), minStock: Number(dto.minStock ?? 0) },
-      include: { product: true, location: true },
-    });
-    await this.audit("inventory", "ADJUST", data.id, null, data, userId);
-    return data;
+  async adjustInventory(_dto: any, _userId?: number) {
+    throw new BadRequestException("Registre los ajustes desde Inventario: cada ajuste conserva su lote, motivo y valoración");
   }
 
-  async createPurchase(dto: any, userId?: number) {
-    const supplier = await this.assertSupplier(Number(dto.supplierId));
-    if (!supplier.isActive) throw new BadRequestException("El proveedor esta inactivo y no puede utilizarse en compras");
-    const items = this.normalizeItems(dto.items, "unitCost", true);
-    const total = this.total(items, "unitCost");
-    const data = await this.prisma.$transaction(async (tx) => {
-      const purchase = await tx.purchase.create({
-        data: {
-          supplierId: Number(dto.supplierId),
-          branchId: Number(dto.branchId),
-          documentNumber: dto.documentNumber,
-          total,
-          items: {
-            create: items.map((item) => ({
-              productId: item.productId,
-              locationId: item.locationId!,
-              quantity: item.quantity,
-              unitCost: item.unitCost!,
-              lineTotal: item.quantity * item.unitCost!,
-            })),
-          },
-        },
-        include: { supplier: true, branch: true, items: true },
-      });
-      for (const item of items) {
-        await this.incrementStock(tx, item.productId, item.locationId!, item.quantity);
-      }
-      return purchase;
-    });
-    await this.audit("purchases", "CREATE", data.id, null, data, userId);
-    return data;
+  async createPurchase(_dto: any, _userId?: number) {
+    throw new BadRequestException('Registre la recepcion desde una orden en Gestion de Compras');
   }
 
   async createQuotation(dto: any, userId?: number) {
@@ -269,10 +234,9 @@ export class BusinessService {
   async createSale(dto: any, userId?: number) {
     const items = this.normalizeItems(dto.items, "unitPrice", true);
     const total = this.total(items, "unitPrice");
-    const data = await this.prisma.$transaction(async (tx) => {
-      for (const item of items) {
-        await this.assertStock(tx, item.productId, item.locationId!, item.quantity);
-      }
+    const companyId = await this.legacyCompanyId();
+    // La venta y su salida de inventario se confirman juntas: si falta existencia no queda ninguna de las dos.
+    const data = await companyTransaction(this.prisma, companyId, async (tx) => {
       const sale = await tx.sale.create({
         data: {
           customerId: Number(dto.customerId),
@@ -291,8 +255,10 @@ export class BusinessService {
         },
         include: { customer: true, branch: true, items: true },
       });
-      for (const item of items) {
-        await this.incrementStock(tx, item.productId, item.locationId!, -item.quantity);
+      for (const item of sale.items) {
+        const location = await tx.location.findFirst({ where: { id: item.locationId, warehouse: { branchId: sale.branchId } }, select: { id: true } });
+        if (!location) throw new BadRequestException("La ubicación no pertenece a la sucursal que entrega");
+        await this.stockService.take(tx, companyId, userId ?? 0, { productId: item.productId, locationId: item.locationId, quantity: item.quantity, type: "SALE", key: `sale:${item.id}`, reason: `Venta ${sale.documentNumber}`, reference: { type: "sale", id: sale.id } });
       }
       return sale;
     });
@@ -300,35 +266,8 @@ export class BusinessService {
     return data;
   }
 
-  async createTransfer(dto: any, userId?: number) {
-    const items = (dto.items ?? []).map((item: any) => ({
-      productId: Number(item.productId),
-      fromLocationId: Number(item.fromLocationId),
-      toLocationId: Number(item.toLocationId),
-      quantity: Number(item.quantity),
-    }));
-    if (!items.length) throw new BadRequestException("Debe registrar al menos un producto");
-    for (const item of items) this.assertPositive(item.quantity, "La cantidad debe ser mayor que cero");
-
-    const data = await this.prisma.$transaction(async (tx) => {
-      for (const item of items) await this.assertStock(tx, item.productId, item.fromLocationId, item.quantity);
-      const transfer = await tx.transfer.create({
-        data: {
-          documentNumber: dto.documentNumber,
-          fromWarehouseId: Number(dto.fromWarehouseId),
-          toWarehouseId: Number(dto.toWarehouseId),
-          items: { create: items },
-        },
-        include: { items: true },
-      });
-      for (const item of items) {
-        await this.incrementStock(tx, item.productId, item.fromLocationId, -item.quantity);
-        await this.incrementStock(tx, item.productId, item.toLocationId, item.quantity);
-      }
-      return transfer;
-    });
-    await this.audit("transfers", "CREATE", data.id, null, data, userId);
-    return data;
+  async createTransfer(_dto: any, _userId?: number) {
+    throw new BadRequestException("Los traslados se despachan y reciben desde Bodega, para conservar el lote y el costo");
   }
 
   private model(entity: string): any {
@@ -426,19 +365,6 @@ export class BusinessService {
 
   private assertPositive(value: number, message: string) {
     if (!Number.isFinite(value) || value <= 0) throw new BadRequestException(message);
-  }
-
-  private async assertStock(tx: any, productId: number, locationId: number, quantity: number) {
-    const stock = await tx.inventoryStock.findUnique({ where: { productId_locationId: { productId, locationId } } });
-    if (!stock || stock.quantity < quantity) throw new BadRequestException("Existencia insuficiente para completar la operación");
-  }
-
-  private async incrementStock(tx: any, productId: number, locationId: number, delta: number) {
-    await tx.inventoryStock.upsert({
-      where: { productId_locationId: { productId, locationId } },
-      update: { quantity: { increment: delta } },
-      create: { productId, locationId, quantity: delta },
-    });
   }
 
   private async audit(controller: string, action: string, recordId: number, originalData: unknown, modifiedData: unknown, userId?: number) {

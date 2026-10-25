@@ -15,7 +15,7 @@ export class DashboardController {
   @Get("summary")
   @ApiOperation({ summary: "Consultar indicadores generales del ERP" })
   async summary(@CurrentUser() user: AuthenticatedUser, @Headers("x-company-id") companyHeader?: string) {
-    const data = await this.dashboardService.summary(await this.companyScope.resolve(user, companyHeader));
+    const data = await this.dashboardService.summary(await this.companyScope.resolve(user, companyHeader), user.roles.includes("superadmin") || user.permissions.includes("logs.view"));
     return { success: true, message: "Dashboard obtenido correctamente", data };
   }
 }

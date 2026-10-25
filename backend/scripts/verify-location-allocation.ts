@@ -1,0 +1,22 @@
+import assert from 'node:assert/strict';
+import { Prisma } from '@prisma/client';
+import { allocateLocation, AllocationSlot } from '../src/modules/inventory/location-allocation';
+
+const slot = (id: number, rack = '1'): AllocationSlot => ({ id, code: `A-${id}`, aisle: 'A', rack, level: '1', position: String(id), capacity: 10, stocks: [] });
+const occupied = (productId: number, quantity: number, unitId = 1) => ({ productId, quantity: new Prisma.Decimal(quantity), product: { purchaseUnitId: unitId } });
+const existing = slot(1); existing.stocks.push(occupied(10, 4));
+assert.equal(allocateLocation([slot(2), existing], 10, 1, 2), 1);
+assert.equal(Number(existing.stocks[0].quantity), 6);
+assert.equal(allocateLocation([existing, slot(2)], 10, 1, 5), 2);
+assert.throws(() => allocateLocation([existing], 10, 1, 5), /capacidad suficiente/);
+const reserved = [slot(1), slot(2)];
+assert.equal(allocateLocation(reserved, 10, 1, 8), 1);
+assert.equal(allocateLocation(reserved, 11, 1, 8), 2);
+assert.throws(() => allocateLocation(reserved, 12, 1, 1), /capacidad suficiente/);
+assert.equal(allocateLocation([slot(1, '10'), slot(2, '2')], 10, 1, 1), 2);
+const mixed = slot(1); mixed.stocks.push(occupied(10, 2), occupied(11, 2, 2));
+assert.throws(() => allocateLocation([mixed], 10, 1, 1), /capacidad suficiente/);
+const old = slot(1); old.stocks.push(occupied(99, 0));
+assert.equal(allocateLocation([old], 10, 1, 10), 1);
+assert.throws(() => allocateLocation([], 10, 1, 1), /capacidad suficiente/);
+console.log('PASS Asignacion: producto existente, espacio vacio, capacidad, reservas, orden natural, unidades mixtas y bodega sin espacios');

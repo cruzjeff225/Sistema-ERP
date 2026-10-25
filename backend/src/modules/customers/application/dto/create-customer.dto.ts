@@ -1,11 +1,14 @@
 import { IsEmail, IsInt, IsNotEmpty, IsOptional, IsString, MaxLength } from "class-validator";
+import { Transform } from 'class-transformer';
 
 export class CreateCustomerDto {
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
   @IsString()
   @IsNotEmpty()
   @MaxLength(150)
   name: string;
 
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
   @IsOptional()
   @IsString()
   @MaxLength(60)

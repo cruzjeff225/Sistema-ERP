@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import { companyTransaction } from "../../../../common/services/company-transaction";
 import { PrismaService } from "../../../../infrastructure/database/prisma/prisma.service";
 import { CreateBranchDto } from "../dto/create-branch.dto";
 import { CreateCompanyDto } from "../dto/create-company.dto";
@@ -38,6 +39,8 @@ const warehouseInclude = {
     select: {
       id: true,
       name: true,
+      isActive: true,
+      deletedAt: true,
       company: { select: { id: true, name: true, commercialName: true } },
     },
   },
@@ -280,7 +283,9 @@ export class OrganizationService {
 
   async updateBranchStatus(id: number, isActive: boolean, userId?: number, scopedCompanyId?: number) {
     const current = await this.branch(id, scopedCompanyId);
-    return this.prisma.$transaction(async (tx) => {
+    return companyTransaction(this.prisma, current.companyId, async (tx) => {
+      if (!isActive && await tx.erpConfiguration.count({ where: { generalWarehouse: { branchId: id } } })) throw new ConflictException('La sucursal contiene el centro general configurado; configure otro centro antes de desactivarla');
+      if (!isActive && await tx.inventoryStock.count({ where: { location: { warehouse: { branchId: id } }, quantity: { gt: 0 } } })) throw new ConflictException("No se puede desactivar una sucursal con existencias");
       const updated = await tx.branch.update({ where: { id }, data: { isActive }, include: branchInclude });
       await this.auditService.record(tx, {
         controller: "branches",
@@ -418,7 +423,9 @@ export class OrganizationService {
     await this.assertWarehouseCategoryActive(categoryId);
     if (dto.name || dto.branchId) await this.assertWarehouseUnique(branchId, dto.name ?? current.name, id);
 
-    return this.prisma.$transaction(async (tx) => {
+    return companyTransaction(this.prisma, current.branch.company.id, async (tx) => {
+      const fresh = await tx.warehouse.findUniqueOrThrow({ where: { id } });
+      if (dto.branchId !== undefined && dto.branchId !== fresh.branchId && (await tx.inventoryStock.count({ where: { location: { warehouseId: id } } }) || await tx.purchaseOrder.count({ where: { warehouseId: id } }))) throw new ConflictException("No se puede cambiar la sucursal de un almacen con historial");
       const updated = await tx.warehouse.update({
         where: { id },
         data: this.warehouseData(dto) as Prisma.WarehouseUncheckedUpdateInput,
@@ -438,13 +445,9 @@ export class OrganizationService {
 
   async updateWarehouseStatus(id: number, isActive: boolean, userId?: number, scopedCompanyId?: number) {
     const current = await this.warehouse(id, scopedCompanyId);
-    if (!isActive) {
-      const stock = await this.prisma.inventoryStock.count({
-        where: { quantity: { gt: 0 }, location: { warehouseId: id } },
-      });
-      if (stock > 0) throw new ConflictException("No se puede desactivar un almacen con existencias");
-    }
-    return this.prisma.$transaction(async (tx) => {
+    return companyTransaction(this.prisma, current.branch.company.id, async (tx) => {
+      if (!isActive && await tx.erpConfiguration.count({ where: { generalWarehouseId: id } })) throw new ConflictException('Este es el centro general configurado; configure otro centro antes de desactivarlo');
+      if (!isActive && await tx.inventoryStock.count({ where: { location: { warehouseId: id }, quantity: { gt: 0 } } })) throw new ConflictException("No se puede desactivar una ubicacion o almacen con existencias");
       const updated = await tx.warehouse.update({ where: { id }, data: { isActive }, include: warehouseInclude });
       await this.auditService.record(tx, {
         controller: "warehouses",
@@ -514,7 +517,13 @@ export class OrganizationService {
       id,
     );
 
-    return this.prisma.$transaction(async (tx) => {
+    return companyTransaction(this.prisma, current.warehouse.branch.company.id, async (tx) => {
+      const fresh = await tx.location.findUniqueOrThrow({ where: { id } });
+      if (dto.capacity !== undefined) {
+        const occupied = await tx.inventoryStock.aggregate({ where: { locationId: id, quantity: { gt: 0 } }, _sum: { quantity: true } });
+        if (occupied._sum.quantity?.gt(dto.capacity)) throw new ConflictException("La capacidad no puede ser menor que las existencias del espacio");
+      }
+      if (dto.warehouseId !== undefined && dto.warehouseId !== fresh.warehouseId && (await tx.inventoryStock.count({ where: { locationId: id } }) || await tx.purchaseItem.count({ where: { locationId: id } }))) throw new ConflictException("No se puede mover una ubicacion con historial a otro almacen");
       const updated = await tx.location.update({
         where: { id },
         data: this.locationData(dto) as Prisma.LocationUncheckedUpdateInput,
@@ -534,11 +543,8 @@ export class OrganizationService {
 
   async updateLocationStatus(id: number, isActive: boolean, userId?: number, scopedCompanyId?: number) {
     const current = await this.location(id, scopedCompanyId);
-    if (!isActive) {
-      const stock = await this.prisma.inventoryStock.count({ where: { locationId: id, quantity: { gt: 0 } } });
-      if (stock > 0) throw new ConflictException("No se puede desactivar una ubicacion con existencias");
-    }
-    return this.prisma.$transaction(async (tx) => {
+    return companyTransaction(this.prisma, current.warehouse.branch.company.id, async (tx) => {
+      if (!isActive && await tx.inventoryStock.count({ where: { locationId: id, quantity: { gt: 0 } } })) throw new ConflictException("No se puede desactivar una ubicacion o almacen con existencias");
       const updated = await tx.location.update({ where: { id }, data: { isActive }, include: locationInclude });
       await this.auditService.record(tx, {
         controller: "locations",

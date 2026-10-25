@@ -145,7 +145,6 @@ export class ProductImagesController {
   @Delete(":id")
   async remove(@Param("id", ParseIntPipe) id: number, @CurrentUser() user: AuthenticatedUser, @Headers("x-company-id") companyHeader?: string) {
     const data = await this.productsService.removeImage(id, user.sub, await this.companyScope.resolve(user, companyHeader));
-    await this.removeManagedFile(data.path);
     return { success: true, message: "Imagen eliminada correctamente", data };
   }
 

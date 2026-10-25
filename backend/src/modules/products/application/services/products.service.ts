@@ -1,5 +1,8 @@
+import { TrashService } from '../../../trash/trash.service';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { randomUUID } from "crypto";
 import { Prisma } from "@prisma/client";
+import { companyTransaction } from "../../../../common/services/company-transaction";
 import { PrismaService } from "../../../../infrastructure/database/prisma/prisma.service";
 import { AuditService } from "../../../audit/application/services/audit.service";
 import { CreateProductCategoryDto } from "../dto/create-product-category.dto";
@@ -46,7 +49,7 @@ const productInclude = {
 @Injectable()
 export class ProductsService {
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly prisma: PrismaService, private readonly trashService: TrashService,
     private readonly auditService: AuditService,
   ) {}
 
@@ -177,6 +180,9 @@ export class ProductsService {
   async updateSubcategory(id: number, dto: UpdateProductSubcategoryDto, userId: number) {
     const current = await this.subcategory(id);
     const categoryId = dto.categoryId ?? current.categoryId;
+    if (categoryId !== current.categoryId && await this.prisma.product.count({ where: { subcategoryId: id } })) {
+      throw new ConflictException("No se puede cambiar la categoria de una subcategoria asociada a productos");
+    }
     if (dto.categoryId !== undefined) await this.assertCategoryActive(dto.categoryId);
     if (dto.name && (dto.name.trim().toLowerCase() !== current.name.toLowerCase() || categoryId !== current.categoryId)) {
       await this.assertUniqueSubcategoryName(categoryId, dto.name, id);
@@ -251,11 +257,16 @@ export class ProductsService {
   }
 
   async createProduct(dto: CreateProductDto, userId: number, companyId: number) {
-    await this.assertUniqueProductCodes(dto.sku, dto.internalCode, companyId);
+    await this.assertUniqueSku(dto.sku, companyId);
     await this.assertProductRelations(dto.categoryId, dto.subcategoryId, dto.purchaseUnitId, dto.saleUnitId);
+    this.assertCommercialValues(dto.unitCost ?? 0, dto.salePrice ?? 0);
     return this.prisma.$transaction(async (tx) => {
-      const product = await tx.product.create({
-        data: this.productCreateData(dto, companyId),
+      const created = await tx.product.create({
+        data: this.productCreateData(dto, companyId, `PENDING-${randomUUID()}`),
+      });
+      const product = await tx.product.update({
+        where: { id: created.id },
+        data: { internalCode: await this.nextInternalCode(tx, companyId, created.id) },
         include: productInclude,
       });
       await this.record(tx, "products", "CREATE", product.id, undefined, product, userId);
@@ -266,16 +277,19 @@ export class ProductsService {
   async updateProduct(id: number, dto: UpdateProductDto, userId: number, companyId: number) {
     const current = await this.product(id, companyId);
     if (dto.sku && dto.sku.trim().toLowerCase() !== current.sku.toLowerCase()) await this.assertUniqueSku(dto.sku, companyId, id);
-    if (dto.internalCode && dto.internalCode.trim().toLowerCase() !== current.internalCode.toLowerCase()) {
-      await this.assertUniqueInternalCode(dto.internalCode, companyId, id);
-    }
     await this.assertProductRelations(
       dto.categoryId ?? current.categoryId,
       dto.subcategoryId ?? current.subcategoryId,
       dto.purchaseUnitId ?? current.purchaseUnitId,
       dto.saleUnitId ?? current.saleUnitId,
     );
-    return this.prisma.$transaction(async (tx) => {
+    this.assertCommercialValues(dto.unitCost ?? Number(current.unitCost), dto.salePrice ?? Number(current.salePrice));
+    return companyTransaction(this.prisma, companyId, async (tx) => {
+      const fresh = await tx.product.findUniqueOrThrow({ where: { id } });
+      if (dto.purchaseUnitId !== undefined && dto.purchaseUnitId !== fresh.purchaseUnitId) {
+        const referenced = await tx.product.count({ where: { id, OR: [{ stocks: { some: {} } }, { purchaseRequestDetails: { some: {} } }, { purchaseItems: { some: {} } }] } });
+        if (referenced) throw new ConflictException("No se puede cambiar la unidad de compra de un producto con historial; registre otro producto para la nueva unidad");
+      }
       const product = await tx.product.update({ where: { id }, data: this.productUpdateData(dto), include: productInclude });
       await this.record(tx, "products", "UPDATE", id, current, product, userId);
       return product;
@@ -285,7 +299,8 @@ export class ProductsService {
   async updateProductStatus(id: number, isActive: boolean, userId: number, companyId: number) {
     const current = await this.product(id, companyId);
     if (isActive) await this.assertProductRelations(current.categoryId, current.subcategoryId, current.purchaseUnitId, current.saleUnitId);
-    return this.prisma.$transaction(async (tx) => {
+    return companyTransaction(this.prisma, companyId, async (tx) => {
+      if (!isActive && await tx.inventoryStock.count({ where: { productId: id, quantity: { gt: 0 } } })) throw new ConflictException("No se puede desactivar un producto con existencias");
       const product = await tx.product.update({ where: { id }, data: { isActive }, include: productInclude });
       await this.record(tx, "products", isActive ? "ACTIVATE" : "DEACTIVATE", id, current, product, userId);
       return product;
@@ -337,14 +352,8 @@ export class ProductsService {
 
   async removeImage(id: number, userId: number, companyId: number) {
     const current = await this.image(id, companyId);
-    return this.prisma.$transaction(async (tx) => {
-      const image = await tx.productImage.update({
-        where: { id },
-        data: { isActive: false, deletedAt: new Date() },
-      });
-      await this.record(tx, "product_images", "DELETE", id, current, image, userId);
-      return image;
-    });
+    await this.trashService.trash('product_images', id, userId, companyId);
+    return current;
   }
 
   async supplierLinks(productId: number, companyId: number) {
@@ -416,13 +425,13 @@ export class ProductsService {
     });
   }
 
-  private productCreateData(dto: CreateProductDto, companyId: number): Prisma.ProductUncheckedCreateInput {
+  private productCreateData(dto: CreateProductDto, companyId: number, internalCode: string): Prisma.ProductUncheckedCreateInput {
     return {
       companyId,
       categoryId: dto.categoryId,
       subcategoryId: dto.subcategoryId,
-      sku: dto.sku.trim(),
-      internalCode: dto.internalCode.trim(),
+      sku: this.normalizedSku(dto.sku),
+      internalCode,
       name: dto.name.trim(),
       originalCode: this.optionalText(dto.originalCode),
       size: this.optionalText(dto.size),
@@ -440,8 +449,7 @@ export class ProductsService {
     return {
       ...(dto.categoryId !== undefined ? { categoryId: dto.categoryId } : {}),
       ...(dto.subcategoryId !== undefined ? { subcategoryId: dto.subcategoryId } : {}),
-      ...(dto.sku !== undefined ? { sku: dto.sku.trim() } : {}),
-      ...(dto.internalCode !== undefined ? { internalCode: dto.internalCode.trim() } : {}),
+      ...(dto.sku !== undefined ? { sku: this.normalizedSku(dto.sku) } : {}),
       ...(dto.name !== undefined ? { name: dto.name.trim() } : {}),
       ...(dto.originalCode !== undefined ? { originalCode: this.optionalText(dto.originalCode) } : {}),
       ...(dto.size !== undefined ? { size: this.optionalText(dto.size) } : {}),
@@ -457,6 +465,19 @@ export class ProductsService {
 
   private optionalText(value?: string) {
     return value?.trim() || null;
+  }
+
+  private normalizedSku(value: string) {
+    return value.trim().toUpperCase();
+  }
+
+  private assertCommercialValues(unitCost: number, salePrice: number) {
+    if (!Number.isFinite(unitCost) || !Number.isFinite(salePrice) || unitCost < 0 || salePrice < 0) {
+      throw new BadRequestException("El costo y el precio de venta deben ser valores numéricos iguales o mayores que cero");
+    }
+    if (salePrice < unitCost) {
+      throw new BadRequestException("El precio de venta no puede ser menor que el costo unitario");
+    }
   }
 
   private async category(id: number) {
@@ -548,27 +569,22 @@ export class ProductsService {
     if (unit) throw new ConflictException("Ya existe una unidad con este nombre para el tipo seleccionado");
   }
 
-  private async assertUniqueProductCodes(sku: string, internalCode: string, companyId: number) {
-    await Promise.all([this.assertUniqueSku(sku, companyId), this.assertUniqueInternalCode(internalCode, companyId)]);
-  }
-
   private async assertUniqueSku(sku: string, companyId: number, ignoreId?: number) {
     const product = await this.prisma.product.findFirst({
-      where: { companyId, sku: { equals: sku.trim(), mode: "insensitive" }, deletedAt: null, ...(ignoreId ? { id: { not: ignoreId } } : {}) },
+      where: { sku: { equals: this.normalizedSku(sku), mode: "insensitive" }, ...(ignoreId ? { id: { not: ignoreId } } : {}) },
     });
     if (product) throw new ConflictException("El SKU ya está registrado");
   }
 
-  private async assertUniqueInternalCode(internalCode: string, companyId: number, ignoreId?: number) {
-    const product = await this.prisma.product.findFirst({
-      where: {
-          companyId,
-          internalCode: { equals: internalCode.trim(), mode: "insensitive" },
-        deletedAt: null,
-        ...(ignoreId ? { id: { not: ignoreId } } : {}),
-      },
-    });
-    if (product) throw new ConflictException("El código interno ya está registrado");
+  private async nextInternalCode(tx: Prisma.TransactionClient, companyId: number, productId: number) {
+    const base = `PRD-${String(companyId).padStart(3, "0")}-${String(productId).padStart(6, "0")}`;
+    let candidate = base;
+    let suffix = 2;
+    while (await tx.product.findFirst({ where: { companyId, internalCode: candidate } })) {
+      candidate = `${base}-${suffix}`;
+      suffix += 1;
+    }
+    return candidate;
   }
 
   private async clearPreferredSupplier(tx: Prisma.TransactionClient, productId: number, exceptId?: number) {

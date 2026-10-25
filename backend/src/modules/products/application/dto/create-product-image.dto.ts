@@ -1,9 +1,10 @@
 import { Type } from "class-transformer";
-import { IsInt, IsNotEmpty, IsString, Matches, MaxLength } from "class-validator";
+import { IsInt, IsNotEmpty, IsString, Matches, MaxLength, Min } from "class-validator";
 
 export class CreateProductImageDto {
   @Type(() => Number)
   @IsInt()
+  @Min(1)
   productId: number;
 
   @IsString()

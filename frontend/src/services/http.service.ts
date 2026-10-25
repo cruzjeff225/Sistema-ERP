@@ -12,7 +12,7 @@ export function getAccessToken() {
 }
 
 export const http = axios.create({
-  baseURL: import.meta.env.VITE_API_URL,
+  baseURL: import.meta.env.VITE_API_URL || '/api',
   withCredentials: true,
   timeout: 15000,
 });
@@ -21,7 +21,7 @@ http.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   if (accessToken) {
     config.headers.Authorization = `Bearer ${accessToken}`;
   }
-  if (activeCompanyId.value) {
+  if (activeCompanyId.value && !config.headers["X-Company-Id"]) {
     config.headers["X-Company-Id"] = String(activeCompanyId.value);
   }
   return config;

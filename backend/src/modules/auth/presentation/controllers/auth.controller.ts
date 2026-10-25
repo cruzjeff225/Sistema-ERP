@@ -5,6 +5,8 @@ import {
   HttpCode,
   HttpStatus,
   Post,
+  Patch,
+  UseGuards,
   Req,
   Res,
   UnauthorizedException,
@@ -12,10 +14,11 @@ import {
 import { Public } from '../decorators/public.decorator';
 import { ConfigService } from "@nestjs/config";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
-import { Throttle } from "@nestjs/throttler";
+import { Throttle, ThrottlerGuard } from "@nestjs/throttler";
 import type { Request, Response } from "express";
 import { AuthService } from "../../application/services/auth.service";
 import { LoginDto } from "../../application/dto/login.dto";
+import { ChangeOwnPasswordDto } from "../../application/dto/change-own-password.dto";
 import {
   CurrentUser,
   AuthenticatedUser,
@@ -126,6 +129,16 @@ export class AuthController {
       message: "Sesión cerrada correctamente",
       data: null,
     };
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @Patch("password")
+  async changePassword(@CurrentUser() user: AuthenticatedUser, @Body() dto: ChangeOwnPasswordDto, @Res({ passthrough: true }) res: Response) {
+    await this.authService.changeOwnPassword(user.sub, dto.currentPassword, dto.newPassword);
+    this.clearRefreshCookie(res);
+    return { success: true, message: "Contrasena actualizada. Inicie sesion nuevamente", data: null };
   }
 
   @ApiBearerAuth()
