@@ -246,13 +246,15 @@ async function main() {
   console.log('PASS Kardex por sucursal: el traslado es salida en el origen y entrada en el destino; el consolidado no lo cuenta');
   console.log('PASS preparación: no mueve existencias, confirmar despacha una sola vez, cancelar libera, y solo lo despachado se recibe');
   console.log('PASS traslado vinculado, salida en transito, recepcion parcial 30+50, pendiente original 20 y reintentos sin duplicacion');
-  const adjustment={requestId:randomUUID(),productId:productIds[1],locationId:slot.id,quantity:1,reason:'QA reintento de ajuste UUID'};
+  const adjustment={requestId:randomUUID(),productId:productIds[1],locationId:slot.id,quantity:-1,reason:'QA reintento de ajuste UUID'};
   const stockBeforeAdjustment=Number((await db.inventoryStock.findUniqueOrThrow({where:{productId_locationId:{productId:productIds[1],locationId:slot.id}}})).quantity);
   const adjustmentResult=await api('/inventory/adjustments','POST',adjustment);
   await withMovementChanges(db,tx=>tx.inventoryMovement.update({where:{id:adjustmentResult.id},data:{key:adjustmentResult.key.toUpperCase()}}));
   await api('/inventory/adjustments','POST',{...adjustment,requestId:adjustment.requestId.toUpperCase()});
-  assert.equal(Number((await db.inventoryStock.findUniqueOrThrow({where:{productId_locationId:{productId:productIds[1],locationId:slot.id}}})).quantity),stockBeforeAdjustment+1);
-  await api('/inventory/adjustments','POST',{...adjustment,requestId:randomUUID(),quantity:-1,reason:'QA compensación del ajuste temporal'});
+  assert.equal(Number((await db.inventoryStock.findUniqueOrThrow({where:{productId_locationId:{productId:productIds[1],locationId:slot.id}}})).quantity),stockBeforeAdjustment-1);
+  await api('/inventory/adjustments','POST',{...adjustment,requestId:randomUUID(),quantity:1,reason:'QA compensación del ajuste temporal'},400);
+  await api('/inventory/adjustments','POST',{...adjustment,requestId:randomUUID(),quantity:1,lotId:adjustmentResult.lotId,reason:'QA compensación del ajuste temporal'});
+  assert.equal(Number((await db.inventoryStock.findUniqueOrThrow({where:{productId_locationId:{productId:productIds[1],locationId:slot.id}}})).quantity),stockBeforeAdjustment);
   console.log('PASS referencias UUID canónicas e históricas, destinos activos, capacidad, pertenencia y rechazo sin efectos parciales');
   const expense = await db.purchaseOrderExpense.findFirstOrThrow({where:{orderId:po.purchaseOrderId}});
   expenseDocumentPath='uploads/purchase-expenses/qa-trash-'+key+'.pdf';mkdirSync('uploads/purchase-expenses',{recursive:true});writeFileSync(expenseDocumentPath,'%PDF-1.4 QA');

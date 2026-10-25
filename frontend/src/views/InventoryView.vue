@@ -14,6 +14,7 @@ import InventoryKardexPanel from '../components/inventory/InventoryKardexPanel.v
 import InventoryCostsPanel from '../components/inventory/InventoryCostsPanel.vue';
 import { locationLabel, money, movementFilterLabels, movementLabels } from '../utils/inventory-format';
 import { http } from '../services/http.service';
+import { inventoryGet } from '../services/inventory.service';
 import { activeCompanyId } from '../services/company-context';
 import { usePermissions } from '../composables/usePermissions';
 import { useUnsavedChanges } from '../composables/useUnsavedChanges';
@@ -43,7 +44,11 @@ const page = ref(1), total = ref(0), pages = ref(1);
 const available = ref<number | null>(null), balanceError = ref(''), balanceLoading = ref(false), balanceRefresh = ref(0);
 const editor = ref(false), confirm = ref(false), discardChanges = ref(false), adjustmentDialog = ref<HTMLDialogElement>();
 const optionsMenu = ref<HTMLDetailsElement>();
-const form = reactive({ productId: 0, warehouseId: 0, locationId: 0, direction: 'in', quantity: '', reason: '', requestId: '' });
+const form = reactive({ productId: 0, warehouseId: 0, locationId: 0, direction: 'in', lotId: 0, quantity: '', reason: '', requestId: '' });
+// Una entrada por ajuste siempre regresa a un lote existente: se ofrecen los del producto que todavía admiten unidades.
+type LotChoice = { id: number; label: string; room: number };
+const lotChoices = ref<LotChoice[]>([]), lotsLoading = ref(false);
+let lotsVersion = 0;
 let initialForm = '', version = 0, balanceVersion = 0;
 const dirty = () => editor.value && JSON.stringify(form) !== initialForm;
 const { leaving, resolveLeave } = useUnsavedChanges(dirty, () => busy.value);
@@ -78,6 +83,22 @@ watch([() => form.productId, () => form.locationId, editor, balanceRefresh], asy
     if (request === balanceVersion && company === activeCompanyId.value) available.value = Number(response.data.data.items[0]?.quantity ?? 0);
   } catch (caught) { if (request === balanceVersion && company === activeCompanyId.value) balanceError.value = getApiErrorMessage(caught, 'No se pudo consultar el saldo'); }
   finally { if (request === balanceVersion && company === activeCompanyId.value) balanceLoading.value = false; }
+});
+watch([() => form.productId, () => form.direction, editor], async () => {
+  const request = ++lotsVersion, company = activeCompanyId.value;
+  lotChoices.value = []; form.lotId = 0; lotsLoading.value = false;
+  if (!editor.value || form.direction !== 'in' || !form.productId || !company) return;
+  lotsLoading.value = true;
+  try {
+    const result = await inventoryGet<{ items: { id: number; lotCode: string; status: string; quantityReceived: string; onHand: string; inTransit: string; purchaseItem: { purchase: { documentNumber: string } } | null }[] }>('lots', { productId: form.productId, limit: 100 });
+    if (request !== lotsVersion || result.company !== activeCompanyId.value) return;
+    lotChoices.value = result.data.items.filter(lot => ['ACTIVE', 'DEPLETED'].includes(lot.status))
+      .map(lot => ({ id: lot.id, room: Number(lot.quantityReceived) - Number(lot.onHand) - Number(lot.inTransit), lot }))
+      .filter(row => row.room > 0)
+      .map(({ id, room, lot }) => ({ id, room, label: `${lot.lotCode} · ${lot.purchaseItem ? 'recepción ' + lot.purchaseItem.purchase.documentNumber : lot.lotCode.startsWith('LT-INI') ? 'saldo inicial' : 'ajuste anterior'} · caben ${room}` }));
+    form.lotId = onlyOptionId(lotChoices.value) ?? 0;
+  } catch { if (request === lotsVersion) lotChoices.value = []; }
+  finally { if (request === lotsVersion) lotsLoading.value = false; }
 });
 watch(() => form.warehouseId, () => { form.locationId = onlyOptionId(locations.value) ?? 0; });
 async function load(catalogs = false) {
@@ -137,7 +158,7 @@ function openAdjustment() {
   if (optionsMenu.value) optionsMenu.value.open = false;
   const selected = warehouses.value.find(w => w.id === warehouseId.value);
   const target = selected?.id ?? onlyOptionId(warehouses.value) ?? 0;
-  Object.assign(form, { productId: onlyOptionId(products.value) ?? 0, warehouseId: target, locationId: onlyOptionId(warehouses.value.find(w => w.id === target)?.locations ?? []) ?? 0, direction: 'in', quantity: '', reason: '', requestId: crypto.randomUUID() });
+  Object.assign(form, { productId: onlyOptionId(products.value) ?? 0, warehouseId: target, locationId: onlyOptionId(warehouses.value.find(w => w.id === target)?.locations ?? []) ?? 0, direction: 'in', lotId: 0, quantity: '', reason: '', requestId: crypto.randomUUID() });
   error.value = ''; success.value = ''; initialForm = JSON.stringify(form); editor.value = true;
 }
 function closeEditor(force = false) {
@@ -150,6 +171,11 @@ function review() {
   const quantity = Number(form.quantity);
   if (!form.productId || !form.locationId || !Number.isSafeInteger(quantity) || quantity <= 0 || quantity > 9999999999.99 || form.reason.trim().length < 5) { error.value = 'Seleccione producto y espacio, una cantidad entera positiva y un motivo de al menos 5 caracteres'; return; }
   if (projectedBalance.value !== null && projectedBalance.value < 0) { error.value = 'La salida supera las existencias de este espacio'; return; }
+  if (form.direction === 'in') {
+    const lot = lotChoices.value.find(choice => choice.id === form.lotId);
+    if (!lot) { error.value = 'Seleccione el lote al que regresan las unidades'; return; }
+    if (quantity > lot.room) { error.value = `El lote solo admite ${lot.room} unidades más: es lo que recibió menos lo que sigue en existencias`; return; }
+  }
   error.value = ''; confirm.value = true;
 }
 async function save() {
@@ -157,7 +183,7 @@ async function save() {
   const company = activeCompanyId.value;
   busy.value = true; error.value = '';
   try {
-    await http.post('/inventory/adjustments', { productId: form.productId, locationId: form.locationId, quantity: Number(form.quantity) * (form.direction === 'out' ? -1 : 1), reason: form.reason.trim(), requestId: form.requestId }, { headers: { 'X-Company-Id': String(company) } });
+    await http.post('/inventory/adjustments', { productId: form.productId, locationId: form.locationId, quantity: Number(form.quantity) * (form.direction === 'out' ? -1 : 1), ...(form.direction === 'in' ? { lotId: form.lotId } : {}), reason: form.reason.trim(), requestId: form.requestId }, { headers: { 'X-Company-Id': String(company) } });
     if (company !== activeCompanyId.value) return;
     adjustmentDialog.value?.close(); editor.value = false; confirm.value = false; success.value = 'Ajuste registrado en existencias y movimientos'; page.value = 1; await load();
   } catch (caught) { if (company === activeCompanyId.value) { error.value = getApiErrorMessage(caught, 'No se pudo registrar el ajuste'); balanceRefresh.value++; } }
@@ -224,7 +250,7 @@ async function save() {
     <InventoryProductDetail v-if="detailStock" :key="detailStock.id" :stock="detailStock" :warehouses="warehouses" :show-map="detailMap" @close="detailStock = null" @movements="openMovements" />
     <Teleport to="body">
       <dialog v-if="editor" ref="adjustmentDialog" aria-labelledby="adjustment-title" class="fixed inset-y-0 left-auto right-0 m-0 h-dvh max-h-none w-full max-w-xl border border-border bg-surface p-0 text-fg shadow-[var(--shadow-float)] backdrop:bg-black/40" @cancel.prevent="closeEditor()">
-        <form class="flex h-full min-h-0 flex-col" @submit.prevent="review"><header class="flex items-start justify-between gap-4 border-b border-border p-5 sm:p-6"><div><h2 id="adjustment-title" class="text-lg font-semibold">Ajustar existencias</h2><p class="mt-1 text-sm text-muted-fg">Seleccione el producto y el espacio que va a corregir.</p></div><button type="button" class="icon-button shrink-0" aria-label="Cerrar ajuste" :disabled="busy" @click="closeEditor()"><X class="h-4 w-4" /></button></header><fieldset :disabled="busy || confirm" class="min-h-0 flex-1 space-y-5 overflow-y-auto p-5 sm:p-6"><p v-if="error" role="alert" class="text-sm text-danger">{{ error }}</p><label class="block text-sm">Producto<select v-model.number="form.productId" required class="field-control"><option :value="0" disabled>Seleccionar producto</option><option v-for="product in products" :key="product.id" :value="product.id">{{ product.sku }} · {{ product.name }}</option></select></label><div class="grid gap-4 sm:grid-cols-2"><label class="text-sm">Almacén<select v-model.number="form.warehouseId" required class="field-control"><option :value="0" disabled>Seleccionar almacén</option><option v-for="warehouse in warehouses" :key="warehouse.id" :value="warehouse.id">{{ warehouse.branch.name }} · {{ warehouse.name }}</option></select></label><label class="text-sm">Espacio<select v-model.number="form.locationId" required class="field-control" :disabled="!locations.length"><option :value="0" disabled>Seleccionar espacio</option><option v-for="location in locations" :key="location.id" :value="location.id">{{ location.code }}</option></select></label></div><p v-if="form.warehouseId && !locations.length" class="text-sm text-muted-fg">Este almacén no tiene espacios activos. <RouterLink v-if="can('locations.view')" :to="{ path: '/organization/locations', query: { warehouse: String(form.warehouseId) } }" class="text-accent">Gestionar espacios</RouterLink></p><div class="grid gap-4 sm:grid-cols-2"><label class="text-sm">Movimiento<select v-model="form.direction" class="field-control"><option value="in">Entrada</option><option value="out">Salida</option></select></label><AppInput v-model="form.quantity" type="number" :label="`Cantidad${unit ? ` (${unit})` : ''}`" min="1" :max="form.direction === 'out' && available !== null ? available : 9999999999.99" step="1" required /></div><AppInput v-model="form.reason" label="Motivo del ajuste" placeholder="Explique la corrección de existencias" minlength="5" maxlength="500" required /><p v-if="balanceLoading" role="status" class="text-sm text-muted-fg">Consultando saldo…</p><p v-else-if="balanceError" role="alert" class="text-sm text-danger">{{ balanceError }}</p><dl v-else-if="available !== null" class="grid grid-cols-2 gap-4 rounded-xl bg-surface-secondary p-4 text-sm"><div><dt class="text-xs text-muted-fg">Existencia actual</dt><dd class="mt-1 font-semibold">{{ number(available) }} {{ unit }}</dd></div><div><dt class="text-xs text-muted-fg">Después del ajuste</dt><dd class="mt-1 font-semibold" :class="(projectedBalance ?? 0) < 0 ? 'text-danger' : ''">{{ number(projectedBalance ?? 0) }} {{ unit }}</dd></div></dl></fieldset><footer class="flex justify-end gap-2 border-t border-border p-5"><AppButton type="button" variant="outline" :disabled="busy" @click="closeEditor()">Cancelar</AppButton><AppButton type="submit" :disabled="busy || balanceLoading || available === null">Revisar ajuste</AppButton></footer></form>
+        <form class="flex h-full min-h-0 flex-col" @submit.prevent="review"><header class="flex items-start justify-between gap-4 border-b border-border p-5 sm:p-6"><div><h2 id="adjustment-title" class="text-lg font-semibold">Ajustar existencias</h2><p class="mt-1 text-sm text-muted-fg">Seleccione el producto y el espacio que va a corregir.</p></div><button type="button" class="icon-button shrink-0" aria-label="Cerrar ajuste" :disabled="busy" @click="closeEditor()"><X class="h-4 w-4" /></button></header><fieldset :disabled="busy || confirm" class="min-h-0 flex-1 space-y-5 overflow-y-auto p-5 sm:p-6"><p v-if="error" role="alert" class="text-sm text-danger">{{ error }}</p><label class="block text-sm">Producto<select v-model.number="form.productId" required class="field-control"><option :value="0" disabled>Seleccionar producto</option><option v-for="product in products" :key="product.id" :value="product.id">{{ product.sku }} · {{ product.name }}</option></select></label><div class="grid gap-4 sm:grid-cols-2"><label class="text-sm">Almacén<select v-model.number="form.warehouseId" required class="field-control"><option :value="0" disabled>Seleccionar almacén</option><option v-for="warehouse in warehouses" :key="warehouse.id" :value="warehouse.id">{{ warehouse.branch.name }} · {{ warehouse.name }}</option></select></label><label class="text-sm">Espacio<select v-model.number="form.locationId" required class="field-control" :disabled="!locations.length"><option :value="0" disabled>Seleccionar espacio</option><option v-for="location in locations" :key="location.id" :value="location.id">{{ location.code }}</option></select></label></div><p v-if="form.warehouseId && !locations.length" class="text-sm text-muted-fg">Este almacén no tiene espacios activos. <RouterLink v-if="can('locations.view')" :to="{ path: '/organization/locations', query: { warehouse: String(form.warehouseId) } }" class="text-accent">Gestionar espacios</RouterLink></p><div class="grid gap-4 sm:grid-cols-2"><label class="text-sm">Movimiento<select v-model="form.direction" class="field-control"><option value="in">Entrada</option><option value="out">Salida</option></select></label><AppInput v-model="form.quantity" type="number" :label="`Cantidad${unit ? ` (${unit})` : ''}`" min="1" :max="form.direction === 'out' && available !== null ? available : 9999999999.99" step="1" required /></div><div v-if="form.direction === 'in'"><label class="block text-sm">Lote al que regresan las unidades<select v-model.number="form.lotId" required class="field-control" :disabled="lotsLoading || !lotChoices.length"><option :value="0" disabled>{{ lotsLoading ? 'Consultando lotes…' : 'Seleccionar lote' }}</option><option v-for="lot in lotChoices" :key="lot.id" :value="lot.id">{{ lot.label }}</option></select></label><p v-if="!lotsLoading && form.productId && !lotChoices.length" class="mt-2 text-sm text-muted-fg">Este producto no tiene un lote al que regresen unidades: todo lo recibido ya está en existencias. Si son las existencias con las que empieza, use <strong>Registrar saldo inicial</strong>.</p><p v-else-if="form.productId" class="mt-2 text-xs text-muted-fg">Una entrada por ajuste devuelve unidades a un lote que ya existe; no crea lotes nuevos.</p></div><AppInput v-model="form.reason" label="Motivo del ajuste" placeholder="Explique la corrección de existencias" minlength="5" maxlength="500" required /><p v-if="balanceLoading" role="status" class="text-sm text-muted-fg">Consultando saldo…</p><p v-else-if="balanceError" role="alert" class="text-sm text-danger">{{ balanceError }}</p><dl v-else-if="available !== null" class="grid grid-cols-2 gap-4 rounded-xl bg-surface-secondary p-4 text-sm"><div><dt class="text-xs text-muted-fg">Existencia actual</dt><dd class="mt-1 font-semibold">{{ number(available) }} {{ unit }}</dd></div><div><dt class="text-xs text-muted-fg">Después del ajuste</dt><dd class="mt-1 font-semibold" :class="(projectedBalance ?? 0) < 0 ? 'text-danger' : ''">{{ number(projectedBalance ?? 0) }} {{ unit }}</dd></div></dl></fieldset><footer class="flex justify-end gap-2 border-t border-border p-5"><AppButton type="button" variant="outline" :disabled="busy" @click="closeEditor()">Cancelar</AppButton><AppButton type="submit" :disabled="busy || balanceLoading || available === null">Revisar ajuste</AppButton></footer></form>
       </dialog>
     </Teleport>
     <ConfirmDialog v-if="confirm" title="Confirmar ajuste de inventario" :description="`${form.direction === 'in' ? 'Entrada' : 'Salida'} de ${form.quantity} ${unit}. ${form.reason}. El movimiento quedará registrado en el kardex.`" :busy="busy" :error="error" @close="confirm = false" @confirm="save" />

@@ -4,7 +4,7 @@ import { PrismaService } from "../../infrastructure/database/prisma/prisma.servi
 import { AuditService } from "../audit/application/services/audit.service";
 import { purchaseTransaction } from "../purchases/application/services/purchase-transaction";
 import { InventoryAdjustmentDto, InventoryQueryDto, KardexExportQueryDto, KardexQueryDto, LabelPrintDto, LotQueryDto, OpeningBalanceDto, RelocationDto, ReturnDto, SaleDeliveryDto, SaleReversalDto, VehicleLocationDto } from "./inventory.dto";
-import { applyEntry, applyExit, applyRevaluation, allocateFifo, lotCodeForAdjustment, lotCodeForOpening, lotCodeForReceipt, type CostBalance, type LotSlice } from './inventory-costing';
+import { applyEntry, applyExit, applyRevaluation, allocateFifo, lotCodeForOpening, lotCodeForReceipt, type CostBalance, type LotSlice } from './inventory-costing';
 import { locationMapState } from './location-map';
 
 type Tx = Prisma.TransactionClient;
@@ -766,22 +766,23 @@ export class InventoryService {
       if (prior[0]!.productId !== dto.productId || prior[0]!.locationId !== dto.locationId || !prior[0]!.quantityIn.eq(delta) || prior[0]!.reason !== dto.reason) throw new ConflictException('La referencia ya fue usada para otro movimiento');
       return prior[0]!;
     }
+    // Una entrada por ajuste devuelve unidades a un lote que ya existe (de una compra o de un saldo inicial); no crea lotes.
+    // Las existencias con las que un producto empieza se registran como saldo inicial.
+    if (!dto.lotId) throw new BadRequestException('Indique el lote al que regresan las unidades. Si son las existencias con las que el producto empieza, use Registrar saldo inicial');
     const product = await tx.product.findFirst({ where: { id: dto.productId, companyId, isActive: true, deletedAt: null } });
     if (!product) throw new BadRequestException('Producto y ubicacion deben pertenecer a la empresa activa');
+    const lot = await tx.inventoryLot.findFirst({ where: { id: dto.lotId, productId: dto.productId, status: { notIn: ['CANCELLED', 'PENDING_PLACEMENT'] } } });
+    if (!lot) throw new BadRequestException('El lote no pertenece al producto, fue cancelado o aún no se ubica');
     const place = await this.place(tx, companyId, dto.locationId, true);
+    // Lo que el lote puede recibir de vuelta es lo que recibió menos lo que sigue en ubicaciones o en tránsito (RN-INV-005).
+    const located = sum((await tx.inventoryLocationDetail.findMany({ where: { lotId: lot.id } })).map(row => row.quantity)).add((await this.openTransit(tx, [lot.id])).get(lot.id) ?? ZERO);
+    const room = lot.quantityReceived.sub(located);
+    if (delta.gt(room)) throw new ConflictException(`El ajuste supera lo que el lote ${lot.lotCode} recibió: solo caben ${room.toString()} unidades más`);
+    await this.assertFits(tx, place.id, product.id, delta);
     const cost = await this.costOf(tx, companyId, dto.productId);
-    // Una entrada por ajuste se valora al promedio vigente; sin existencias previas, al costo del catálogo.
-    const unitCost = cost.average.gt(0) ? cost.average : product.unitCost;
-    let lotId = dto.lotId;
-    if (lotId) {
-      const lot = await tx.inventoryLot.findFirst({ where: { id: lotId, productId: dto.productId, status: { notIn: ['CANCELLED', 'PENDING_PLACEMENT'] } } });
-      if (!lot) throw new BadRequestException('El lote no pertenece al producto, fue cancelado o aún no se ubica');
-      const located = sum((await tx.inventoryLocationDetail.findMany({ where: { lotId } })).map(row => row.quantity)).add((await this.openTransit(tx, [lotId])).get(lotId) ?? ZERO);
-      if (located.add(delta).gt(lot.quantityReceived)) throw new ConflictException('El ajuste supera la cantidad recibida del lote; deje el lote en blanco para crear un lote de ajuste');
-    } else {
-      const created = await tx.inventoryLot.create({ data: { lotCode: `TMP-${key}`.slice(0, 60), productId: dto.productId, receivedAt: new Date(), quantityReceived: delta, unitCost, totalCost: delta.mul(unitCost).toDecimalPlaces(2) } });
-      lotId = (await tx.inventoryLot.update({ where: { id: created.id }, data: { lotCode: lotCodeForAdjustment(created.id) } })).id;
-    }
+    // Se valora al promedio vigente, igual que la salida que corrige; sin existencias previas, al costo del lote.
+    const unitCost = cost.average.gt(0) ? cost.average : lot.unitCost;
+    const lotId = lot.id;
     const balance = await this.moveStock(tx, dto.productId, lotId, place.id, delta);
     await this.saveCost(tx, companyId, dto.productId, applyEntry(cost, delta, unitCost));
     const movement = await this.record(tx, userId, { productId: dto.productId, lotId, place, warehouseId: place.warehouseId, type: 'ADJUSTMENT', quantityIn: delta, unitCost, key, reason: dto.reason, reference: { type: 'adjustment' }, balance });

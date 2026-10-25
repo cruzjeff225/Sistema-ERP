@@ -62,12 +62,13 @@ async function main() {
   assert.equal(num(exit.quantityOut), 1); assert.equal(exit.movementType, 'ADJUSTMENT'); assert(exit.lotId, 'La salida identifica el lote');
   assert.equal((await api('/inventory/adjustments', 'POST', out)).id, exit.id, 'el reintento no duplica el movimiento');
   await api('/inventory/adjustments', 'POST', { ...out, quantity: -2 }, 409);
-  const entry = await api('/inventory/adjustments', 'POST', { ...out, quantity: 1, reason: 'QA lotes: reingreso de prueba', requestId: randomUUID() });
-  assert.equal(num(entry.quantityIn), 1);
-  const adjustmentLot = await db.inventoryLot.findUniqueOrThrow({ where: { id: entry.lotId! } });
-  assert.match(adjustmentLot.lotCode, /^LT-AJ-\d{6}$/); assert.equal(adjustmentLot.purchaseItemId, null);
+  await api('/inventory/adjustments', 'POST', { ...out, quantity: 1, reason: 'QA lotes: entrada sin lote', requestId: randomUUID() }, 400);
+  const lotCount = await db.inventoryLot.count();
+  const entry = await api('/inventory/adjustments', 'POST', { ...out, quantity: 1, lotId: exit.lotId, reason: 'QA lotes: reingreso de prueba', requestId: randomUUID() });
+  assert.equal(num(entry.quantityIn), 1); assert.equal(entry.lotId, exit.lotId, 'la entrada vuelve al lote del que salió');
+  assert.equal(await db.inventoryLot.count(), lotCount, 'un ajuste no crea lotes nuevos');
   await api('/inventory/adjustments', 'POST', { ...out, quantity: num(slot.lot.quantityReceived) + 1, lotId: slot.lotId, reason: 'QA lotes: exceso sobre el lote', requestId: randomUUID() }, 409);
-  pass('ajustes: salida FIFO con lote, reintento idempotente, saldo insuficiente 409, ingreso en lote de ajuste');
+  pass('ajustes: salida FIFO con lote, reintento idempotente, saldo insuficiente 409; la entrada exige un lote y regresa al original sin crear lotes');
 
   const avgAfter = await db.inventoryCostAverage.findUniqueOrThrow({ where: { companyId_productId: { companyId, productId: slot.lot.productId } } });
   assert(avgAfter.quantityOnHand.gte(avgBefore.quantityOnHand), 'el reingreso repone la cantidad');
@@ -208,7 +209,7 @@ async function main() {
     const catalogs = await api('/inventory/catalogs');
     assert(catalogs.vehicleLocations.some((l: any) => l.id === vehicleSpace.id && l.vehicle.plate === plate));
     assert(!catalogs.warehouses.some((w: any) => w.locations.some((l: any) => l.id === vehicleSpace.id)), 'un vehículo no se ofrece como espacio');
-    await api('/inventory/adjustments', 'POST', { productId: slot.lot.productId, locationId: vehicleSpace.id, quantity: 1, reason: 'QA lotes: no debe aceptarse', requestId: randomUUID() }, 400);
+    await api('/inventory/adjustments', 'POST', { productId: slot.lot.productId, locationId: vehicleSpace.id, quantity: 1, lotId: slot.lotId, reason: 'QA lotes: no debe aceptarse', requestId: randomUUID() }, 400);
     await api('/inventory/relocations', 'POST', { lotId: slot.lotId, fromLocationId: here.id, toLocationId: vehicleSpace.id, quantity: 1, reason: 'QA lotes: no debe aceptarse', requestId: randomUUID() }, 400);
     pass('vehículo de tránsito: ubicación propia por placa, fuera de los espacios de almacenaje');
   } finally {

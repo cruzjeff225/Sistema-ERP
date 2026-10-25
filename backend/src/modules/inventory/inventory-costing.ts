@@ -54,4 +54,3 @@ export function allocateFifo(rows: LotAvailability[], quantity: Prisma.Decimal.V
 /** Código de lote legible y estable: la recepción confirmada que lo origina. */
 export const lotCodeForReceipt = (purchaseItemId: number) => `LT-${String(purchaseItemId).padStart(6, '0')}`;
 export const lotCodeForOpening = (lotId: number) => `LT-INI-${String(lotId).padStart(6, '0')}`;
-export const lotCodeForAdjustment = (lotId: number) => `LT-AJ-${String(lotId).padStart(6, '0')}`;

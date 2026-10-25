@@ -24,7 +24,7 @@ export class InventoryAdjustmentDto {
   @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
   @IsString() @MinLength(5) @MaxLength(500) reason!: string;
   @IsUUID() requestId!: string;
-  /** Lote a descontar o al que se reintegra; sin él, las salidas siguen FIFO y las entradas crean un lote de ajuste. */
+  /** Salida: lote del que se descuenta (sin él, sigue FIFO). Entrada: lote al que regresan las unidades; es obligatorio. */
   @IsOptional() @IsInt() @Min(1) lotId?: number;
 }
 

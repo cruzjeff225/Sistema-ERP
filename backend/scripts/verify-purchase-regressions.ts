@@ -317,7 +317,7 @@ async function main() {
   await api('/inventory/adjustments', 'POST', { ...adjustment, quantity: -1, requestId: randomUUID() }, 409);
   await api('/inventory/adjustments', 'POST', { ...adjustment, quantity: 0, requestId: randomUUID() }, 400);
   await api('/inventory/adjustments', 'POST', { ...adjustment, quantity: 0.001, requestId: randomUUID() }, 400);
-  await api('/inventory/adjustments', 'POST', { ...adjustment, quantity: 2, requestId: randomUUID() });
+  await api('/inventory/adjustments', 'POST', { ...adjustment, quantity: 2, lotId: (await db.inventoryMovement.findFirstOrThrow({ where: { productId: products[0].id, movementType: 'ADJUSTMENT' } })).lotId!, requestId: randomUUID() });
   const pagedStock = await api(`/inventory/stocks?limit=1&productId=${products[0].id}`);
   assert.equal(pagedStock.total, 1);
   assert.equal(Number(pagedStock.items[0].quantity), 2.25);

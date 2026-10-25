@@ -59,7 +59,7 @@ async function main() {
     const product = await ensure('/products', r => r.sku === sample.sku, { categoryId: productCategory.id, subcategoryId: sub.id, sku: sample.sku, name: sample.name, purchaseUnitId: purchaseUnits[sample.unit], saleUnitId: saleUnits[sample.unit], unitCost: sample.cost, salePrice: sample.price, presentation: sample.presentation, description: 'DEMO - Producto y precios simulados para explicar el ERP. No son cotizaciones comerciales reales.' });
     products.push(product);
     for (const [supplierIndex, supplier] of suppliers.entries()) await ensure(`/product-suppliers?productId=${product.id}`, r => r.supplierId === supplier.id, { productId: product.id, supplierId: supplier.id, supplierCode: `${supplierIndex ? 'GT' : 'SV'}-${sample.sku}`, isPreferred: supplierIndex === 0 });
-    await api('/inventory/adjustments', 'POST', { productId: product.id, locationId: locations[sample.location].id, quantity: sample.quantity, reason: `DEMO - Saldo inicial de capacitacion ${sample.sku}`, requestId: `a71a5000-0000-4000-8000-00000000000${index + 1}` });
+    await api('/inventory/opening-balances', 'POST', { productId: product.id, locationId: locations[sample.location].id, quantity: sample.quantity, unitCost: sample.cost, reason: `DEMO - Saldo inicial de capacitacion ${sample.sku}`, requestId: `a71a5000-0000-4000-8000-00000000000${index + 1}` });
   }
   const today = new Date().toISOString().slice(0, 10);
   const future = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);

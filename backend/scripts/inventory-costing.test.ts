@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { Prisma } from '@prisma/client';
-import { allocateFifo, applyEntry, applyExit, applyRevaluation, lotCodeForAdjustment, lotCodeForReceipt, type CostBalance } from '../src/modules/inventory/inventory-costing';
+import { allocateFifo, applyEntry, applyExit, applyRevaluation, lotCodeForOpening, lotCodeForReceipt, type CostBalance } from '../src/modules/inventory/inventory-costing';
 
 const D = (value: Prisma.Decimal.Value) => new Prisma.Decimal(value);
 const balance = (quantity: number, value: number): CostBalance => ({ quantity: D(quantity), value: D(value), average: quantity ? D(value).div(quantity).toDecimalPlaces(4) : D(0) });
@@ -66,5 +66,5 @@ test('FIFO rechaza una salida mayor que lo disponible en la ubicación', () => {
 
 test('los códigos de lote son estables y legibles', () => {
   assert.equal(lotCodeForReceipt(42), 'LT-000042');
-  assert.equal(lotCodeForAdjustment(7), 'LT-AJ-000007');
+  assert.equal(lotCodeForOpening(7), 'LT-INI-000007');
 });
